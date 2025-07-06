@@ -424,197 +424,294 @@ medical_qa_chatbot_phase1/
 └── requirements.txt                       # 공통 의존성
 ```
 
-## 🚀 새로운 ML 서비스 구성
+# 🏥 Narutalk - 의료업계 QA 챗봇 시스템
 
-### 8. ML 성과 예측 서비스 (Port: 8008)
-```python
-# 08_ml_performance_prediction/main.py
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from api.routes import router
-from services.model_trainer import ModelTrainer
-from services.prediction_service import PredictionService
-from utils.model_utils import ModelUtils
-import logging
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/Django-4.2+-green.svg)](https://www.djangoproject.com/)
+[![React](https://img.shields.io/badge/React-18.2+-blue.svg)](https://reactjs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-teal.svg)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-app = FastAPI(title="ML Performance Prediction Service")
+**Narutalk**은 의료업계 전용 AI 기반 QA 챗봇 시스템입니다. GPT-4o와 LangGraph를 활용하여 의료진이 빠르고 정확한 정보를 얻을 수 있도록 설계되었습니다.
 
-# CORS 설정
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+![Narutalk 시스템 아키텍처](https://via.placeholder.com/800x400?text=Narutalk+System+Architecture)
 
-# 라우터 등록
-app.include_router(router, prefix="/api/v1")
+## 🚀 **주요 기능**
 
-# 시작 시 모델 로드
-@app.on_event("startup")
-async def startup_event():
-    # MLflow 모델 로드
-    await ModelUtils.load_models()
-    logging.info("ML Performance Prediction Service started")
+### 💬 **AI 챗봇**
+- GPT-4o 기반 의료 전문 답변
+- 실시간 채팅 (WebSocket)
+- 다중 세션 관리
+- 의료 카테고리별 분류
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8008)
+### 🔐 **사용자 관리**
+- 역할 기반 접근 제어 (의사, 간호사, 관리자)
+- JWT 기반 인증
+- 의료진 전용 기능
+
+### 🎨 **현대적 UI**
+- Material-UI 기반 반응형 디자인
+- 다크/라이트 테마 지원
+- 모바일 친화적 인터페이스
+
+### 📊 **데이터 분석**
+- 의료 문서 검색 및 분석
+- 실시간 차트 및 통계
+- 성능 모니터링
+
+## 🏗️ **시스템 아키텍처**
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   React UI      │    │   Django API    │    │   FastAPI       │
+│   (Port 3000)   │◄──►│   (Port 8000)   │◄──►│   (Port 8001)   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   WebSocket     │    │   Database      │    │   LangGraph     │
+│   (Real-time)   │    │   (SQLite)      │    │   (AI Flow)     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-### MLflow 환경 설정
-```yaml
-# docker-compose.ml.yml
-version: '3.8'
+## 📋 **시스템 요구사항**
 
-services:
-  mlflow-server:
-    image: mlflow/mlflow:latest
-    container_name: mlflow-server
-    ports:
-      - "5000:5000"
-    volumes:
-      - ./mlflow:/mlflow
-      - ./data/ml_data:/data
-    environment:
-      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
-      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root /mlflow/artifacts
+### 필수 소프트웨어
+- **Python**: 3.10 이상
+- **Node.js**: 18.x 이상 (LTS 권장)
+- **npm**: 9.x 이상
 
-  ml-prediction-service:
-    build: ./backend/fastapi_services/08_ml_performance_prediction
-    container_name: ml-prediction-service
-    ports:
-      - "8008:8008"
-    depends_on:
-      - mlflow-server
-      - redis
-    volumes:
-      - ./data:/app/data
-      - ./mlflow:/app/mlflow
-    environment:
-      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
-      - REDIS_URL=redis://redis:6379
-```
+### 권장 사양
+- **RAM**: 8GB 이상
+- **Storage**: 2GB 이상 여유 공간
+- **OS**: Windows 10/11, macOS 10.15+, Ubuntu 20.04+
 
-## 🔧 개발 환경 설정
+## 🛠️ **설치 방법**
 
-### 1. 의존성 설치
+### 📥 **자동 설치 (Windows)**
 ```bash
-# ML 서비스 의존성
-pip install -r backend/fastapi_services/08_ml_performance_prediction/requirements.txt
+# 1. 저장소 클론
+git clone https://github.com/your-username/narutalk.git
+cd narutalk
 
-# 주요 ML 라이브러리
-pip install scikit-learn==1.3.0
-pip install xgboost==2.0.0
-pip install prophet==1.1.4
-pip install tensorflow==2.13.0
-pip install mlflow==2.8.1
-pip install pandas==2.0.3
-pip install numpy==1.24.3
+# 2. 자동 설치 실행
+install.bat
 ```
 
-### 2. 환경 변수 설정
+### 🔧 **수동 설치**
 ```bash
-# .env 파일 생성
-MLFLOW_TRACKING_URI=http://localhost:5000
-MLFLOW_EXPERIMENT_NAME=performance_prediction
-REDIS_URL=redis://localhost:6379
-SQLITE_DB_PATH=./data/sqlite/
+# 1. 가상환경 생성
+python -m venv .venv
+
+# 2. 가상환경 활성화
+# Windows:
+.\.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+# 3. Python 패키지 설치
+pip install -r requirements/development.txt
+
+# 4. Node.js 패키지 설치
+npm install
+
+# 5. 데이터베이스 마이그레이션
+python manage.py makemigrations
+python manage.py migrate
+
+# 6. 환경 변수 설정
+cp config/env.example .env
+# .env 파일을 편집하여 API 키 등을 설정
 ```
 
-### 3. 서비스 실행
+### 🔑 **환경 변수 설정**
+```env
+# OpenAI API 키 (필수)
+OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# Anthropic API 키 (선택)
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
+
+# Django 비밀키
+DJANGO_SECRET_KEY=your-secret-key-here
+```
+
+## 🚀 **실행 방법**
+
+### 🎯 **간단한 실행 (권장)**
 ```bash
-# 전체 서비스 실행
-docker-compose -f docker-compose.yml -f docker-compose.ml.yml up -d
+# Windows PowerShell
+powershell -ExecutionPolicy Bypass -File start_narutalk.ps1
 
-# 개별 ML 서비스 실행
-cd backend/fastapi_services/08_ml_performance_prediction
-python main.py
+# 또는 배치 파일
+start_narutalk.bat
+
+# 또는 Python 스크립트
+python run_narutalk.py
 ```
 
-## 📊 ML 데이터 파이프라인
-
-### 데이터 수집 → 전처리 → 모델 학습 → 예측
-```python
-# 데이터 파이프라인 예시
-class MLDataPipeline:
-    def __init__(self):
-        self.data_collector = DataCollector()
-        self.preprocessor = DataPreprocessor()
-        self.model_trainer = ModelTrainer()
-        self.prediction_service = PredictionService()
-    
-    async def run_pipeline(self):
-        # 1. 데이터 수집
-        raw_data = await self.data_collector.collect_sales_data()
-        
-        # 2. 데이터 전처리
-        processed_data = await self.preprocessor.preprocess(raw_data)
-        
-        # 3. 모델 학습
-        model = await self.model_trainer.train_model(processed_data)
-        
-        # 4. 모델 평가 및 등록
-        metrics = await self.model_trainer.evaluate_model(model)
-        await self.model_trainer.register_model(model, metrics)
-        
-        # 5. 예측 준비
-        await self.prediction_service.load_model(model)
-```
-
-## 🚀 배포 및 운영
-
-### 1. 개발 환경 (Development)
+### 🔄 **수동 실행**
 ```bash
-docker-compose -f docker-compose.dev.yml -f docker-compose.ml.yml up -d
+# 터미널 1: Django 백엔드
+.\.venv\Scripts\activate
+python manage.py runserver
+
+# 터미널 2: React 프론트엔드
+npm run dev
+
+# 터미널 3: FastAPI 서비스 (선택사항)
+.\.venv\Scripts\activate
+cd service_8001_search
+python -m uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
-### 2. 프로덕션 환경 (Production)
+### 🌐 **접속 URL**
+- **메인 웹사이트**: http://localhost:3000
+- **Django 관리자**: http://localhost:8000/admin
+- **FastAPI 문서**: http://localhost:8001/docs
+
+## 📚 **API 문서**
+
+### Django REST API
+- **인증**: `/api/auth/`
+- **채팅**: `/api/chat/`
+- **사용자**: `/api/users/`
+- **관리자**: `/api/admin/`
+
+### FastAPI 마이크로서비스
+- **검색**: `/search/`
+- **분석**: `/analyze/`
+- **예측**: `/predict/`
+
+### WebSocket
+- **실시간 채팅**: `ws://localhost:8000/ws/chat/`
+
+## 🧪 **테스트**
+
+### 단위 테스트
 ```bash
-docker-compose -f docker-compose.prod.yml -f docker-compose.ml.yml up -d
+# Django 테스트
+python manage.py test
+
+# Pytest 실행
+pytest
+
+# 커버리지 포함
+pytest --cov=apps --cov-report=html
 ```
 
-### 3. ML 모델 배포
+### 통합 테스트
 ```bash
-# 모델 학습 스크립트 실행
-python scripts/ml/train_models.py
+# 전체 시스템 테스트
+python test_workflow.py
 
-# 모델 평가
-python scripts/ml/evaluate_models.py
-
-# 모델 배포
-python scripts/ml/deploy_models.py
+# LangGraph 테스트
+python langgraph_orchestrator/test_workflow.py
 ```
 
-## 📈 모니터링 및 로깅
+## 📦 **배포**
 
-### ML 성능 모니터링
-- **MLflow UI**: http://localhost:5000
-- **모델 성능 대시보드**: Grafana 연동
-- **데이터 드리프트 감지**: Evidently AI
-- **실시간 예측 모니터링**: Prometheus + Grafana
+### 🐳 **Docker 배포**
+```bash
+# Docker 이미지 빌드
+docker build -t narutalk:latest .
 
-### 로그 관리
-```
-monitoring/logs/ml/
-├── model_training.log          # 모델 학습 로그
-├── prediction_requests.log     # 예측 요청 로그
-├── model_performance.log       # 모델 성능 로그
-└── data_pipeline.log          # 데이터 파이프라인 로그
+# 컨테이너 실행
+docker run -p 3000:3000 -p 8000:8000 narutalk:latest
 ```
 
-## 🔒 보안 고려사항
+### 🌐 **프로덕션 배포**
+```bash
+# 프로덕션 패키지 설치
+pip install -r requirements/production.txt
 
-### ML 모델 보안
-- **MLflow 인증**: 사용자 기반 접근 제어
-- **모델 암호화**: 민감한 모델 파라미터 암호화
-- **API 보안**: 예측 API 인증 및 Rate Limiting
-- **데이터 보안**: 학습 데이터 개인정보 보호
+# 정적 파일 수집
+python manage.py collectstatic
+
+# Gunicorn으로 실행
+gunicorn config.wsgi:application --bind 0.0.0.0:8000
+```
+
+## 🔧 **개발**
+
+### 🎨 **코드 스타일**
+```bash
+# 코드 포매팅
+black .
+isort .
+
+# 린팅
+flake8 .
+eslint src/
+```
+
+### 📝 **커밋 규칙**
+```bash
+feat: 새로운 기능 추가
+fix: 버그 수정
+docs: 문서 업데이트
+style: 코드 스타일 변경
+refactor: 코드 리팩토링
+test: 테스트 추가/수정
+chore: 빌드 프로세스 또는 보조 도구 변경
+```
+
+## 🤝 **기여하기**
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'Add amazing feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
+
+## 📄 **라이선스**
+
+이 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+
+## 🆘 **문제 해결**
+
+### 자주 묻는 질문 (FAQ)
+
+**Q: 'vite' 명령어를 찾을 수 없다는 오류가 발생합니다.**
+```bash
+# 전역 설치
+npm install -g vite
+
+# 또는 npx 사용
+npx vite
+```
+
+**Q: Django 마이그레이션 오류가 발생합니다.**
+```bash
+# 마이그레이션 파일 삭제 후 재생성
+python manage.py makemigrations --empty your_app_name
+python manage.py migrate
+```
+
+**Q: React 프론트엔드가 로드되지 않습니다.**
+```bash
+# 캐시 삭제 후 재설치
+npm cache clean --force
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### 🐛 **버그 리포트**
+버그를 발견하셨나요? [Issues](https://github.com/your-username/narutalk/issues)에 리포트해주세요.
+
+### 💬 **지원**
+- 📧 Email: support@narutalk.com
+- 💬 Discord: [Narutalk Community](https://discord.gg/narutalk)
+- 📖 Wiki: [Documentation](https://github.com/your-username/narutalk/wiki)
 
 ---
 
+<p align="center">
+  <b>🏥 의료업계를 위한 AI 솔루션 - Narutalk</b><br>
+  Made with ❤️ by the Narutalk Team
+</p> 
 ### 📝 Phase 1
 
 1. **기본 인프라 구축**
