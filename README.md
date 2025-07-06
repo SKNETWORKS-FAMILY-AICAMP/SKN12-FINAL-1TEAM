@@ -16,7 +16,7 @@
     </td>
     <td align="center">
       <img src="./team/2.png" width="120px"><br/>
-      <b>손현성</b><br/><span style="font-size:14px;">백앤드 팀장</sub>
+      <b>손현성</b><br/><span style="font-size:14px;">백앤드/인프라팀장</sub>
     </td>
     <td align="center">
       <img src="./team/3.png" width="120px"><br/>
@@ -28,7 +28,7 @@
     </td>
     <td align="center">
       <img src="./team/5.png" width="120px"><br/>
-      <b>허한결</b><br/><span style="font-size:14px;">DB 매니징 팀장</sub>
+      <b>허한결</b><br/><span style="font-size:14px;">DB 팀장</sub>
     </td>
   </tr>
 </table>
