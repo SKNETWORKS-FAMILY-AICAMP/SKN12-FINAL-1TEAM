@@ -657,6 +657,37 @@ refactor: 코드 리팩토링
 test: 테스트 추가/수정
 chore: 빌드 프로세스 또는 보조 도구 변경
 ```
+📄 문서 목록
+1. PROJECT_STRUCTURE.md - 📂 프로젝트 구조 분석 문서
+전체 파일 구조를 시각적으로 분석
+각 디렉토리와 파일의 역할 상세 설명
+아키텍처 계층 구조 (프레젠테이션, API, 마이크로서비스, AI, 데이터)
+데이터 흐름도 및 보안 인증 흐름
+확장 포인트 가이드
+2. DEVELOPMENT_GUIDE.md - 🛠️ 개발 가이드 문서
+새로운 기능 추가 방법 (Django 앱, React 컴포넌트, AI 기능, FastAPI 서비스)
+데이터베이스 관리 및 마이그레이션
+테스트 작성 방법 (Django, React)
+배포 준비 (Docker, 프로덕션 설정)
+코딩 규칙 및 Git 워크플로우
+문제 해결 가이드
+3. DJANGO_API_ARCHITECTURE.md - 🏗️ Django API 아키텍처 문서
+Django 설정 구조 (config/settings/)
+인증 시스템 상세 구현 (커스텀 User 모델, JWT, 권한 관리)
+채팅 시스템 구조 (WebSocket, 실시간 통신)
+API 게이트웨이 및 미들웨어
+REST Framework 설정
+전체 API 엔드포인트 매핑
+4. README_UPDATED.md - 📖 업데이트된 README 문서
+프로젝트 전체 개요 및 주요 기능
+시스템 아키텍처 다이어그램
+설치 및 실행 방법 (자동/수동)
+API 문서 및 엔드포인트 목록
+테스트 및 배포 가이드
+문제 해결 FAQ
+
+
+
 
 ## 🤝 **기여하기**
 
