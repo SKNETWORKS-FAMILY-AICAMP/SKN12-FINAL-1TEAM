@@ -344,7 +344,7 @@ Django 미들웨어 검증 → 권한 확인 → 응답
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Narutalk**은 의료업계 전용 AI 기반 QA 챗봇 시스템입니다. GPT-4o와 LangGraph를 활용하여 의료진이 빠르고 정확한 정보를 얻을 수 있도록 설계되었습니다.
+**Narutalk**은 의료업계 전용 AI 기반 QA 챗봇 시스템입니다. GPT-4o와 LangGraph를 활용하여 제약영업사원이 내부정보를 빠르고 정확한 정보를 얻을 수 있도록 설계되었습니다.
 
 ![Narutalk 시스템 아키텍처](https://via.placeholder.com/800x400?text=Narutalk+System+Architecture)
 
@@ -357,7 +357,7 @@ Django 미들웨어 검증 → 권한 확인 → 응답
 - 의료 카테고리별 분류
 
 ### 🔐 **사용자 관리**
-- 역할 기반 접근 제어 (의사, 간호사, 관리자)
+- 역할 기반 접근 제어 ( 영업사원 / 관리자)
 - JWT 기반 인증
 - 의료진 전용 기능
 
