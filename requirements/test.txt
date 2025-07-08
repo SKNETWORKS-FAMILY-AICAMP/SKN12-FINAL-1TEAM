@@ -1,0 +1,56 @@
+# =============================================================================
+# 🏥 Narutalk 의료업계 QA 챗봇 시스템 - 테스트 환경 패키지
+# =============================================================================
+
+# 기본 패키지 포함
+-r base.txt
+
+# Testing Framework
+pytest==7.4.3
+pytest-django==4.7.0
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-xdist==3.5.0
+pytest-mock==3.12.0
+pytest-html==4.1.1
+
+# Test Data
+factory-boy==3.3.0
+faker==20.1.0
+model-bakery==1.17.0
+
+# HTTP Testing
+responses==0.24.1
+requests-mock==1.11.0
+httpretty==1.1.4
+
+# Database Testing
+pytest-postgresql==5.0.0
+pytest-redis==3.0.2
+
+# Coverage
+coverage==7.3.2
+pytest-cov==4.1.0
+
+# Performance Testing
+locust==2.17.0
+
+# Linting & Code Quality
+flake8==6.1.0
+black==23.11.0
+isort==5.12.0
+mypy==1.7.1
+
+# Security Testing
+bandit==1.7.5
+safety==2.3.5
+
+# Documentation Testing
+doctest==1.0.0
+
+# Environment
+python-decouple==3.8
+
+# Debugging
+ipdb==0.13.13
+pudb==2023.1 

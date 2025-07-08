@@ -1,0 +1,13 @@
+{
+  "dependencies": [
+    "langchain_openai",
+    "langchain_anthropic", 
+    "langgraph>=0.5.0",
+    "langchain>=0.1.0",
+    "./qa_agent"
+  ],
+  "graphs": {
+    "qa_medical_agent": "./qa_agent/agent.py:create_graph"
+  },
+  "env": "./.env"
+} 
