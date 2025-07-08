@@ -35,214 +35,72 @@
     </td>
   </tr>
 </table>
+## 📂 **프로젝트 구조**
 
-
-## 📂 **프로젝트 루트 구조**
-
-```
-Narutalk/
-├── 📁 apps/                     # Django 애플리케이션들
-├── 📁 config/                   # Django 설정 파일들
-├── 📁 src/                      # React 프론트엔드 소스
-├── 📁 langgraph_orchestrator/   # AI 워크플로우 오케스트레이터
-├── 📁 service_8001_search/      # FastAPI 검색 마이크로서비스
-├── 📁 shared/                   # 공유 유틸리티 및 모델
-├── 📁 requirements/             # 환경별 패키지 요구사항
-├── 📁 logs/                     # 로그 파일들
-├── 📁 data/                     # 데이터베이스 및 데이터 파일
-├── 📁 static/                   # 정적 파일 (CSS, JS, 이미지)
-├── 📁 templates/                # Django 템플릿
-├── 📁 내부자료_규정,인사자료/      # 의료기관 규정 및 인사 자료
-├── 📁 내부자료_업무지원/          # 의료업무 지원 자료
-├── 📄 manage.py                 # Django 관리 스크립트
-├── 📄 package.json              # Node.js 패키지 설정
-├── 📄 vite.config.ts            # Vite 빌드 설정
-└── 📄 tsconfig.json             # TypeScript 설정
-```
-
-## 🔧 **Django 백엔드 구조 (apps/)**
-
-### 📱 **애플리케이션 구조**
+### **📁 백엔드 (Django Apps)**
 ```
 apps/
-├── 🔐 authentication/          # 사용자 인증 및 권한 관리
-│   ├── models.py              # User 모델, 권한 모델
-│   ├── serializers.py         # API 직렬화기
-│   ├── views.py               # 인증 API 뷰
-│   ├── urls.py                # 인증 URL 라우팅
-│   └── migrations/            # 데이터베이스 마이그레이션
+├── 🔐 authentication/     # 사용자 인증 및 권한 관리
+│   ├── models.py         # 커스텀 User 모델
+│   ├── serializers.py    # JWT 토큰, 사용자 직렬화
+│   ├── views.py          # 로그인/회원가입/프로필 API
+│   └── urls.py           # 인증 URL 라우팅
 │
-├── 💬 chat/                    # 채팅 및 메시지 관리
-│   ├── models.py              # 채팅방, 메시지 모델
-│   ├── serializers.py         # 채팅 API 직렬화기
-│   ├── views.py               # 채팅 API 뷰
-│   ├── consumers.py           # WebSocket 컨슈머
-│   ├── routing.py             # WebSocket 라우팅
-│   ├── urls.py                # 채팅 URL 라우팅
-│   └── migrations/            # 데이터베이스 마이그레이션
+├── 💬 chat/              # 채팅 및 메시지 시스템
+│   ├── models.py         # ChatSession, Message 모델
+│   ├── consumers.py      # WebSocket 실시간 통신
+│   ├── serializers.py    # 채팅 데이터 직렬화
+│   ├── views.py          # 채팅 세션 관리 API
+│   └── routing.py        # WebSocket 라우팅
 │
-└── 🌐 gateway/                 # API 게이트웨이 및 미들웨어
-    ├── views.py               # 게이트웨이 뷰
-    ├── middleware.py          # 커스텀 미들웨어
-    └── urls.py                # 게이트웨이 URL 라우팅
+└── 🌐 gateway/           # API 게이트웨이
+    ├── middleware.py     # 로깅, CORS 미들웨어
+    └── views.py          # 상태확인, 프록시 뷰
 ```
 
-### 🔧 **Django 설정 구조 (config/)**
-```
-config/
-├── settings/                  # 환경별 설정
-│   ├── __init__.py
-│   ├── base.py               # 기본 공통 설정
-│   └── development.py        # 개발 환경 설정
-├── urls.py                   # 메인 URL 설정
-├── wsgi.py                   # WSGI 설정 (프로덕션)
-├── asgi.py                   # ASGI 설정 (WebSocket)
-└── env.example               # 환경 변수 템플릿
-```
-
-## ⚛️ **React 프론트엔드 구조 (src/)**
-
-### 🎨 **컴포넌트 구조**
+### **⚛️ 프론트엔드 (React)**
 ```
 src/
-├── 🎯 components/             # React 컴포넌트
-│   └── Chat/                 # 채팅 관련 컴포넌트
-│       └── ChatInterface.tsx # 메인 채팅 인터페이스
+├── 🎯 components/        # React 컴포넌트
+│   └── Chat/            # 채팅 인터페이스
 │
-├── 🗃️ store/                  # Redux 상태 관리
-│   ├── index.ts              # 스토어 설정
-│   └── slices/               # Redux 슬라이스
-│       ├── authSlice.ts      # 인증 상태 관리
-│       ├── chatSlice.ts      # 채팅 상태 관리
-│       └── uiSlice.ts        # UI 상태 관리
+├── 🗃️ store/             # Redux 상태 관리
+│   ├── index.ts         # 스토어 설정
+│   └── slices/          # 상태 슬라이스
+│       ├── authSlice.ts # 인증 상태
+│       ├── chatSlice.ts # 채팅 상태
+│       └── uiSlice.ts   # UI 상태
 │
-├── 🎨 theme/                  # 테마 및 스타일 설정
-│   └── index.ts              # Material-UI 테마
-│
-├── 📱 App.tsx                 # 메인 애플리케이션 컴포넌트
-└── 🚀 main.tsx                # 애플리케이션 진입점
+├── 🎨 theme/            # Material-UI 테마
+└── 📱 App.tsx           # 메인 앱 컴포넌트
 ```
 
-### 🔧 **프론트엔드 설정 파일**
-```
-├── 📄 package.json            # Node.js 의존성 및 스크립트
-├── 📄 vite.config.ts          # Vite 빌드 도구 설정
-├── 📄 tsconfig.json           # TypeScript 컴파일러 설정
-├── 📄 tsconfig.node.json      # Node.js용 TypeScript 설정
-└── 📄 index.html              # HTML 진입점
-```
-
-## 🤖 **AI 워크플로우 구조 (langgraph_orchestrator/)**
-
-### 🧠 **LangGraph AI 시스템**
+### **🤖 AI 워크플로우**
 ```
 langgraph_orchestrator/
-├── 🤖 qa_agent/               # QA 에이전트 구현
-│   ├── agent.py              # 메인 에이전트 로직
-│   └── utils/                # 유틸리티 모듈
-│       ├── nodes.py          # 워크플로우 노드들
-│       ├── state.py          # 상태 관리
-│       └── tools.py          # AI 도구들
+├── 🧠 qa_agent/         # QA 에이전트 구현
+│   ├── agent.py        # 메인 AI 로직
+│   └── utils/          # 워크플로우 유틸
+│       ├── nodes.py    # AI 처리 노드들
+│       ├── state.py    # 상태 관리
+│       └── tools.py    # AI 도구들
 │
-├── 📄 langgraph.json          # LangGraph 설정
-├── 📄 requirements.txt        # AI 전용 패키지 요구사항
-├── 🧪 test_workflow.py        # 워크플로우 테스트
-├── 🧪 test_real_api.py        # 실제 API 테스트
-├── 🧪 test_structure.py       # 구조 테스트
-├── 🧪 test_env.py             # 환경 테스트
-├── 📖 README.md               # AI 시스템 문서
-└── 📖 setup_guide.md          # 설정 가이드
+└── 🧪 test_*.py         # AI 시스템 테스트
 ```
 
-## ⚡ **FastAPI 마이크로서비스 (service_8001_search/)**
-
-### 🔍 **검색 서비스 구조**
+### **⚡ 마이크로서비스**
 ```
-service_8001_search/
-├── 📄 main.py                 # FastAPI 애플리케이션 진입점
-├── 📄 app.py                  # 애플리케이션 설정
-├── 📄 routes.py               # API 라우트 정의
-└── 📄 services.py             # 비즈니스 로직
+service_8001_search/     # FastAPI 검색 서비스
+├── main.py             # FastAPI 앱 진입점
+├── routes.py           # API 라우트
+└── services.py         # 비즈니스 로직
 ```
+## Lang Graph 기능별 흐름도
+<img src="./team/f1.png" width="100%"></td>
+<img src="./team/f2.png" width="100%"></td>
+<img src="./team/f3.png" width="100%"></td>
+<img src="./team/f4.png" width="100%"></td>
 
-## 🔗 **공유 모듈 (shared/)**
-
-### 🛠️ **공통 유틸리티**
-```
-shared/
-├── 📄 __init__.py             # 패키지 초기화
-├── 📄 models.py               # 공통 데이터 모델
-└── 📄 openai_client.py        # OpenAI API 클라이언트
-```
-
-## 📦 **패키지 관리 (requirements/)**
-
-### 🎯 **환경별 요구사항**
-```
-requirements/
-├── 📄 base.txt                # 기본 공통 패키지
-├── 📄 development.txt         # 개발 환경 패키지
-├── 📄 production.txt          # 프로덕션 환경 패키지
-├── 📄 test.txt                # 테스트 환경 패키지
-└── 📄 nodejs.md               # Node.js 환경 요구사항
-```
-
-## 🗂️ **데이터 및 파일 저장소**
-
-### 📊 **데이터 디렉토리 구조**
-```
-├── 📁 data/                   # 애플리케이션 데이터
-│   ├── databases/            # SQLite 데이터베이스 파일
-│   └── uploads/              # 사용자 업로드 파일
-│
-├── 📁 logs/                   # 로그 파일들
-│   ├── django.log            # Django 애플리케이션 로그
-│   ├── fastapi.log           # FastAPI 서비스 로그
-│   └── system.log            # 시스템 전체 로그
-│
-├── 📁 static/                 # 정적 파일
-│   ├── css/                  # 스타일시트
-│   ├── js/                   # JavaScript 파일
-│   └── images/               # 이미지 파일
-│
-├── 📁 templates/              # Django 템플릿
-│   └── base.html             # 기본 템플릿
-│
-├── 📁 내부자료_규정,인사자료/    # 의료기관 규정
-│   ├── DM_rules.docx         # 당뇨 관리 규정
-│   ├── HR information.xlsx   # 인사 정보
-│   └── org_chart.docx        # 조직도
-│
-└── 📁 내부자료_업무지원/        # 업무 지원 자료
-    ├── ML_실적/               # 머신러닝 실적 데이터
-    ├── 마케팅정책/             # 마케팅 정책 문서
-    ├── 보고서양식/             # 보고서 양식 템플릿
-    ├── 실적자료.xlsx          # 실적 데이터
-    ├── 약품자료/               # 의약품 정보
-    └── 필요한양식_라벨붙여서/    # 업무 양식 모음
-```
-
-## 🚀 **실행 스크립트들**
-
-### 🔧 **시스템 실행 파일**
-```
-├── 📄 install.bat             # Windows 자동 설치 스크립트
-├── 📄 start_narutalk.ps1      # PowerShell 실행 스크립트
-├── 📄 start_narutalk.bat      # 배치 파일 실행 스크립트
-├── 📄 run_narutalk.py         # Python 통합 실행 스크립트
-├── 📄 build_exe.py            # 실행파일 빌드 스크립트
-└── 📄 start_system.bat        # 기본 시스템 시작 스크립트
-```
-
-## 📚 **문서 및 가이드**
-
-### 📖 **프로젝트 문서들**
-```
-├── 📄 README.md               # 프로젝트 메인 문서
-├── 📄 PROJECT_STRUCTURE.md    # 프로젝트 구조 분석 (이 문서)
-├── 📄 실행가이드.md            # 상세 실행 가이드
-├── 📄 project_structure.md    # 초기 프로젝트 구조 문서
-└── 📄 current_packages.txt     # 현재 설치된 패키지 목록
 ```
 
 ## 🔍 **각 구성 요소의 역할**
@@ -334,110 +192,7 @@ Django 미들웨어 검증 → 권한 확인 → 응답
 7. **문서 업데이트** → README, API 문서
 
 ```
-
-# 🏥 Narutalk - 의료업계 QA 챗봇 시스템
-
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![Django](https://img.shields.io/badge/Django-4.2+-green.svg)](https://www.djangoproject.com/)
-[![React](https://img.shields.io/badge/React-18.2+-blue.svg)](https://reactjs.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-teal.svg)](https://fastapi.tiangolo.com/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-**Narutalk**은 의료업계 전용 AI 기반 QA 챗봇 시스템입니다. GPT-4o와 LangGraph를 활용하여 제약영업사원이 내부정보를 빠르고 정확한 정보를 얻을 수 있도록 설계되었습니다.
-
-![Narutalk 시스템 아키텍처](https://via.placeholder.com/800x400?text=Narutalk+System+Architecture)
-
-## 🚀 **주요 기능**
-
-### 💬 **AI 챗봇**
-- GPT-4o 기반 의료 전문 답변
-- 실시간 채팅 (WebSocket)
-- 다중 세션 관리
-- 의료 카테고리별 분류
-
-### 🔐 **사용자 관리**
-- 역할 기반 접근 제어 ( 영업사원 / 관리자)
-- JWT 기반 인증
-- 의료진 전용 기능
-
-### 🎨 **현대적 UI**
-- Material-UI 기반 반응형 디자인
-- 다크/라이트 테마 지원
-- 모바일 친화적 인터페이스
-
-### 📊 **데이터 분석**
-- 의료 문서 검색 및 분석
-- 실시간 차트 및 통계
-- 성능 모니터링
-
-## 🏗️ **시스템 아키텍처**
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   React UI      │    │   Django API    │    │   FastAPI       │
-│   (Port 3000)   │◄──►│   (Port 8000)   │◄──►│   (Port 8001)   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   WebSocket     │    │   Database      │    │   LangGraph     │
-│   (Real-time)   │    │   (SQLite)      │    │   (AI Flow)     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-## 📋 **시스템 요구사항**
-
-### 필수 소프트웨어
-- **Python**: 3.10 이상
-- **Node.js**: 18.x 이상 (LTS 권장)
-- **npm**: 9.x 이상
-
-### 권장 사양
-- **RAM**: 8GB 이상
-- **Storage**: 2GB 이상 여유 공간
-- **OS**: Windows 10/11, macOS 10.15+, Ubuntu 20.04+
-
-## 🛠️ **설치 방법**
-
-### 📥 **자동 설치 (Windows)**
-```bash
-# 1. 저장소 클론
-git clone https://github.com/your-username/narutalk.git
-cd narutalk
-
-# 2. 자동 설치 실행
-install.bat
-```
-
-### 🔧 **수동 설치**
-```bash
-# 1. 가상환경 생성
-python -m venv .venv
-
-# 2. 가상환경 활성화
-# Windows:
-.\.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
-
-# 3. Python 패키지 설치
-pip install -r requirements/development.txt
-
-# 4. Node.js 패키지 설치
-npm install
-
-# 5. 데이터베이스 마이그레이션
-python manage.py makemigrations
-python manage.py migrate
-
-# 6. 환경 변수 설정
-cp config/env.example .env
-# .env 파일을 편집하여 API 키 등을 설정
-```
-
-### 🔑 **환경 변수 설정**
+### **환경 변수 설정**
 ```env
 # OpenAI API 키 (필수)
 OPENAI_API_KEY=sk-your-openai-api-key-here
@@ -447,35 +202,6 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
 
 # Django 비밀키
 DJANGO_SECRET_KEY=your-secret-key-here
-```
-
-## 🚀 **실행 방법**
-
-### 🎯 **간단한 실행 (권장)**
-```bash
-# Windows PowerShell
-powershell -ExecutionPolicy Bypass -File start_narutalk.ps1
-
-# 또는 배치 파일
-start_narutalk.bat
-
-# 또는 Python 스크립트
-python run_narutalk.py
-```
-
-### 🔄 **수동 실행**
-```bash
-# 터미널 1: Django 백엔드
-.\.venv\Scripts\activate
-python manage.py runserver
-
-# 터미널 2: React 프론트엔드
-npm run dev
-
-# 터미널 3: FastAPI 서비스 (선택사항)
-.\.venv\Scripts\activate
-cd service_8001_search
-python -m uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
 ### 🌐 **접속 URL**
@@ -558,55 +284,6 @@ flake8 .
 eslint src/
 ```
 
-### 📝 **커밋 규칙**
-```bash
-feat: 새로운 기능 추가
-fix: 버그 수정
-docs: 문서 업데이트
-style: 코드 스타일 변경
-refactor: 코드 리팩토링
-test: 테스트 추가/수정
-chore: 빌드 프로세스 또는 보조 도구 변경
-```
-📄 문서 목록
-1. PROJECT_STRUCTURE.md - 📂 프로젝트 구조 분석 문서
-전체 파일 구조를 시각적으로 분석
-각 디렉토리와 파일의 역할 상세 설명
-아키텍처 계층 구조 (프레젠테이션, API, 마이크로서비스, AI, 데이터)
-데이터 흐름도 및 보안 인증 흐름
-확장 포인트 가이드
-2. DEVELOPMENT_GUIDE.md - 🛠️ 개발 가이드 문서
-새로운 기능 추가 방법 (Django 앱, React 컴포넌트, AI 기능, FastAPI 서비스)
-데이터베이스 관리 및 마이그레이션
-테스트 작성 방법 (Django, React)
-배포 준비 (Docker, 프로덕션 설정)
-코딩 규칙 및 Git 워크플로우
-문제 해결 가이드
-3. DJANGO_API_ARCHITECTURE.md - 🏗️ Django API 아키텍처 문서
-Django 설정 구조 (config/settings/)
-인증 시스템 상세 구현 (커스텀 User 모델, JWT, 권한 관리)
-채팅 시스템 구조 (WebSocket, 실시간 통신)
-API 게이트웨이 및 미들웨어
-REST Framework 설정
-전체 API 엔드포인트 매핑
-4. README_UPDATED.md - 📖 업데이트된 README 문서
-프로젝트 전체 개요 및 주요 기능
-시스템 아키텍처 다이어그램
-설치 및 실행 방법 (자동/수동)
-API 문서 및 엔드포인트 목록
-테스트 및 배포 가이드
-문제 해결 FAQ
-
-
-
-
-## 🤝 **기여하기**
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
 
 ## 📄 **라이선스**
 
@@ -662,9 +339,10 @@ npm install
    - 기본 API Gateway 구축
 
 2. **핵심 서비스 개발**
-   - 통합 검색 서비스
-   - 실적 분석 서비스
-   - 거래처 분석 서비스
+   - 데이터베이스 자동 업데이트 및 검색
+   - 직원 실적 분석 : 실적 분석을 통해 요약 보고서를 생성, 관리자/직원 모드에 따라 다르게 제공
+   - 거래처 실적 분석 및 등급 분류
+   - 서류 자동화 및 규정 검토
 
 3. **🆕 ML 서비스 개발**
    - MLflow 환경 구축
