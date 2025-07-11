@@ -6,7 +6,7 @@ import uvicorn
 from pathlib import Path
 import os
 
-from app.api.router import api_router
+from app.api.fastapi_router_main import api_router
 from app.core.config import settings
 
 app = FastAPI(

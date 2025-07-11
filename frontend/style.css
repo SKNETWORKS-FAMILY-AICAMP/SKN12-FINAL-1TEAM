@@ -169,32 +169,21 @@ body {
     gap: 2rem;
 }
 
-.router-selector {
+.agent-info {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-}
-
-.router-selector label {
-    font-size: 0.9rem;
-    color: #64748b;
-    font-weight: 500;
-}
-
-.router-selector select {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
     padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    color: #475569;
     border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    background: white;
-    color: #1e293b;
-    font-size: 0.9rem;
-    cursor: pointer;
-    outline: none;
-    transition: border-color 0.3s ease;
 }
 
-.router-selector select:focus {
-    border-color: #3498db;
+.agent-info i {
+    color: #3498db;
+    font-size: 0.9rem;
 }
 
 .chat-status {
@@ -313,12 +302,21 @@ body {
     color: rgba(255, 255, 255, 0.8);
 }
 
-.router-info {
-    font-size: 0.8rem;
-    color: #64748b;
+.agent-info-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    color: white;
+    padding: 0.4rem 0.8rem;
+    border-radius: 15px;
+    font-size: 0.75rem;
+    font-weight: 500;
     margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid #e2e8f0;
+}
+
+.agent-info-badge i {
+    font-size: 0.8rem;
 }
 
 /* 채팅 입력 영역 */

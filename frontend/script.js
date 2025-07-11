@@ -2,7 +2,6 @@
 let sessionId = generateSessionId();
 let userId = generateUserId();
 let isLoading = false;
-let currentRouter = 'tool-calling'; // 'tool-calling', 'simple', 또는 'langgraph'
 
 // DOM 요소들
 const chatInput = document.getElementById('chatInput');
@@ -12,7 +11,6 @@ const chatbotToggle = document.getElementById('chatbotToggle');
 const clearChatBtn = document.getElementById('clearChat');
 const exportChatBtn = document.getElementById('exportChat');
 const loadingOverlay = document.getElementById('loadingOverlay');
-const routerSelect = document.getElementById('routerSelect');
 
 // 세션 ID 생성
 function generateSessionId() {
@@ -35,30 +33,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // 라우터 선택 이벤트
-    if (routerSelect) {
-        routerSelect.addEventListener('change', function(e) {
-            currentRouter = e.target.value;
-            console.log('라우터 변경:', currentRouter);
-            
-            // 라우터 변경 알림 메시지
-            let routerName;
-            switch(currentRouter) {
-                case 'tool-calling':
-                    routerName = 'Tool Calling (도구 호출)';
-                    break;
-                case 'simple':
-                    routerName = 'Simple (간단)';
-                    break;
-                case 'langgraph':
-                    routerName = 'LangGraph (복잡)';
-                    break;
-                default:
-                    routerName = currentRouter;
-            }
-            addMessage(`라우터가 ${routerName}로 변경되었습니다.`, 'system');
-        });
-    }
+    // Agent 시스템 정보 표시
+    console.log('4개 전문 AI Agent 자동 라우팅 시스템 활성화');
 
     // 챗봇 토글 버튼 (현재 페이지이므로 사실상 필요 없지만 일단 구현)
     chatbotToggle.addEventListener('click', function() {
@@ -78,7 +54,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('NaruTalk AI Assistant 초기화 완료');
     console.log('Session ID:', sessionId);
     console.log('User ID:', userId);
-    console.log('Current Router:', currentRouter);
+    console.log('Main Agent Router: 4개 전문 Agent 자동 라우팅');
 });
 
 // 메시지 전송 함수
@@ -94,22 +70,8 @@ async function sendMessage() {
     showLoading();
 
     try {
-        // 라우터에 따른 API 엔드포인트 선택
-        let endpoint;
-        switch(currentRouter) {
-            case 'tool-calling':
-                endpoint = '/tool-calling/chat';
-                break;
-            case 'simple':
-                endpoint = '/api/simple/chat';
-                break;
-            case 'langgraph':
-                endpoint = '/langgraph/chat';
-                break;
-            default:
-                endpoint = '/tool-calling/chat';
-        }
-            
+        // 단일 메인 Agent Router 엔드포인트
+        const endpoint = '/api/v1/tool-calling/chat';
         console.log('API 호출:', endpoint);
         
         const response = await fetch(endpoint, {
@@ -119,7 +81,6 @@ async function sendMessage() {
             },
             body: JSON.stringify({
                 message: message,
-                user_id: userId,
                 session_id: sessionId
             })
         });
@@ -130,22 +91,26 @@ async function sendMessage() {
 
         const data = await response.json();
         
-        // 응답 스키마가 다를 수 있으므로 체크
-        const responseText = data.response || data.message || '응답을 받지 못했습니다.';
-        const agentType = data.agent_type || data.router_type || 'unknown';
-        const confidence = data.confidence || 0;
+        if (data.error) {
+            throw new Error(data.error);
+        }
         
-        // 봇 응답 표시
-        addMessage(responseText, 'bot', agentType, confidence);
+        // 새로운 Agent 시스템 응답 처리
+        const responseText = data.response || '응답을 받지 못했습니다.';
+        const agentType = data.agent || 'unknown';
+        const arguments = data.arguments || {};
+        
+        // 봇 응답 표시 (Agent 타입 포함)
+        addMessage(responseText, 'bot', agentType, arguments);
         
         // 소스 정보가 있으면 표시
         if (data.sources && data.sources.length > 0) {
             addSourcesInfo(data.sources);
         }
 
-        // 처리 시간 표시 (간단한 라우터에만 있음)
-        if (data.processing_time_ms) {
-            console.log(`처리 시간: ${data.processing_time_ms}ms`);
+        // 메타데이터 로그
+        if (data.metadata) {
+            console.log('Agent 메타데이터:', data.metadata);
         }
 
     } catch (error) {
@@ -157,7 +122,7 @@ async function sendMessage() {
 }
 
 // 메시지 추가 함수
-function addMessage(text, sender, routerType = null, confidence = null) {
+function addMessage(text, sender, agentType = null, agentArgs = null) {
     const messageContainer = document.createElement('div');
     messageContainer.className = 'message-container';
 
@@ -190,15 +155,19 @@ function addMessage(text, sender, routerType = null, confidence = null) {
     content.appendChild(messageText);
     content.appendChild(messageTime);
 
-    // 봇 메시지인 경우 라우터 정보 추가
-    if (sender === 'bot' && routerType) {
-        const routerInfo = document.createElement('div');
-        routerInfo.className = 'router-info';
-        routerInfo.innerHTML = `
-            <i class="fas fa-route"></i>
-            라우터: ${routerType} ${confidence ? `(신뢰도: ${Math.round(confidence * 100)}%)` : ''}
+    // 봇 메시지인 경우 Agent 정보 추가
+    if (sender === 'bot' && agentType) {
+        const agentInfo = document.createElement('div');
+        agentInfo.className = 'agent-info-badge';
+        
+        // Agent 타입별 아이콘 및 이름 매핑
+        const agentDisplay = getAgentDisplayInfo(agentType);
+        
+        agentInfo.innerHTML = `
+            <i class="${agentDisplay.icon}"></i>
+            ${agentDisplay.name}
         `;
-        content.appendChild(routerInfo);
+        content.appendChild(agentInfo);
     }
 
     message.appendChild(avatar);
@@ -207,6 +176,37 @@ function addMessage(text, sender, routerType = null, confidence = null) {
 
     chatMessages.appendChild(messageContainer);
     scrollToBottom();
+}
+
+// Agent 표시 정보 반환 함수
+function getAgentDisplayInfo(agentType) {
+    const agentMap = {
+        'chroma_db_agent': {
+            name: '📄 문서 검색',
+            icon: 'fas fa-file-search'
+        },
+        'employee_db_agent': {
+            name: '👥 직원 정보',
+            icon: 'fas fa-users'
+        },
+        'client_analysis_agent': {
+            name: '📊 고객 분석',
+            icon: 'fas fa-chart-line'
+        },
+        'rule_compliance_agent': {
+            name: '📋 규정 분석',
+            icon: 'fas fa-shield-alt'
+        },
+        'general_chat': {
+            name: '💬 일반 대화',
+            icon: 'fas fa-comments'
+        }
+    };
+    
+    return agentMap[agentType] || {
+        name: `🤖 ${agentType}`,
+        icon: 'fas fa-robot'
+    };
 }
 
 // 소스 정보 추가 함수
