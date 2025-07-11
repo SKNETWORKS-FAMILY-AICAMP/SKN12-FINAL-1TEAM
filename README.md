@@ -226,10 +226,6 @@ python -m pytest tests/test_api.py -v
 **버전**: 0.0.2  
 ---
 
-<p align="center">
-  <b>🏥 의료업계를 위한 AI 솔루션 - Narutalk</b><br>
-  Made with ❤️ by the Narutalk Team
-</p> 
 ### 📝 Phase 1
 
 1. **기본 인프라 구축**
