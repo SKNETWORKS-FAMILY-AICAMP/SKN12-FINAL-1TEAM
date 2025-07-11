@@ -47,7 +47,7 @@ beta_narutalk/
 ├── database/                            # 데이터베이스
 │   ├── chroma_db/                       # ChromaDB 벡터 DB
 │   ├── raw_data/                        # 원본 문서 데이터
-│   └── realationdb/                     # SQLite 관계형 DB
+│   └── relationdb/                      # SQLite 관계형 DB
 ├── models/                              # AI 모델
 │   ├── KURE-V1/                         # 한국어 임베딩 모델
 │   └── bge-reranker-v2-m3-ko/           # 재랭킹 모델

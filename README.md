@@ -70,7 +70,7 @@ beta_narutalk/
 ├── database/                   # 데이터베이스
 │   ├── chroma_db/             # 벡터 데이터베이스
 │   ├── raw_data/              # 원본 문서
-│   └── realationdb/           # 관계형 데이터베이스
+│   └── relationdb/            # 관계형 데이터베이스
 ├── models/                     # AI 모델
 │   ├── KURE-V1/               # 임베딩 모델
 │   └── bge-reranker-v2-m3-ko/ # 리랭커 모델

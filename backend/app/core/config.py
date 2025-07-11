@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     
     # 데이터베이스 설정 (절대 경로)
     chroma_db_path: str = str(project_root / "database" / "chroma_db")
-    sqlite_db_path: str = str(project_root / "database" / "realationdb")
+    sqlite_db_path: str = str(project_root / "database" / "relationdb")
     
     # 랭그래프 설정
     langgraph_debug: bool = True

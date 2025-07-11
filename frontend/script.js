@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Main Agent Router: 4개 전문 Agent 자동 라우팅');
 });
 
-// 메시지 전송 함수
+// 메시지 전송 함수 (스트리밍 방식)
 async function sendMessage() {
     const message = chatInput.value.trim();
     if (!message || isLoading) return;
@@ -66,13 +66,19 @@ async function sendMessage() {
     addMessage(message, 'user');
     chatInput.value = '';
 
-    // 로딩 표시
-    showLoading();
+    // 실시간 로딩 표시
+    showStreamingLoading();
+    
+    // 스트리밍 응답을 받을 메시지 컨테이너 생성
+    const messageContainer = createBotMessageContainer();
+    let currentContent = '';
+    let agentType = 'unknown';
+    let finalData = null;
 
     try {
-        // 단일 메인 Agent Router 엔드포인트
-        const endpoint = '/api/v1/tool-calling/chat';
-        console.log('API 호출:', endpoint);
+        // 스트리밍 엔드포인트 호출
+        const endpoint = '/api/v1/tool-calling/chat/stream';
+        console.log('스트리밍 API 호출:', endpoint);
         
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -89,35 +95,93 @@ async function sendMessage() {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const data = await response.json();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
         
-        if (data.error) {
-            throw new Error(data.error);
-        }
+        // 스트리밍 중 연결 끊김 감지를 위한 타이머
+        let timeoutId = null;
+        const resetTimeout = () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                reader.cancel();
+                throw new Error('스트리밍 응답 시간 초과');
+            }, 30000); // 30초 타이머
+        };
         
-        // 새로운 Agent 시스템 응답 처리
-        const responseText = data.response || '응답을 받지 못했습니다.';
-        const agentType = data.agent || 'unknown';
-        const arguments = data.arguments || {};
+        resetTimeout();
         
-        // 봇 응답 표시 (Agent 타입 포함)
-        addMessage(responseText, 'bot', agentType, arguments);
-        
-        // 소스 정보가 있으면 표시
-        if (data.sources && data.sources.length > 0) {
-            addSourcesInfo(data.sources);
-        }
-
-        // 메타데이터 로그
-        if (data.metadata) {
-            console.log('Agent 메타데이터:', data.metadata);
+        while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+                if (timeoutId) clearTimeout(timeoutId);
+                break;
+            }
+            
+            resetTimeout(); // 데이터를 받을 때마다 타이머 리셋
+            
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const dataStr = line.slice(6); // 'data: ' 제거
+                    
+                    if (dataStr === '[DONE]') {
+                        // 스트리밍 완료
+                        hideStreamingLoading();
+                        
+                        // 최종 Agent 정보 표시
+                        if (finalData && finalData.agent) {
+                            addAgentBadgeToMessage(messageContainer, finalData.agent);
+                        }
+                        
+                        // 소스 정보가 있으면 표시
+                        if (finalData && finalData.sources && finalData.sources.length > 0) {
+                            addSourcesInfo(finalData.sources);
+                        }
+                        
+                        console.log('스트리밍 완료');
+                        return;
+                    }
+                    
+                    try {
+                        const data = JSON.parse(dataStr);
+                        
+                        switch (data.type) {
+                            case 'start':
+                                updateLoadingMessage('AI가 분석 중입니다...');
+                                break;
+                            case 'agent_selection':
+                                updateLoadingMessage('적절한 전문 Agent를 선택하고 있습니다...');
+                                break;
+                            case 'agent_info':
+                                agentType = data.agent;
+                                updateLoadingMessage(`${data.agent} Agent가 처리합니다...`);
+                                break;
+                            case 'content':
+                                // 실시간으로 텍스트 업데이트
+                                currentContent = data.content;
+                                const isFinal = data.is_final || false;
+                                updateBotMessageContent(messageContainer, currentContent, isFinal);
+                                break;
+                            case 'complete':
+                                finalData = data;
+                                break;
+                            case 'error':
+                                throw new Error(data.message);
+                        }
+                    } catch (parseError) {
+                        console.error('JSON 파싱 오류:', parseError);
+                    }
+                }
+            }
         }
 
     } catch (error) {
-        console.error('메시지 전송 오류:', error);
+        console.error('스트리밍 메시지 전송 오류:', error);
+        hideStreamingLoading();
         addMessage('죄송합니다. 오류가 발생했습니다. 다시 시도해 주세요.', 'bot');
-    } finally {
-        hideLoading();
     }
 }
 
@@ -257,6 +321,132 @@ function hideLoading() {
     isLoading = false;
     loadingOverlay.style.display = 'none';
     sendButton.disabled = false;
+}
+
+// 스트리밍 로딩 관련 함수들
+let streamingLoadingContainer = null;
+
+function showStreamingLoading() {
+    isLoading = true;
+    sendButton.disabled = true;
+    
+    // 기존 로딩 오버레이 숨기기
+    loadingOverlay.style.display = 'none';
+    
+    // 채팅 메시지 영역에 실시간 로딩 표시
+    streamingLoadingContainer = document.createElement('div');
+    streamingLoadingContainer.className = 'message-container streaming-loading';
+    
+    const loadingMessage = document.createElement('div');
+    loadingMessage.className = 'message bot-message';
+    
+    const avatar = document.createElement('div');
+    avatar.className = 'message-avatar streaming-avatar';
+    avatar.innerHTML = '<i class="fas fa-robot fa-spin"></i>';
+    
+    const content = document.createElement('div');
+    content.className = 'message-content streaming-content';
+    
+    const messageText = document.createElement('div');
+    messageText.className = 'message-text loading-text';
+    messageText.innerHTML = '<span class="typing-indicator">AI가 분석 중입니다<span class="dots">...</span></span>';
+    
+    content.appendChild(messageText);
+    loadingMessage.appendChild(avatar);
+    loadingMessage.appendChild(content);
+    streamingLoadingContainer.appendChild(loadingMessage);
+    
+    chatMessages.appendChild(streamingLoadingContainer);
+    scrollToBottom();
+}
+
+function hideStreamingLoading() {
+    isLoading = false;
+    sendButton.disabled = false;
+    
+    if (streamingLoadingContainer) {
+        streamingLoadingContainer.remove();
+        streamingLoadingContainer = null;
+    }
+}
+
+function updateLoadingMessage(message) {
+    if (streamingLoadingContainer) {
+        const loadingText = streamingLoadingContainer.querySelector('.loading-text');
+        if (loadingText) {
+            loadingText.innerHTML = `<span class="typing-indicator">${message}<span class="dots">...</span></span>`;
+        }
+    }
+}
+
+function createBotMessageContainer() {
+    const messageContainer = document.createElement('div');
+    messageContainer.className = 'message-container';
+
+    const message = document.createElement('div');
+    message.className = 'message bot-message';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'message-avatar';
+    avatar.innerHTML = '<i class="fas fa-robot"></i>';
+
+    const content = document.createElement('div');
+    content.className = 'message-content';
+
+    const messageText = document.createElement('div');
+    messageText.className = 'message-text streaming-text';
+    messageText.textContent = '';
+
+    const messageTime = document.createElement('div');
+    messageTime.className = 'message-time';
+    messageTime.textContent = formatTime(new Date());
+
+    content.appendChild(messageText);
+    content.appendChild(messageTime);
+    message.appendChild(avatar);
+    message.appendChild(content);
+    messageContainer.appendChild(message);
+
+    chatMessages.appendChild(messageContainer);
+    scrollToBottom();
+    
+    return messageContainer;
+}
+
+function updateBotMessageContent(container, content, isFinal = false) {
+    const messageText = container.querySelector('.message-text');
+    if (messageText) {
+        messageText.textContent = content;
+        
+        // 최종 메시지인 경우 스트리밍 스타일 제거
+        if (isFinal) {
+            messageText.classList.remove('streaming-text');
+            
+            // 메시지 내용이 완성된 후 일반 스타일로 변경
+            const messageContent = container.querySelector('.message-content');
+            if (messageContent) {
+                messageContent.style.background = 'white';
+                messageContent.style.border = 'none';
+            }
+        }
+        
+        scrollToBottom();
+    }
+}
+
+function addAgentBadgeToMessage(container, agentType) {
+    const content = container.querySelector('.message-content');
+    if (content) {
+        const agentDisplay = getAgentDisplayInfo(agentType);
+        
+        const agentInfo = document.createElement('div');
+        agentInfo.className = 'agent-info-badge';
+        agentInfo.innerHTML = `
+            <i class="${agentDisplay.icon}"></i>
+            ${agentDisplay.name}
+        `;
+        content.appendChild(agentInfo);
+    }
 }
 
 // 대화 지우기

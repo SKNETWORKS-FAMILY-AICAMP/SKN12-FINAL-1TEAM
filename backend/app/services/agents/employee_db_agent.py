@@ -1,6 +1,6 @@
 """
 Employee DB Agent
-SQLite database/realationdb/employees.db에서 직원 정보를 검색하는 Agent
+SQLite database/relationdb/employees.db에서 직원 정보를 검색하는 Agent
 """
 
 import logging
