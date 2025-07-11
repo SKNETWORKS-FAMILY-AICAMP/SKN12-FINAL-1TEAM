@@ -36,295 +36,194 @@
   </tr>
 </table>
 ## 📂 **프로젝트 구조**
+## 🚀 주요 기능
 
-### **📁 백엔드 (Django Apps)**
-```
-apps/
-├── 🔐 authentication/     # 사용자 인증 및 권한 관리
-│   ├── models.py         # 커스텀 User 모델
-│   ├── serializers.py    # JWT 토큰, 사용자 직렬화
-│   ├── views.py          # 로그인/회원가입/프로필 API
-│   └── urls.py           # 인증 URL 라우팅
-│
-├── 💬 chat/              # 채팅 및 메시지 시스템
-│   ├── models.py         # ChatSession, Message 모델
-│   ├── consumers.py      # WebSocket 실시간 통신
-│   ├── serializers.py    # 채팅 데이터 직렬화
-│   ├── views.py          # 채팅 세션 관리 API
-│   └── routing.py        # WebSocket 라우팅
-│
-└── 🌐 gateway/           # API 게이트웨이
-    ├── middleware.py     # 로깅, CORS 미들웨어
-    └── views.py          # 상태확인, 프록시 뷰
-```
+### 🎯 4가지 라우터 시스템
+- **데이터베이스 자동 업데이트 및 검색**: 문서 기반 질문 답변
+- **직원 실적 분석 및 보고서 작성**: 임베딩 기반 문서 검색
+- **서류 자동화 및 규정 검토**: 직원 데이터베이스 조회
+- **거래처 실적 분석 및 등급 분류**: 일반적인 대화 처리
 
-### **⚛️ 프론트엔드 (React)**
-```
-src/
-├── 🎯 components/        # React 컴포넌트
-│   └── Chat/            # 채팅 인터페이스
-│
-├── 🗃️ store/             # Redux 상태 관리
-│   ├── index.ts         # 스토어 설정
-│   └── slices/          # 상태 슬라이스
-│       ├── authSlice.ts # 인증 상태
-│       ├── chatSlice.ts # 채팅 상태
-│       └── uiSlice.ts   # UI 상태
-│
-├── 🎨 theme/            # Material-UI 테마
-└── 📱 App.tsx           # 메인 앱 컴포넌트
-```
+### 💡 핵심 기술
+- **프론트엔드**: HTML5, CSS3, JavaScript (ES6+)
+- **백엔드**: FastAPI, Python 3.11.7
+- **AI 모델**: KURE-V1 임베딩 모델, BGE-Reranker-v2-m3-ko
+- **라우터**: LangGraph를 활용한 지능형 라우팅
+- **데이터베이스**: 오픈서치, PostgreSQL
+- **UI/UX**: Html / css
 
-### **🤖 AI 워크플로우**
-```
-langgraph_orchestrator/
-├── 🧠 qa_agent/         # QA 에이전트 구현
-│   ├── agent.py        # 메인 AI 로직
-│   └── utils/          # 워크플로우 유틸
-│       ├── nodes.py    # AI 처리 노드들
-│       ├── state.py    # 상태 관리
-│       └── tools.py    # AI 도구들
-│
-└── 🧪 test_*.py         # AI 시스템 테스트
-```
-
-### **⚡ 마이크로서비스**
-```
-service_8001_search/     # FastAPI 검색 서비스
-├── main.py             # FastAPI 앱 진입점
-├── routes.py           # API 라우트
-└── services.py         # 비즈니스 로직
-```
-## Lang Graph 기능별 흐름도
-<img src="./team/f1.png" width="100%"></td>
-<img src="./team/f2.png" width="100%"></td>
-<img src="./team/f3.png" width="100%"></td>
-<img src="./team/f4.png" width="100%"></td>
+## 📁 프로젝트 구조
 
 ```
-
-## 🔍 **각 구성 요소의 역할**
-
-### 🏢 **애플리케이션 계층 구조**
-
-#### **1. 프레젠테이션 계층 (React Frontend)**
-- **역할**: 사용자 인터페이스 제공
-- **기술**: React, TypeScript, Material-UI, Redux
-- **위치**: `src/` 디렉토리
-- **포트**: 3000
-
-#### **2. API 계층 (Django Backend)**
-- **역할**: REST API 제공, 비즈니스 로직 처리
-- **기술**: Django, Django REST Framework, Channels
-- **위치**: `apps/`, `config/` 디렉토리
-- **포트**: 8000
-
-#### **3. 마이크로서비스 계층 (FastAPI)**
-- **역할**: 특화된 기능 (검색, 분석) 제공
-- **기술**: FastAPI, SQLAlchemy, Pydantic
-- **위치**: `service_8001_search/` 디렉토리
-- **포트**: 8001+
-
-#### **4. AI 워크플로우 계층 (LangGraph)**
-- **역할**: AI 기반 질의응답 처리
-- **기술**: LangGraph, OpenAI, Anthropic
-- **위치**: `langgraph_orchestrator/` 디렉토리
-
-#### **5. 데이터 계층**
-- **역할**: 데이터 저장 및 관리
-- **기술**: SQLite (개발), PostgreSQL (프로덕션)
-- **위치**: `data/databases/` 디렉토리
-
-## 🔄 **데이터 흐름**
-
-```
-사용자 요청 (React) 
-    ↓
-Django REST API 
-    ↓
-LangGraph AI 처리 ← FastAPI 마이크로서비스
-    ↓
-데이터베이스 저장/조회
-    ↓
-WebSocket을 통한 실시간 응답
-    ↓
-React UI 업데이트
+beta_narutalk/
+├── backend/                    # FastAPI 백엔드
+│   ├── app/
+│   │   ├── api/               # API 라우터
+│   │   ├── core/              # 핵심 설정
+│   │   ├── services/          # 비즈니스 로직
+│   │   └── utils/             # 유틸리티
+│   └── main.py                # 메인 애플리케이션
+├── frontend/                   # 프론트엔드
+│   ├── index.html             # 메인 페이지
+│   ├── style.css              # 스타일시트
+│   └── script.js              # 자바스크립트
+├── database/                   # 데이터베이스
+│   ├── chroma_db/             # 벡터 데이터베이스
+│   ├── raw_data/              # 원본 문서
+│   └── realationdb/           # 관계형 데이터베이스
+├── models/                     # AI 모델
+│   ├── KURE-V1/               # 임베딩 모델
+│   └── bge-reranker-v2-m3-ko/ # 리랭커 모델
+├── tests/                      # 테스트 파일
+│   ├── test_api.py            # API 테스트
+│   └── test_frontend.html     # 프론트엔드 테스트
+├── requirements.txt            # 의존성 목록
+├── run_server.py              # 서버 실행 스크립트
+└── activate_env.bat           # 가상환경 활성화 스크립트
 ```
 
-## 🔐 **보안 및 인증 흐름**
+## 🛠️ 설치 및 실행
 
-```
-로그인 요청 → Django 인증 → JWT 토큰 발급 → 
-React 상태 저장 → API 요청시 토큰 포함 → 
-Django 미들웨어 검증 → 권한 확인 → 응답
-```
-
-## 🧩 **확장 포인트**
-
-### **새로운 기능 추가 시 고려사항**
-
-1. **새로운 Django 앱 추가**: `apps/` 디렉토리에 새 앱 생성
-2. **새로운 React 컴포넌트**: `src/components/` 에 기능별 폴더 생성
-3. **새로운 마이크로서비스**: `service_800X_name/` 형태로 추가
-4. **새로운 AI 기능**: `langgraph_orchestrator/qa_agent/` 에 확장
-5. **새로운 Redux 상태**: `src/store/slices/` 에 슬라이스 추가
-
-## 📊 **성능 최적화 고려사항**
-
-### **병목 지점 및 최적화 전략**
-
-1. **데이터베이스**: 인덱싱, 쿼리 최적화
-2. **AI 응답**: 캐싱, 비동기 처리
-3. **프론트엔드**: 코드 스플리팅, 지연 로딩
-4. **API**: 페이지네이션, 압축
-5. **WebSocket**: 연결 풀링, 메시지 배치
-
-## 🔧 **개발 워크플로우**
-
-### **권장 개발 순서**
-
-1. **백엔드 모델 설계** → `apps/*/models.py`
-2. **API 엔드포인트 구현** → `apps/*/views.py`, `apps/*/urls.py`
-3. **프론트엔드 상태 설계** → `src/store/slices/`
-4. **React 컴포넌트 구현** → `src/components/`
-5. **AI 워크플로우 연동** → `langgraph_orchestrator/`
-6. **테스트 작성** → 각 모듈별 테스트
-7. **문서 업데이트** → README, API 문서
-
-```
-### **환경 변수 설정**
-```env
-# OpenAI API 키 (필수)
-OPENAI_API_KEY=sk-your-openai-api-key-here
-
-# Anthropic API 키 (선택)
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
-
-# Django 비밀키
-DJANGO_SECRET_KEY=your-secret-key-here
-```
-
-### 🌐 **접속 URL**
-- **메인 웹사이트**: http://localhost:3000
-- **Django 관리자**: http://localhost:8000/admin
-- **FastAPI 문서**: http://localhost:8001/docs
-
-## 📚 **API 문서**
-
-### Django REST API
-- **인증**: `/api/auth/`
-- **채팅**: `/api/chat/`
-- **사용자**: `/api/users/`
-- **관리자**: `/api/admin/`
-
-### FastAPI 마이크로서비스
-- **검색**: `/search/`
-- **분석**: `/analyze/`
-- **예측**: `/predict/`
-
-### WebSocket
-- **실시간 채팅**: `ws://localhost:8000/ws/chat/`
-
-## 🧪 **테스트**
-
-### 단위 테스트
+### 1. 가상환경 설정
 ```bash
-# Django 테스트
-python manage.py test
+# 가상환경 생성
+python -m venv venv
 
-# Pytest 실행
-pytest
+# 가상환경 활성화 (Windows)
+venv\Scripts\activate
 
-# 커버리지 포함
-pytest --cov=apps --cov-report=html
+# 가상환경 활성화 (Mac/Linux)
+source venv/bin/activate
 ```
 
-### 통합 테스트
+### 2. 의존성 설치
 ```bash
-# 전체 시스템 테스트
-python test_workflow.py
-
-# LangGraph 테스트
-python langgraph_orchestrator/test_workflow.py
+pip install -r requirements.txt
 ```
 
-## 📦 **배포**
-
-### 🐳 **Docker 배포**
+### 3. 서버 실행
 ```bash
-# Docker 이미지 빌드
-docker build -t narutalk:latest .
+# 방법 1: 직접 실행
+python run_server.py
 
-# 컨테이너 실행
-docker run -p 3000:3000 -p 8000:8000 narutalk:latest
+# 방법 2: 백엔드 디렉토리에서 실행
+cd backend
+python main.py
 ```
 
-### 🌐 **프로덕션 배포**
+### 4. 접속 정보
+- **메인 페이지**: http://localhost:8000
+- **API 문서**: http://localhost:8000/docs
+- **테스트 페이지**: http://localhost:8000/tests/test_frontend.html
+
+## 🎨 UI/UX 특징
+
+### 메인 대시보드
+- 현대적이고 직관적인 인터페이스
+- 실시간 통계 및 일정 관리
+- 반응형 디자인 (모바일/태블릿/데스크톱)
+
+### 챗봇 인터페이스
+- 오른쪽 하단 고정형 챗봇 버튼
+- 실시간 메시지 송수신
+- 라우터 타입 및 신뢰도 표시
+- 키보드 단축키 지원 (Ctrl+/, ESC)
+
+## 🔧 API 엔드포인트
+
+### 채팅 API
+```
+POST /api/v1/chat
+{
+    "message": "안녕하세요",
+    "user_id": "user123",
+    "session_id": "session123"
+}
+```
+
+### 문서 검색 API
+```
+POST /api/v1/embedding/search?query=검색어&limit=5
+```
+
+### 라우터 타입 조회
+```
+GET /api/v1/router/types
+```
+
+### 채팅 기록 조회
+```
+GET /api/v1/chat/history/{session_id}
+```
+
+## 🧪 테스트
+
+### 백엔드 테스트
 ```bash
-# 프로덕션 패키지 설치
-pip install -r requirements/production.txt
-
-# 정적 파일 수집
-python manage.py collectstatic
-
-# Gunicorn으로 실행
-gunicorn config.wsgi:application --bind 0.0.0.0:8000
+# API 테스트 실행
+python -m pytest tests/test_api.py -v
 ```
 
-## 🔧 **개발**
+### 프론트엔드 테스트
+웹 브라우저에서 `http://localhost:8000/tests/test_frontend.html` 접속
 
-### 🎨 **코드 스타일**
-```bash
-# 코드 포매팅
-black .
-isort .
+## 🔍 랭그래프 라우터 시스템
 
-# 린팅
-flake8 .
-eslint src/
-```
+### 라우팅 로직
+1. **메시지 분석**: 입력된 메시지를 키워드 기반으로 분석
+2. **라우터 결정**: 4가지 라우터 중 최적의 라우터 선택
+3. **신뢰도 계산**: 라우팅 결정에 대한 신뢰도 점수 제공
+4. **응답 생성**: 선택된 라우터에서 적절한 응답 생성
 
+### 확장 가능성
+- 새로운 라우터 타입 추가 가능
+- 더 정교한 분류 모델 적용 가능
+- 컨텍스트 기반 라우팅 개선 가능
 
-## 📄 **라이선스**
+## 🔒 보안 고려사항
 
-이 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+- CORS 설정 (개발 환경에서만 모든 오리진 허용)
+- 입력 데이터 검증
+- 세션 관리
+- 에러 핸들링
 
-## 🆘 **문제 해결**
+## 📊 성능 최적화
 
-### 자주 묻는 질문 (FAQ)
+- 비동기 처리 (FastAPI + async/await)
+- 임베딩 벡터 캐싱
+- 데이터베이스 연결 풀링
+- 프론트엔드 자원 최적화
 
-**Q: 'vite' 명령어를 찾을 수 없다는 오류가 발생합니다.**
-```bash
-# 전역 설치
-npm install -g vite
+## 🚀 향후 개선 계획
 
-# 또는 npx 사용
-npx vite
-```
+1. **AI 모델 고도화**
+   - 더 정교한 라우터 분류 모델
+   - 컨텍스트 인식 대화 시스템
+   - 개인화된 응답 생성
 
-**Q: Django 마이그레이션 오류가 발생합니다.**
-```bash
-# 마이그레이션 파일 삭제 후 재생성
-python manage.py makemigrations --empty your_app_name
-python manage.py migrate
-```
+2. **기능 확장**
+   - 음성 인식 및 TTS 지원
+   - 파일 업로드 및 분석
+   - 실시간 알림 시스템
 
-**Q: React 프론트엔드가 로드되지 않습니다.**
-```bash
-# 캐시 삭제 후 재설치
-npm cache clean --force
-rm -rf node_modules package-lock.json
-npm install
-```
+3. **UI/UX 개선**
+   - 다크 모드 지원
+   - 다국어 지원
+   - 접근성 향상
 
-### 🐛 **버그 리포트**
-버그를 발견하셨나요? [Issues](https://github.com/your-username/narutalk/issues)에 리포트해주세요.
+4. **성능 최적화**
+   - 더 빠른 응답 시간
+   - 메모리 사용량 최적화
+   - 스케일링 지원
 
-### 💬 **지원**
-- 📧 Email: support@narutalk.com
-- 💬 Discord: [Narutalk Community](https://discord.gg/narutalk)
-- 📖 Wiki: [Documentation](https://github.com/your-username/narutalk/wiki)
+## 📄 라이선스
 
+이 프로젝트는 MIT 라이선스하에 배포됩니다.
+
+---
+
+**개발자**: Team1_JJS  
+**버전**: 0.0.2  
 ---
 
 <p align="center">
