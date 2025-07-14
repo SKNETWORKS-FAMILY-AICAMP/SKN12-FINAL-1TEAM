@@ -1,6 +1,6 @@
 """
-메인 Agent Router 기반 채팅 API 엔드포인트
-OpenAI Function Calling으로 4개 전문 Agent에 라우팅
+State Manager 기반 채팅 API 엔드포인트
+LangGraph StateGraph와 Session Management를 통한 상태 관리
 """
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -9,7 +9,9 @@ from typing import Dict, Any, Optional, List, AsyncGenerator
 import logging
 import json
 import asyncio
-from ...services.main_agent_router import MainAgentRouter
+
+# State Management 시스템 import
+from ...services.state_management import StateManager
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -17,12 +19,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# 전역 메인 Agent Router 인스턴스
-main_agent_router = MainAgentRouter()
+# 전역 State Manager 인스턴스
+state_manager = StateManager()
 
 class ChatMessage(BaseModel):
     message: str
     session_id: Optional[str] = None
+    user_id: Optional[str] = None
     
 class ChatResponse(BaseModel):
     response: str
@@ -30,77 +33,78 @@ class ChatResponse(BaseModel):
     arguments: Dict[str, Any]
     sources: List[Dict[str, Any]]
     metadata: Dict[str, Any]
-    session_id: Optional[str] = None
+    session_id: str
     error: Optional[str] = None
 
 @router.post("/chat/stream")
-async def agent_chat_stream(request: ChatMessage):
+async def state_managed_chat_stream(request: ChatMessage):
     """
-    메인 Agent Router를 통해 4개 전문 Agent로 라우팅하여 스트리밍 방식으로 메시지를 처리합니다.
+    State Manager를 통한 스트리밍 채팅
     
-    Agent 종류:
-    1. chroma_db_agent - 문서 검색 및 질문답변
-    2. employee_db_agent - 직원 정보 검색
-    3. client_analysis_agent - 고객 데이터 분석  
-    4. rule_compliance_agent - 규정 준수 분석
+    Features:
+    - LangGraph StateGraph 기반 대화 흐름
+    - 세션별 대화 기록 관리
+    - 컨텍스트 유지 및 상태 지속성
     """
     async def generate_stream() -> AsyncGenerator[str, None]:
         try:
-            logger.info(f"Agent chat stream request: {request.message}")
+            logger.info(f"State managed chat stream: {request.message}")
             
-            # 시작 메시지 전송
-            yield f"data: {json.dumps({'type': 'start', 'message': 'AI가 분석 중입니다...'})}\n\n"
+            # 시작 메시지
+            yield f"data: {json.dumps({'type': 'start', 'message': 'State Manager 초기화 중...', 'stage': 'initialize'})}\n\n"
             await asyncio.sleep(0.1)
             
-            # Agent 선택 메시지
-            yield f"data: {json.dumps({'type': 'agent_selection', 'message': '적절한 전문 Agent를 선택하고 있습니다...'})}\n\n"
-            await asyncio.sleep(0.5)
+            # 세션 확인/생성
+            yield f"data: {json.dumps({'type': 'session', 'message': '세션 확인 중...', 'stage': 'session_check'})}\n\n"
+            await asyncio.sleep(0.2)
             
-            # 메인 Agent Router를 통해 메시지 처리
-            result = await main_agent_router.route_message(
+            # StateGraph 처리 시작
+            yield f"data: {json.dumps({'type': 'processing', 'message': 'LangGraph StateGraph 실행 중...', 'stage': 'state_graph'})}\n\n"
+            await asyncio.sleep(0.3)
+            
+            # State Manager를 통해 메시지 처리
+            result = await state_manager.process_message(
                 message=request.message,
-                session_id=request.session_id
+                session_id=request.session_id,
+                user_id=request.user_id
             )
             
             if result.get('error'):
                 yield f"data: {json.dumps({'type': 'error', 'message': result['error']})}\n\n"
                 return
             
-            # Agent 정보 전송
+            # 에이전트 정보 전송
             agent_name = result.get('agent', 'unknown')
-            yield f"data: {json.dumps({'type': 'agent_info', 'agent': agent_name, 'message': f'{agent_name} Agent가 처리합니다...'})}\n\n"
-            await asyncio.sleep(0.3)
+            yield f"data: {json.dumps({'type': 'agent_info', 'agent': agent_name, 'message': f'{agent_name} 에이전트가 처리했습니다', 'stage': 'agent_complete'})}\n\n"
+            await asyncio.sleep(0.2)
             
-            # 응답을 청크 단위로 전송 (타이핑 효과)
+            # 응답을 단어별로 스트리밍
             response_text = result.get('response', '')
-            
-            # 응답 텍스트를 단어 단위로 분할
             words = response_text.split()
             current_text = ""
             
             for i, word in enumerate(words):
                 current_text += word + " "
                 
-                # 단어별로 스트리밍 (더 자연스러운 타이핑 효과)
                 yield f"data: {json.dumps({'type': 'content', 'content': current_text.strip(), 'is_final': i == len(words) - 1})}\n\n"
-                await asyncio.sleep(0.05)  # 50ms 딜레이로 타이핑 효과
+                await asyncio.sleep(0.05)
             
             # 최종 메타데이터 전송
             final_data = {
                 'type': 'complete',
                 'agent': result.get('agent', 'unknown'),
-                'arguments': result.get('arguments', {}),
                 'sources': result.get('sources', []),
                 'metadata': result.get('metadata', {}),
-                'session_id': request.session_id
+                'session_id': result.get('session_id'),
+                'stage': 'complete'
             }
             
             yield f"data: {json.dumps(final_data)}\n\n"
             yield f"data: [DONE]\n\n"
             
         except Exception as e:
-            logger.error(f"Agent chat stream error: {str(e)}")
-            yield f"data: {json.dumps({'type': 'error', 'message': f'스트리밍 처리 중 오류가 발생했습니다: {str(e)}'})}\n\n"
+            logger.error(f"State managed chat stream error: {str(e)}")
+            yield f"data: {json.dumps({'type': 'error', 'message': f'스트리밍 처리 중 오류: {str(e)}'})}\n\n"
     
     return StreamingResponse(
         generate_stream(),
@@ -115,26 +119,27 @@ async def agent_chat_stream(request: ChatMessage):
     )
 
 @router.post("/chat", response_model=ChatResponse)
-async def agent_chat(request: ChatMessage):
+async def state_managed_chat(request: ChatMessage):
     """
-    메인 Agent Router를 통해 4개 전문 Agent로 라우팅하여 메시지를 처리합니다.
+    State Manager를 통한 일반 채팅
     
-    Agent 종류:
-    1. chroma_db_agent - 문서 검색 및 질문답변
-    2. employee_db_agent - 직원 정보 검색
-    3. client_analysis_agent - 고객 데이터 분석  
-    4. rule_compliance_agent - 규정 준수 분석
+    Features:
+    - LangGraph StateGraph 기반 처리
+    - 대화 기록 자동 저장
+    - 세션별 컨텍스트 유지
+    - 4개 전문 Agent 자동 라우팅
     """
     try:
-        logger.info(f"Agent chat request: {request.message}")
+        logger.info(f"State managed chat request: {request.message}")
         
-        # 메인 Agent Router를 통해 메시지 처리
-        result = await main_agent_router.route_message(
+        # State Manager를 통해 메시지 처리
+        result = await state_manager.process_message(
             message=request.message,
-            session_id=request.session_id
+            session_id=request.session_id,
+            user_id=request.user_id
         )
         
-        logger.info(f"Agent chat response - Agent: {result.get('agent', 'unknown')}")
+        logger.info(f"State managed chat response - Agent: {result.get('agent', 'unknown')}, Session: {result.get('session_id')}")
         
         return ChatResponse(
             response=result.get("response", ""),
@@ -142,70 +147,164 @@ async def agent_chat(request: ChatMessage):
             arguments=result.get("arguments", {}),
             sources=result.get("sources", []),
             metadata=result.get("metadata", {}),
-            session_id=request.session_id,
+            session_id=result.get("session_id", ""),
             error=result.get("error")
         )
         
     except Exception as e:
-        logger.error(f"Agent chat error: {str(e)}")
+        logger.error(f"State managed chat error: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Agent chat failed: {str(e)}"
+            detail=f"State managed chat failed: {str(e)}"
         )
 
-@router.get("/agents")
-async def get_available_agents():
+@router.get("/conversation/history/{session_id}")
+async def get_conversation_history(session_id: str, limit: int = 20):
     """
-    사용 가능한 Agent들의 목록을 반환합니다.
+    대화 기록 조회
     """
     try:
-        agents_info = []
-        for func in main_agent_router.agent_functions:
-            function_def = func["function"]
-            agents_info.append({
-                "name": function_def["name"],
-                "description": function_def["description"],
-                "parameters": function_def["parameters"]
-            })
-        
+        history = state_manager.get_conversation_history(session_id, limit)
         return {
-            "agents": agents_info,
-            "count": len(agents_info)
+            "session_id": session_id,
+            "messages": history,
+            "count": len(history)
         }
-        
     except Exception as e:
-        logger.error(f"Get agents error: {str(e)}")
+        logger.error(f"Get conversation history error: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get agents: {str(e)}"
+            detail=f"Failed to get conversation history: {str(e)}"
+        )
+
+@router.get("/session/stats/{session_id}")
+async def get_session_stats(session_id: str):
+    """
+    세션 통계 조회
+    """
+    try:
+        stats = state_manager.get_session_stats(session_id)
+        return {
+            "session_id": session_id,
+            "stats": stats
+        }
+    except Exception as e:
+        logger.error(f"Get session stats error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get session stats: {str(e)}"
+        )
+
+@router.delete("/session/{session_id}")
+async def delete_session(session_id: str):
+    """
+    세션 삭제
+    """
+    try:
+        state_manager.delete_session(session_id)
+        return {
+            "message": f"Session {session_id} deleted successfully"
+        }
+    except Exception as e:
+        logger.error(f"Delete session error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete session: {str(e)}"
+        )
+
+@router.post("/session/cleanup")
+async def cleanup_sessions():
+    """
+    비활성 세션 정리
+    """
+    try:
+        state_manager.cleanup_sessions()
+        return {
+            "message": "Session cleanup completed"
+        }
+    except Exception as e:
+        logger.error(f"Session cleanup error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to cleanup sessions: {str(e)}"
         )
 
 @router.get("/health")
 async def health_check():
     """
-    메인 Agent Router 상태 확인
+    State Manager 상태 확인
+    """
+    try:
+        # 세션 통계 가져오기
+        session_stats = state_manager.session_manager.get_session_stats()
+        
+        return {
+            "status": "healthy",
+            "system": "state_managed_chat",
+            "features": [
+                "LangGraph StateGraph",
+                "Session Management", 
+                "Conversation History",
+                "Context Preservation",
+                "4-Agent Routing System"
+            ],
+            "session_stats": session_stats,
+            "agents": [
+                "chroma_db_agent - 문서 검색 및 질문답변",
+                "employee_db_agent - 직원 정보 검색",
+                "client_analysis_agent - 고객 데이터 분석",
+                "rule_compliance_agent - 규정 준수 분석"
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Health check error: {str(e)}")
+        return {
+            "status": "error",
+            "system": "state_managed_chat",
+            "error": str(e)
+        }
+
+# Legacy API 호환성을 위한 엔드포인트들
+@router.get("/tools")
+async def get_available_tools():
+    """
+    사용 가능한 도구들의 목록 반환 (Legacy 호환성)
     """
     return {
-        "status": "healthy",
-        "router_type": "main_agent_router", 
-        "message": "Main Agent Router is running",
-        "agents": ["chroma_db_agent", "employee_db_agent", "client_analysis_agent", "rule_compliance_agent"]
+        "message": "현재 시스템은 LangGraph StateGraph 기반으로 변경되었습니다.",
+        "new_system": "state_managed_chat",
+        "agents": [
+            {
+                "name": "chroma_db_agent",
+                "description": "ChromaDB 문서 검색 및 질문답변",
+                "capabilities": ["문서 검색", "정책 질의", "규정 확인"]
+            },
+            {
+                "name": "employee_db_agent", 
+                "description": "직원 정보 및 조직 관리",
+                "capabilities": ["직원 검색", "조직도 확인", "연락처 조회"]
+            },
+            {
+                "name": "client_analysis_agent",
+                "description": "고객 데이터 분석 및 보고",
+                "capabilities": ["고객 분석", "매출 분석", "거래 현황"]
+            },
+            {
+                "name": "rule_compliance_agent",
+                "description": "규정 준수 및 컴플라이언스 분석", 
+                "capabilities": ["규정 검토", "위험 분석", "준수성 확인"]
+            }
+        ]
     }
 
-@router.get("/info")
-async def get_router_info():
+@router.post("/test-tool")
+async def test_tool_legacy(tool_name: str, tool_args: Dict[str, Any]):
     """
-    메인 Agent Router 정보
+    도구 테스트 (Legacy 호환성)
     """
     return {
-        "name": "Main Agent Router",
-        "version": "1.0.0",
-        "description": "OpenAI Function Calling 기반 4개 전문 Agent 라우터",
-        "agents": {
-            "chroma_db_agent": "ChromaDB 문서 검색 및 질문답변",
-            "employee_db_agent": "직원 정보 검색",
-            "client_analysis_agent": "고객 데이터 분석",
-            "rule_compliance_agent": "규정 준수 분석"
-        },
-        "endpoints": ["/chat", "/agents", "/health", "/info"]
+        "message": "Legacy tool testing is no longer supported",
+        "recommendation": "Use /chat endpoint with StateManager for proper agent routing",
+        "tool_name": tool_name,
+        "args": tool_args
     } 
