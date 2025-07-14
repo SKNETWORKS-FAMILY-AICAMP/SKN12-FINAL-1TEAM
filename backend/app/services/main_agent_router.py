@@ -16,8 +16,19 @@ class MainAgentRouter:
     
     def __init__(self):
         self.openai_client = None
+        
+        # API 키 확인 및 디버깅
+        api_key = settings.openai_api_key
+        logger.info(f"🔍 설정에서 로드된 API 키: {api_key[:10] if api_key else 'None'}...")
+        
+        if not api_key:
+            logger.error("OpenAI API 키가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 설정해주세요.")
+            logger.error("현재 settings.openai_api_key 값: None")
+            return
+            
         try:
-            self.openai_client = OpenAI(api_key=settings.openai_api_key)
+            self.openai_client = OpenAI(api_key=api_key)
+            logger.info("OpenAI 클라이언트 초기화 성공")
         except Exception as e:
             logger.error(f"OpenAI 클라이언트 초기화 실패: {str(e)}")
             

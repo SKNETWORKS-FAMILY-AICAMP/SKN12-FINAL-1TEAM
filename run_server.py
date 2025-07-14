@@ -87,6 +87,12 @@ def check_directories():
 
 def check_models():
     """모델 파일 확인"""
+    print("🔍 허깅페이스 모델 사용 모드로 설정됨")
+    print("   - 임베딩 모델: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    print("   - 리랭커 모델: cross-encoder/ms-marco-MiniLM-L-6-v2")
+    print("   - 로컬 모델 다운로드 불필요")
+    
+    # 로컬 모델 디렉토리 확인 (참고용)
     model_dirs = [
         "models/KURE-V1",
         "models/bge-reranker-v2-m3-ko"
@@ -98,11 +104,10 @@ def check_models():
             missing_models.append(model_dir)
     
     if missing_models:
-        print("⚠️  다음 모델 디렉토리가 없습니다:")
+        print("ℹ️  로컬 모델 디렉토리가 없습니다 (허깅페이스 모델 사용):")
         for model_dir in missing_models:
-            print(f"  - {model_dir}")
-        print("임베딩 기능에 제한이 있을 수 있습니다.")
-        return False
+            print(f"   - {model_dir}")
+        print("✅ 허깅페이스에서 모델을 자동으로 다운로드합니다.")
     
     return True
 

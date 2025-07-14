@@ -53,7 +53,8 @@ async def get_script_js():
         return FileResponse(js_file, media_type="application/javascript")
     raise HTTPException(status_code=404, detail="JS file not found")
 
-@app.get("/", response_class=HTMLResponse)
+# 기본 루트 엔드포인트
+@app.get("/")
 async def root():
     """메인 페이지"""
     index_file = frontend_dir / "index.html"
@@ -82,6 +83,12 @@ async def root():
         </body>
     </html>
     """)
+
+@app.get("/favicon.ico")
+async def favicon():
+    """Favicon 처리 - 204 No Content로 응답하여 브라우저 캐싱 방지"""
+    from fastapi.responses import Response
+    return Response(status_code=204)
 
 @app.get("/health")
 async def health_check():
