@@ -1,251 +1,163 @@
-﻿## 제약영업사원 업무효율을 위한 문서검색 및 업무자동화 AI partner - llm기반 QA 챗봇 - Phase 1
-### "LLM을 활용한 사내 문서 검색 및 업무지원형 디지털 비서 시스템"
-##### 내 생각을 이해하고, 내 일을 함께하는 디지털 분신- 나루톡 <br/>
-##### 모든 문서와 대화를 하나로 연결하는 스마트 허브 챗봇 - 나투록 <br/>
-###### 나루톡 ( 모든 기능의 허브라는 뜻의 순우리말 '나룻터' 와 대화를 주고받는 talk의 합성어로,사용자의 모든 생각과 행동을 연결해주는 디지털 분신 챗봇 )
+# LangGraph 기반 라우터 시스템
 
----
+NaruTalk AI 챗봇을 위한 LangGraph StateGraph 기반 라우터 시스템입니다.
 
-</div>
+## 🎯 주요 기능
 
+- **GPT-4o 기반 에이전트 분류**: 사용자 질문을 4개의 전문 에이전트로 자동 분류
+- **LangGraph StateGraph**: 상태 기반 흐름 제어 및 조건부 분기
+- **재시도 로직**: 최대 3회까지 자동 재시도
+- **수동 선택 모드**: 분류 실패 시 H2H(Human-to-Human) 모드로 전환
+- **더미 에이전트**: 각 에이전트별 더미 실행 및 테스트
 
-## 👥 팀 소개
+## 🤖 지원 에이전트
 
-<table>
-  <tr>
-    <td align="center">
-      <img src="./team/1.png" width="120px"><br/>
-      <b>김도윤</b><br/><span style="font-size:14px;">시스템 팀장</sub>
-    </td>
-    <td align="center">
-      <img src="./team/2.png" width="120px"><br/>
-      <b>손현성</b><br/><span style="font-size:14px;">백앤드/인프라팀장</sub>
-    </td>
-    <td align="center">
-      <img src="./team/3.png" width="120px"><br/>
-      <b>이용규</b><br/><span style="font-size:14px;">QC 팀장</sub>
-    </td>
-    <td align="center">
-      <img src="./team/4.png" width="120px"><br/>
-      <b>최문영</b><br/><span style="font-size:14px;">프론트 팀장</sub>
-    </td>
-    <td align="center">
-      <img src="./team/5.png" width="120px"><br/>
-      <b>허한결</b><br/><span style="font-size:14px;">DB 팀장</sub>
-    </td>
-  </tr>
-</table>
-## 📂 **프로젝트 구조**
-## 🚀 주요 기능
+1. **employee_agent**: 직원 실적 분석, 인사 정보, 조직도 관련 업무
+2. **client_agent**: 거래처 분석, 고객 데이터 분석, 매출 분석
+3. **db_agent**: 데이터베이스 검색, 문서 검색, 정보 조회
+4. **docs_agent**: 문서 자동생성, 규정 위반 여부 분석, 컴플라이언스 검토
 
-### 🎯 4가지 라우터 시스템
-- **데이터베이스 자동 업데이트 및 검색**: 문서 기반 질문 답변
-- **직원 실적 분석 및 보고서 작성**: 임베딩 기반 문서 검색
-- **서류 자동화 및 규정 검토**: 직원 데이터베이스 조회
-- **거래처 실적 분석 및 등급 분류**: 일반적인 대화 처리
-
-### 💡 핵심 기술
-- **프론트엔드**: HTML5, CSS3, JavaScript (ES6+)
-- **백엔드**: FastAPI, Python 3.11.7
-- **AI 모델**: nlpai-lab/KURE-v1 임베딩 모델, dragonkue/bge-reranker-v2-m3-ko
-- **라우터**: LangGraph를 활용한 지능형 라우팅
-- **데이터베이스**: 오픈서치, PostgreSQL
-- **UI/UX**: Html / css
-
-## 📁 프로젝트 구조
+## 📁 파일 구조
 
 ```
-beta_narutalk/
-├── backend/                    # FastAPI 백엔드
-│   ├── app/
-│   │   ├── api/               # API 라우터
-│   │   ├── core/              # 핵심 설정
-│   │   ├── services/          # 비즈니스 로직
-│   │   └── utils/             # 유틸리티
-│   └── main.py                # 메인 애플리케이션
-├── frontend/                   # 프론트엔드
-│   ├── index.html             # 메인 페이지
-│   ├── style.css              # 스타일시트
-│   └── script.js              # 자바스크립트
-├── database/                   # 데이터베이스
-│   ├── chroma_db/             # 벡터 데이터베이스
-│   ├── raw_data/              # 원본 문서
-│   └── relationdb/            # 관계형 데이터베이스
-├── models/                     # AI 모델 (호환성 유지용)
-│   ├── KURE-V1/               # 임베딩 모델 (로컬 백업)
-│   └── bge-reranker-v2-m3-ko/ # 리랭커 모델 (로컬 백업)
-├── tests/                      # 테스트 파일
-│   ├── test_api.py            # API 테스트
-│   └── test_frontend.html     # 프론트엔드 테스트
-├── requirements.txt            # 의존성 목록
-├── run_server.py              # 서버 실행 스크립트
-└── activate_env.bat           # 가상환경 활성화 스크립트
+backend/app/services/router_agent/
+├── __init__.py              # 모듈 초기화
+├── router_agent.py          # 기본 라우터 에이전트
+├── state_graph_router.py    # StateGraph 기반 라우터
+└── README.md               # 이 파일
 ```
 
-## 🛠️ 설치 및 실행
+## 🚀 사용법
 
-### 1. 가상환경 설정
-```bash
-# 가상환경 생성
-python -m venv venv
+### 1. 기본 라우터 사용
 
-# 가상환경 활성화 (Windows)
-venv\Scripts\activate
+```python
+from backend.app.services.router_agent import RouterAgent
 
-# 가상환경 활성화 (Mac/Linux)
-source venv/bin/activate
+router = RouterAgent()
+result = router.process_query("김철수 직원의 이번 달 실적을 분석해주세요")
+print(result)
 ```
 
-### 2. 의존성 설치
-```bash
-pip install -r requirements.txt
+### 2. StateGraph 라우터 사용
+
+```python
+from backend.app.services.router_agent import StateGraphRouter
+
+state_router = StateGraphRouter()
+result = state_router.process_query("ABC 거래처의 매출 현황을 알려주세요")
+print(result)
 ```
 
-### 3. 서버 실행
-```bash
-# 방법 1: 직접 실행
-python run_server.py
+## 🔄 StateGraph 흐름
 
-# 방법 2: 백엔드 디렉토리에서 실행
-cd backend
-python main.py
+```
+┌─────────┐
+│  START  │ → 초기화 및 사용자 질문 출력
+└────┬────┘
+     │
+     ▼
+┌─────────┐
+│CLASSIFY │ → GPT-4o를 사용한 에이전트 분류
+└────┬────┘
+     │
+     ▼
+┌─────────┐    ┌─────────┐    ┌─────────┐
+│  ROUTE  │◄───┤DECISION │───►│  RETRY  │
+└────┬────┘    └─────────┘    └────┬────┘
+     │                             │
+     ▼                             ▼
+┌─────────┐                   ┌─────────┐
+│EXECUTE  │                   │CLASSIFY │
+└────┬────┘                   └─────────┘
+     │
+     ▼
+┌─────────┐
+│FINALIZE │ → 결과 정리 및 완료
+└────┬────┘
+     │
+     ▼
+┌─────────┐
+│   END   │
+└─────────┘
 ```
 
-### 4. 접속 정보
-- **메인 페이지**: http://localhost:8000
-- **API 문서**: http://localhost:8000/docs
-- **테스트 페이지**: http://localhost:8000/tests/test_frontend.html
+## 📋 출력 형식
 
-## 🎨 UI/UX 특징
+시스템은 다음 3단계 형식으로 출력됩니다:
 
-### 메인 대시보드
-- 현대적이고 직관적인 인터페이스
-- 실시간 통계 및 일정 관리
-- 반응형 디자인 (모바일/태블릿/데스크톱)
-
-### 챗봇 인터페이스
-- 오른쪽 하단 고정형 챗봇 버튼
-- 실시간 메시지 송수신
-- 라우터 타입 및 신뢰도 표시
-- 키보드 단축키 지원 (Ctrl+/, ESC)
-
-## 🔧 API 엔드포인트
-
-### 채팅 API
-```
-POST /api/v1/chat
-{
-    "message": "안녕하세요",
-    "user_id": "user123",
-    "session_id": "session123"
-}
-```
-
-### 문서 검색 API
-```
-POST /api/v1/embedding/search?query=검색어&limit=5
-```
-
-### 라우터 타입 조회
-```
-GET /api/v1/router/types
-```
-
-### 채팅 기록 조회
-```
-GET /api/v1/chat/history/{session_id}
-```
+1. **Step 1**: 사용자 질문 출력
+2. **Step 2**: LLM 분류 결과 출력
+3. **Step 3**: 분기된 에이전트 이름 출력
 
 ## 🧪 테스트
 
-### 백엔드 테스트
 ```bash
-# API 테스트 실행
-python -m pytest tests/test_api.py -v
+# 테스트 스크립트 실행
+python test_router_system.py
 ```
 
-### 프론트엔드 테스트
-웹 브라우저에서 `http://localhost:8000/tests/test_frontend.html` 접속
+## ⚙️ 설정
 
-## 🔍 랭그래프 라우터 시스템
+### 환경 변수
 
-### 라우팅 로직
-1. **메시지 분석**: 입력된 메시지를 키워드 기반으로 분석
-2. **라우터 결정**: 4가지 라우터 중 최적의 라우터 선택
-3. **신뢰도 계산**: 라우팅 결정에 대한 신뢰도 점수 제공
-4. **응답 생성**: 선택된 라우터에서 적절한 응답 생성
+```bash
+export OPENAI_API_KEY=your_api_key_here
+```
 
-### 확장 가능성
-- 새로운 라우터 타입 추가 가능
-- 더 정교한 분류 모델 적용 가능
-- 컨텍스트 기반 라우팅 개선 가능
+### 설정 옵션
 
-## 🔒 보안 고려사항
+- `max_retry_attempts`: 최대 재시도 횟수 (기본값: 3)
+- `openai_model`: 사용할 OpenAI 모델 (기본값: "gpt-4o")
+- `temperature`: GPT-4o 온도 설정 (기본값: 0.3)
 
-- CORS 설정 (개발 환경에서만 모든 오리진 허용)
-- 입력 데이터 검증
-- 세션 관리
-- 에러 핸들링
+## 📊 상태 관리
 
-## 📊 성능 최적화
+### RouterState 클래스
 
-- 비동기 처리 (FastAPI + async/await)
-- 임베딩 벡터 캐싱
-- 데이터베이스 연결 풀링
-- 프론트엔드 자원 최적화
+```python
+@dataclass
+class RouterState:
+    query: str = ""                    # 사용자 질문
+    selected_agent: Optional[str] = None  # 선택된 에이전트
+    routing_attempts: int = 0          # 시도 횟수
+    final_response: str = ""           # 최종 응답
+    classification_result: str = ""    # 분류 결과
+    error_message: str = ""            # 오류 메시지
+```
 
-## 🚀 향후 개선 계획
+### GraphState 클래스
 
-1. **AI 모델 고도화**
-   - 더 정교한 라우터 분류 모델
-   - 컨텍스트 인식 대화 시스템
-   - 개인화된 응답 생성
+```python
+class GraphState(TypedDict):
+    query: str
+    selected_agent: Optional[str]
+    routing_attempts: int
+    final_response: str
+    classification_result: str
+    error_message: str
+    next_action: str
+    is_completed: bool
+```
 
-2. **기능 확장**
-   - 음성 인식 및 TTS 지원
-   - 파일 업로드 및 분석
-   - 실시간 알림 시스템
+## 🔧 확장 가능성
 
-3. **UI/UX 개선**
-   - 다크 모드 지원
-   - 다국어 지원
-   - 접근성 향상
+새로운 에이전트를 추가하려면:
 
-4. **성능 최적화**
-   - 더 빠른 응답 시간
-   - 메모리 사용량 최적화
-   - 스케일링 지원
+1. `available_agents` 리스트에 추가
+2. `agent_descriptions`에 설명 추가
+3. `execute_dummy_agent` 메서드에 더미 동작 추가
 
-## 📄 라이선스
+## 📈 성능 최적화
 
-이 프로젝트는 MIT 라이선스하에 배포됩니다.
+- GPT-4o 모델 사용으로 빠른 분류 성능
+- 재시도 로직으로 안정성 향상
+- StateGraph를 통한 효율적인 상태 관리
+- 로깅 시스템으로 디버깅 지원
 
----
+## 🛠️ 개발 참고사항
 
-**개발자**: Team1_JJS  
-**버전**: 0.0.2  
----
-
-### 📝 Phase 1
-
-1. **기본 인프라 구축**
-   - Docker 환경 설정
-   - 데이터베이스 초기화
-   - 기본 API Gateway 구축
-
-2. **핵심 서비스 개발**
-   - 데이터베이스 자동 업데이트 및 검색
-   - 직원 실적 분석 : 실적 분석을 통해 요약 보고서를 생성, 관리자/직원 모드에 따라 다르게 제공
-   - 거래처 실적 분석 및 등급 분류
-   - 서류 자동화 및 규정 검토
-
-3. **🆕 ML 서비스 개발**
-   - MLflow 환경 구축
-   - 데이터 파이프라인 구축
-   - 모델 학습 및 평가
-   - 예측 서비스 개발
-
-4. **UI 및 통합 테스트**
-   - React 프론트엔드 개발
-   - 전체 시스템 통합
-   - 성능 테스트 및 최적화
+- Python 3.11.9 호환
+- LangGraph 0.5+ 지원
+- OpenAI API 1.86.0+ 필요
+- 비동기 처리 지원 가능 (향후 업데이트) 
