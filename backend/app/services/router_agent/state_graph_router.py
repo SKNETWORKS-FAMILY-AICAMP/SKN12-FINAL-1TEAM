@@ -18,24 +18,38 @@ router = RouterAgent()
 
 # 1. classify_with_llm 
 def classify_with_llm(state: GraphState) -> GraphState:
+    current_attempts = state.get('routing_attempts', 0)
     logger.info(f"📩 사용자 질문: {state['query']}")
+    logger.info(f"🔄 현재 시도 횟수: {current_attempts}")
     
-    # RouterState 객체 생성
-    state_obj = RouterState(state['query'])
-    state_obj.routing_attempts = state.get('routing_attempts', 0)
+    # 3회 이상 시도한 경우 강제로 None 반환 (안전장치)
+    if current_attempts >= 3:
+        logger.warning("⚠️ 3회 이상 시도 - 강제로 None 반환")
+        return {
+            "query": state['query'],
+            "selected_agent": None,
+            "routing_attempts": current_attempts,
+            "final_response": state.get('final_response', ''),
+            "classification_result": "MAX_ATTEMPTS_REACHED",
+            "error_message": "최대 시도 횟수 초과"
+        }
     
     # 분류 수행
     classification = router.classify_query(state['query'])
     agent = router.extract_agent_from_response(classification)
     
     # 시도 횟수 증가
-    state_obj.routing_attempts += 1
+    new_attempts = current_attempts + 1
+    
+    logger.info(f"🤖 GPT-4o 분류 결과: {classification}")
+    logger.info(f"🎯 추출된 에이전트: {agent}")
+    logger.info(f"🔢 업데이트된 시도 횟수: {new_attempts}")
     
     # 결과 업데이트
     return {
         "query": state['query'],
         "selected_agent": agent,
-        "routing_attempts": state_obj.routing_attempts,
+        "routing_attempts": new_attempts,
         "final_response": state.get('final_response', ''),
         "classification_result": classification,
         "error_message": state.get('error_message', '')
@@ -96,11 +110,22 @@ def execute_selected_agent(state: GraphState) -> GraphState:
 
 # ✅ 조건 분기 함수
 def classify_condition(state: GraphState) -> str:
-    if state['selected_agent']:
+    selected_agent = state.get('selected_agent')
+    routing_attempts = state.get('routing_attempts', 0)
+    
+    logger.info(f"🔍 조건 분기 확인: selected_agent={selected_agent}, routing_attempts={routing_attempts}")
+    
+    # 에이전트가 성공적으로 선택된 경우
+    if selected_agent is not None and selected_agent != "none" and selected_agent in router.available_agents:
+        logger.info("✅ 에이전트 선택됨 -> route_to_agent")
         return "has_agent"
-    elif state['routing_attempts'] < 3:
+    # 3회 미만 시도한 경우 재시도
+    elif routing_attempts < 3:
+        logger.info(f"🔁 재시도 {routing_attempts}/3 -> retry_classification")
         return "retry"
+    # 3회 이상 실패한 경우 H2H 모드
     else:
+        logger.info("🤖 3회 실패 -> h2h_manual_selection")
         return "h2h"
 
 # ✅ LangGraph 전체 흐름
