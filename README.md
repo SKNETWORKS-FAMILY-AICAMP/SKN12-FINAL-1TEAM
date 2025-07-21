@@ -15,23 +15,23 @@
   <tr>
     <td align="center">
       <img src="./team/1.png" width="120px"><br/>
-      <b>김도윤</b><br/><span style="font-size:14px;">시스템 팀장</sub>
+      <b>김도윤</b><br/><span style="font-size:14px;"> P M </sub>
     </td>
     <td align="center">
       <img src="./team/2.png" width="120px"><br/>
-      <b>손현성</b><br/><span style="font-size:14px;">백앤드/인프라팀장</sub>
+      <b>손현성</b><br/><span style="font-size:14px;">백앤드/인프라 </sub>
     </td>
     <td align="center">
       <img src="./team/3.png" width="120px"><br/>
-      <b>이용규</b><br/><span style="font-size:14px;">QC 팀장</sub>
+      <b>이용규</b><br/><span style="font-size:14px;">QC </sub>
     </td>
     <td align="center">
       <img src="./team/6.png" width="120px"><br/>
-      <b>최문영</b><br/><span style="font-size:14px;">프론트 팀장</sub>
+      <b>최문영</b><br/><span style="font-size:14px;">프론트 </sub>
     </td>
     <td align="center">
       <img src="./team/5.png" width="120px"><br/>
-      <b>허한결</b><br/><span style="font-size:14px;">DB 팀장</sub>
+      <b>허한결</b><br/><span style="font-size:14px;">데이터베이스구축 </sub>
     </td>
   </tr>
 </table>
