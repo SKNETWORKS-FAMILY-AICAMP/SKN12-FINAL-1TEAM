@@ -1,16 +1,35 @@
 
+import os
+from dotenv import load_dotenv
+from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import logging
 from typing import Optional, Dict, Any
 
+# .env 로드 (현재 경로와 상위 경로에서 찾기)
+current_env = Path(__file__).parent / ".env"
+parent_env = Path(__file__).resolve().parents[1] / ".env"
+
+if current_env.exists():
+    load_dotenv(dotenv_path=current_env)
+    print(f"✅ employee_api.py - .env 로드됨: {current_env}")
+elif parent_env.exists():
+    load_dotenv(dotenv_path=parent_env)
+    print(f"✅ employee_api.py - .env 로드됨: {parent_env}")
+else:
+    print("⚠️ employee_api.py - .env 파일을 찾을 수 없습니다")
+
+# OPENAI_API_KEY 확인용 로그
+print("employee_api.py - OPENAI_API_KEY:", os.getenv("OPENAI_API_KEY")[:10] if os.getenv("OPENAI_API_KEY") else "없음")
+
 # Employee Agent import
-from ..services.agents.employee_agent.employee_agent import EmployeeAgent
+from services.employee_agent.employee_agent import EmployeePerformanceAgent
 
 logger = logging.getLogger(__name__)
 
 # Employee 전용 라우터 생성
-employee_router = APIRouter(prefix="/employee", tags=["Employee Analysis"])
+router = APIRouter()
 
 # Employee Agent 인스턴스 생성 (lazy loading)
 employee_agent = None
@@ -20,7 +39,7 @@ def get_employee_agent():
     if employee_agent is None:
         try:
             logger.info("Employee Agent 인스턴스 생성 시작...")
-            employee_agent = EmployeeAgent()
+            employee_agent = EmployeePerformanceAgent()
             logger.info("Employee Agent 인스턴스 생성 성공")
         except Exception as e:
             logger.error(f"Employee Agent 인스턴스 생성 실패: {e}")
@@ -43,7 +62,7 @@ class EmployeeAnalysisResponse(BaseModel):
     error: Optional[str] = None
     message: str
 
-@employee_router.get("/health")
+@router.get("/health")
 async def employee_health_check():
     """Employee Agent 헬스 체크"""
     try:
@@ -66,7 +85,7 @@ async def employee_health_check():
         logger.error(f"Employee Agent 헬스 체크 오류: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Employee Agent 오류: {str(e)}")
 
-@employee_router.get("/performance/summary")
+@router.get("/performance/summary")
 async def get_employee_performance_summary():
     """직원 실적 요약 정보 조회"""
     try:
@@ -95,9 +114,9 @@ async def get_employee_performance_summary():
             "summary": {
                 "employee_name": "최수아",
                 "period": "2023년 12월 ~ 2024년 3월",
-                "total_performance": total_performance,
-                "total_target": total_target,
-                "achievement_rate": achievement_rate,
+                "total_performance": float(total_performance),
+                "total_target": float(total_target),
+                "achievement_rate": float(achievement_rate),
                 "status": "급증" if achievement_rate > 120 else "안정" if achievement_rate >= 80 else "미달성"
             }
         }
@@ -117,7 +136,7 @@ async def get_employee_performance_summary():
             "message": "실적 요약 조회 중 오류가 발생했습니다."
         }
 
-@employee_router.post("/analyze", response_model=EmployeeAnalysisResponse)
+@router.post("/analyze", response_model=EmployeeAnalysisResponse)
 async def analyze_employee_performance(request: EmployeeAnalysisRequest):
     """직원 실적 분석 API"""
     try:
@@ -138,6 +157,25 @@ async def analyze_employee_performance(request: EmployeeAnalysisRequest):
         
         analysis_result = result.get("analysis_result", {})
         report = result.get("report", "")
+        
+        # numpy 타입을 Python 기본 타입으로 변환
+        def convert_numpy_types(obj):
+            import numpy as np
+            if isinstance(obj, dict):
+                return {k: convert_numpy_types(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy_types(item) for item in obj]
+            elif isinstance(obj, (np.integer, np.int64, np.int32)):
+                return int(obj)
+            elif isinstance(obj, (np.floating, np.float64, np.float32)):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            else:
+                return obj
+        
+        # analysis_result의 numpy 타입 변환
+        analysis_result = convert_numpy_types(analysis_result)
         
         # 보고서 저장 요청이 있는 경우
         if request.save_report and report:
@@ -162,7 +200,7 @@ async def analyze_employee_performance(request: EmployeeAnalysisRequest):
             message="서버 오류가 발생했습니다."
         )
 
-@employee_router.post("/report/generate")
+@router.post("/report/generate")
 async def generate_employee_report(request: EmployeeAnalysisRequest):
     """직원 실적 보고서 생성 및 다운로드"""
     try:
