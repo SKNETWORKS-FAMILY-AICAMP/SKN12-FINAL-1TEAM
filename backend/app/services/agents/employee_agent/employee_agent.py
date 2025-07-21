@@ -21,8 +21,12 @@ class AgentState(TypedDict):
 
 class EmployeePerformanceAgent:
     def __init__(self):
-        self.performance_file = "data/Docs/DATABASE/총정리/내부규정/좋은제약_실적자료_최수아.xlsx"
-        self.target_file = "data/Docs/DATABASE/총정리/내부규정/좋은제약_지점별_목표.xlsx"
+        # 현재 파일의 위치를 기준으로 상대 경로 설정
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.join(current_dir, "..", "..", "..", "..", "..")
+        
+        self.performance_file = os.path.join(base_dir, "data", "Docs", "DATABASE", "총정리", "내부규정", "좋은제약_실적자료_최수아.xlsx")
+        self.target_file = os.path.join(base_dir, "data", "Docs", "DATABASE", "총정리", "내부규정", "좋은제약_지점별_목표.xlsx")
         self.graph = self._create_graph()
     
     def _create_graph(self):
@@ -48,8 +52,7 @@ class EmployeePerformanceAgent:
     def _load_performance_data_node(self, state: AgentState) -> AgentState:
         """실적 데이터 로드 노드"""
         try:
-            file_path = os.path.join(os.getcwd(), "..", "..", "..", "..", self.performance_file)
-            df = pd.read_excel(file_path)
+            df = pd.read_excel(self.performance_file)
             state["performance_data"] = df
         except Exception as e:
             state["error"] = f"실적 데이터 로드 오류: {e}"
@@ -58,8 +61,7 @@ class EmployeePerformanceAgent:
     def _load_target_data_node(self, state: AgentState) -> AgentState:
         """목표 데이터 로드 노드"""
         try:
-            file_path = os.path.join(os.getcwd(), "..", "..", "..", "..", self.target_file)
-            df = pd.read_excel(file_path, header=None)
+            df = pd.read_excel(self.target_file, header=None)
             
             if len(df) >= 4:
                 header_row = df.iloc[1]
@@ -520,5 +522,53 @@ class EmployeePerformanceAgent:
         
         if total_target > 0:
             return (total_performance / total_target) * 100
-        return 0 
+        return 0
+
+
+# API 호환성을 위한 EmployeeAgent 클래스
+class EmployeeAgent:
+    def __init__(self):
+        self.agent = EmployeePerformanceAgent()
+    
+    def load_performance_data(self):
+        """실적 데이터를 로드합니다."""
+        try:
+            return pd.read_excel(self.agent.performance_file)
+        except Exception as e:
+            print(f"실적 데이터 로드 오류: {e}")
+            return pd.DataFrame()
+    
+    def load_target_data(self):
+        """목표 데이터를 로드합니다."""
+        try:
+            return pd.read_excel(self.agent.target_file, header=None)
+        except Exception as e:
+            print(f"목표 데이터 로드 오류: {e}")
+            return pd.DataFrame()
+    
+    def run_analysis(self):
+        """실적 분석을 실행합니다."""
+        try:
+            return self.agent.run_analysis()
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def save_report_to_docx(self, report, filename):
+        """보고서를 Word 문서로 저장합니다."""
+        try:
+            return self.agent.save_report_to_docx(report, filename)
+        except Exception as e:
+            return f"보고서 저장 오류: {e}"
+    
+    def _get_total_performance(self):
+        """총 실적을 반환합니다."""
+        return self.agent._get_total_performance()
+    
+    def _get_total_target(self):
+        """총 목표를 반환합니다."""
+        return self.agent._get_total_target()
+    
+    def _get_achievement_rate(self):
+        """달성률을 반환합니다."""
+        return self.agent._get_achievement_rate() 
                   

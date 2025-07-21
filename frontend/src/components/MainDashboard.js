@@ -36,7 +36,7 @@ function MainDashboard() {
               <span className="nav-icon">💬</span>
               <span className="nav-text">채팅</span>
             </li>
-            <li className="nav-item">
+            <li className="nav-item" onClick={() => navigate('/performance')}>
               <span className="nav-icon">👤</span>
               <span className="nav-text">본인 실적 확인</span>
             </li>

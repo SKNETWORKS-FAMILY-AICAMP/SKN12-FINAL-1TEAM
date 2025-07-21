@@ -24,6 +24,17 @@ try:
 except Exception as e:
     logger.warning(f"❌ State Management 시스템 로드 실패: {str(e)}")
 
+# 👤 Employee Agent 전용 API 라우터
+try:
+    from .employee_api import employee_router
+    api_router.include_router(employee_router, tags=["Employee Analysis"])
+    logger.info("✅ Employee Agent API 로드 완료")
+    logger.info("   - 직원 실적 분석")
+    logger.info("   - 실적 요약 조회")
+    logger.info("   - 보고서 생성")
+except Exception as e:
+    logger.warning(f"❌ Employee Agent API 로드 실패: {str(e)}")
+
 # 메인 시스템 정보 엔드포인트
 @api_router.get("/system/info")
 async def system_info():
