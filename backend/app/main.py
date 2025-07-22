@@ -20,10 +20,13 @@ else:
     print("⚠️ .env 파일을 찾을 수 없습니다")
 
 from fastapi import FastAPI
-from api.router_api import router
-from api.docs_api import router as docs_router
-from api.employee_api import router as employee_router
-from api.client_api import router as client_router
+from fastapi.middleware.cors import CORSMiddleware
+from .api.router_api import router
+from .api.docs_api import router as docs_router
+from .api.employee_api import router as employee_router
+from .api.client_api import router as client_router
+from .api.download_api import router as download_router
+from .api.fastapi_router_main import api_router as tool_calling_router
 import logging
 import uvicorn
 
@@ -40,11 +43,22 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# ✅ CORS 미들웨어 추가
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 개발 환경에서만 사용
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ✅ API 라우터 등록
 app.include_router(router, prefix="/api/route", tags=["RouterAgent"])
 app.include_router(docs_router, prefix="/api/docs", tags=["DocsAgent"])
 app.include_router(employee_router, prefix="/api/employee", tags=["Employee Analysis"])
 app.include_router(client_router, prefix="/api/client", tags=["Client Analysis"])
+app.include_router(download_router, prefix="/api/download", tags=["Download API"])
+app.include_router(tool_calling_router, prefix="/api/v1", tags=["Tool Calling"])
 
 # ✅ 기본 루트 엔드포인트
 @app.get("/")

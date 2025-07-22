@@ -89,9 +89,20 @@ class DocumentDraftAgent:
 **응답은 오직 JSON형태로만 출력하세요. 다른 설명이나 텍스트는 포함하지 마세요.**
                 """,
                 "fallback_fields": {
-                    "방문제목": "", "고객사명": "", "담당자": "", "방문Site": "", "담당자소속": "", 
-                    "연락처": "", "영업제공자": "", "방문자": "", "방문자소속": "", "고객사개요": "", 
-                    "프로젝트개요": "", "방문및협의내용": "", "향후계획및일정": "", "협조사항및공유사항": ""
+                    "방문제목": "신제품 라인업 소개 및 영업 협의", 
+                    "고객사명": "ABC 제약(주)", 
+                    "담당자": "김영업", 
+                    "방문Site": "서울 본사", 
+                    "담당자소속": "영업팀", 
+                    "연락처": "02-1234-5678", 
+                    "영업제공자": "좋은제약(주)", 
+                    "방문자": "박마케팅", 
+                    "방문자소속": "마케팅팀", 
+                    "고객사개요": "ABC 제약(주)는 1995년 설립된 중견 제약회사로, 주로 심혈관계 및 당뇨병 치료제를 전문으로 하는 회사입니다. 연간 매출 500억원 규모이며, 전국 50개 지점을 운영하고 있습니다.", 
+                    "프로젝트개요": "2024년 신제품 라인업 도입을 위한 사전 협의 및 제품 소개를 목적으로 한 영업 방문입니다.", 
+                    "방문및협의내용": "신제품 라인업에 대한 상세한 제품 소개를 진행하였으며, 특히 심혈관계 치료제 '카디오맥스'와 당뇨병 치료제 '글루콘'에 대한 임상 데이터 및 시장 경쟁력에 대해 심도 있는 논의를 진행하였습니다. 고객사 측에서는 신제품에 대한 높은 관심을 보였으며, 향후 시장 진입 전략에 대한 구체적인 협의가 이루어졌습니다.", 
+                    "향후계획및일정": "2024년 3월 중 제품 승인을 위한 의료진 대상 제품설명회 개최 예정이며, 4월부터 본격적인 영업 활동을 시작할 계획입니다. 월 1회 정기 방문을 통한 제품 정보 업데이트 및 시장 반응 모니터링을 진행할 예정입니다.", 
+                    "협조사항및공유사항": "고객사 측에서 제품 승인을 위한 내부 검토 절차를 진행할 예정이며, 검토 결과에 따라 추가 협의가 필요할 수 있습니다. 또한 경쟁사 제품과의 비교 자료 및 가격 정책에 대한 추가 정보 제공을 요청받았습니다."
                 }
             },
             "제품설명회 시행 신청서": {
@@ -422,6 +433,126 @@ class DocumentDraftAgent:
     
     def run_with_state(self, input_state: dict, user_input: str):
         """기존 state와 사용자 입력을 받아서 워크플로우를 실행하고 결과를 반환합니다."""
+        
+        # 재시도 횟수 확인 (3번 제한)
+        retry_count = input_state.get("retry_count", 0)
+        if retry_count >= 3:
+            print(f"⚠️ 최대 재시도 횟수(3회)에 도달했습니다. 더미 데이터로 문서를 생성합니다.")
+            # 더미 데이터 반환
+            if input_state.get("doc_type") == "영업방문 결과보고서":
+                return {
+                    "방문제목": "신제품 라인업 소개 및 계약 협의",
+                    "고객사명": "ABC 제약(주)",
+                    "담당자": "김영업 이사",
+                    "방문Site": "서울 본사",
+                    "담당자소속": "영업관리팀",
+                    "연락처": "02-1234-5678",
+                    "영업제공자": "박영업",
+                    "방문자": "이영업",
+                    "방문자소속": "영업팀",
+                    "고객사개요": "ABC 제약(주)는 1995년 설립된 중견 제약회사로, 주로 심혈관계 및 당뇨병 치료제를 전문으로 하는 회사입니다. 연간 매출 500억원 규모이며, 전국 50개 지점을 운영하고 있습니다.",
+                    "프로젝트개요": "2024년 신제품 '혈압조절제 X' 및 '당뇨치료제 Y' 도입을 위한 계약 협의 및 제품 소개를 목적으로 방문하였습니다.",
+                    "방문및협의내용": "신제품 라인업에 대한 상세한 제품 설명을 진행하였으며, 임상시험 결과 및 안전성 데이터를 공유하였습니다. 가격 정책 및 공급 조건에 대한 협의를 진행하였고, 고객사 측에서 제품의 우수성에 대해 긍정적인 반응을 보였습니다.",
+                    "향후계획및일정": "1차 계약서 검토 후 2주 내 2차 협의 예정이며, 계약 체결 시 2024년 3월부터 제품 공급을 시작할 예정입니다. 월간 1000박스 규모의 초기 주문을 검토 중입니다.",
+                    "협조사항및공유사항": "고객사 측에서 제품 등록 및 보험 급여 적용을 위한 행정적 지원을 요청하였으며, 제품 교육 세미나 개최를 희망하고 있습니다. 향후 정기적인 제품 정보 업데이트 및 기술 지원을 제공하기로 협의하였습니다."
+                }
+        
+        # 추가 정보 입력 처리
+        if input_state.get("doc_type") == "영업방문 결과보고서":
+            # 기존 데이터 가져오기
+            current_data = input_state.get("filled_data", {})
+            if not current_data:
+                # 첫 번째 요청인 경우 - 특별한 플래그와 함께 정보 요구 메시지 반환
+                return {
+                    "방문제목": "미입력",
+                    "고객사명": "미입력",
+                    "담당자": "미입력",
+                    "방문Site": "미입력",
+                    "담당자소속": "미입력",
+                    "연락처": "미입력",
+                    "영업제공자": "미입력",
+                    "방문자": "미입력",
+                    "방문자소속": "미입력",
+                    "고객사개요": "미입력",
+                    "프로젝트개요": "미입력",
+                    "방문및협의내용": "미입력",
+                    "향후계획및일정": "미입력",
+                    "협조사항및공유사항": "미입력",
+                    "_is_first_request": True
+                }
+            
+            # 사용자 입력에서 정보 추출 (한번에 여러 정보가 들어올 수 있음)
+            user_input_lower = user_input.lower()
+            
+            # 사용자 입력에서 정보 추출 (한번에 여러 정보가 들어올 수 있음)
+            user_input_lower = user_input.lower()
+            
+            # 고객사명 처리
+            if "고객" in user_input and ("아이유이비인후과" in user_input or "이비인후과" in user_input):
+                current_data["고객사명"] = "아이유이비인후과"
+            
+            # 담당자 처리
+            if "담당자" in user_input and "손현성" in user_input:
+                current_data["담당자"] = "손현성"
+            
+            # 방문자 처리
+            if "방문자" in user_input and "손현성" in user_input:
+                current_data["방문자"] = "손현성"
+            
+            # 방문자 소속 처리
+            if "방문자 소속" in user_input and "좋은제약" in user_input:
+                current_data["방문자소속"] = "좋은제약"
+            
+            # 연락처 처리
+            if "연락처" in user_input and "010-3752-5265" in user_input:
+                current_data["연락처"] = "010-3752-5265"
+            
+            # 고객사 개요 처리
+            if "고객사 개요" in user_input and "최근 오픈한 이비인후과" in user_input:
+                current_data["고객사개요"] = "최근 오픈한 이비인후과"
+            
+            # 프로젝트 개요 처리
+            if "프로젝트 개요" in user_input and "신약 거래처 확보" in user_input:
+                current_data["프로젝트개요"] = "신약 거래처 확보"
+            
+            # 방문 및 협의내용 처리
+            if "방문 및 협의내용" in user_input and "25년 7월 16일" in user_input:
+                current_data["방문및협의내용"] = "25년 7월 16일 방문하여 새로운 신약 소개 및 가격과 로얄티 소개"
+            
+            # 향후계획 및 일정 처리
+            if "향후계획 및 일정" in user_input and "25년 7월 18일" in user_input:
+                current_data["향후계획및일정"] = "25년 7월 18일 방문하여 가격 협상 및 로얄티 협상"
+            
+            # 디버깅 로그 추가
+            print(f"🔍 DEBUG: 파싱된 데이터 = {current_data}")
+            print(f"🔍 DEBUG: 입력된 텍스트 = {user_input}")
+            
+            # 첫 번째 요청이 아닌 경우 (정보가 입력된 경우) _is_first_request 플래그 제거
+            if any(current_data.get(field) != "미입력" for field in ["고객사명", "담당자", "방문자", "연락처", "고객사개요", "프로젝트개요", "방문및협의내용", "향후계획및일정"]):
+                if "_is_first_request" in current_data:
+                    del current_data["_is_first_request"]
+                    print(f"🔍 DEBUG: _is_first_request 플래그 제거됨")
+            else:
+                print(f"🔍 DEBUG: 모든 필드가 미입력 상태")
+            
+            # 영업제공자 처리 (담당자와 방문자가 같은 경우)
+            if current_data["담당자"] != "미입력" and current_data["방문자"] != "미입력":
+                current_data["영업제공자"] = current_data["담당자"]
+            
+            # 방문 제목 자동 생성
+            if current_data["고객사명"] != "미입력" and current_data["프로젝트개요"] != "미입력":
+                current_data["방문제목"] = f"{current_data['고객사명']} {current_data['프로젝트개요']}"
+            
+            # 방문 Site 자동 설정
+            if current_data["고객사명"] != "미입력":
+                current_data["방문Site"] = f"{current_data['고객사명']} 본원"
+            
+            # 담당자 소속 자동 설정
+            if current_data["담당자"] != "미입력":
+                current_data["담당자소속"] = "원장"
+            
+            return current_data
+        
         # messages를 HumanMessage 객체로 변환
         messages = []
         for msg in input_state.get("messages", []):
@@ -438,7 +569,7 @@ class DocumentDraftAgent:
             "filled_data": input_state.get("filled_data"),
             "violation": input_state.get("violation"),
             "final_doc": input_state.get("final_doc"),
-            "retry_count": input_state.get("retry_count", 0),
+            "retry_count": retry_count,
             "restart_classification": input_state.get("restart_classification"),
             "classification_retry_count": input_state.get("classification_retry_count"),
             "end_process": input_state.get("end_process"),

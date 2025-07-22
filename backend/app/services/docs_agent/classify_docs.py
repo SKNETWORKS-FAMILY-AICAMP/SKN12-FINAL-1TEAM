@@ -136,6 +136,13 @@ class DocumentClassifyAgent:
         
         user_message = state["messages"][-1].content
         
+        # 추가 정보 입력인지 확인
+        if any(keyword in user_message for keyword in ["추가", "업데이트", "수정", "보완", "더"]):
+            # 기존 문서 타입 유지
+            if state.get("doc_type"):
+                print(f"📝 추가 정보 입력 감지: {state['doc_type']}")
+                return state
+        
         classification_prompt = ChatPromptTemplate.from_messages([
             ("system", """
 사용자의 요청을 분석하여 다음 문서 타입 중 하나로 분류해주세요:

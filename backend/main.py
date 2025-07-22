@@ -29,12 +29,14 @@ app.include_router(api_router, prefix="/api/v1")
 
 # 프론트엔드 디렉토리 경로 설정
 frontend_dir = Path(__file__).parent.parent / "frontend"
+frontend_build_dir = frontend_dir / "build"
 if not frontend_dir.exists():
     frontend_dir = Path("../frontend")
+    frontend_build_dir = frontend_dir / "build"
 
-# 정적 파일 서빙 (프론트엔드)
-if frontend_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
+# 정적 파일 서빙 (프론트엔드 빌드 파일)
+if frontend_build_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(frontend_build_dir / "static")), name="static")
 
 # 개별 파일 서빙 (CSS/JS 파일을 위한 직접 경로)
 @app.get("/style.css")
@@ -57,7 +59,7 @@ async def get_script_js():
 @app.get("/")
 async def root():
     """메인 페이지"""
-    index_file = frontend_dir / "index.html"
+    index_file = frontend_build_dir / "index.html"
     if index_file.exists():
         return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
     return HTMLResponse(content="""

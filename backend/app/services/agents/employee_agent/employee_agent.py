@@ -50,28 +50,32 @@ class EmployeePerformanceAgent:
         return workflow.compile()
     
     def _load_performance_data_node(self, state: AgentState) -> AgentState:
-        """실적 데이터 로드 노드"""
+        """실적 데이터 로드 노드 (더미 데이터 사용)"""
         try:
-            df = pd.read_excel(self.performance_file)
+            # 더미 실적 데이터 생성
+            dummy_data = {
+                '월': ['2023-12', '2024-01', '2024-02', '2024-03'],
+                '실적': [1200000, 1350000, 1420000, 1500000],
+                '목표': [1000000, 1100000, 1200000, 1300000],
+                '달성률': [120.0, 122.7, 118.3, 115.4]
+            }
+            df = pd.DataFrame(dummy_data)
             state["performance_data"] = df
         except Exception as e:
             state["error"] = f"실적 데이터 로드 오류: {e}"
         return state
     
     def _load_target_data_node(self, state: AgentState) -> AgentState:
-        """목표 데이터 로드 노드"""
+        """목표 데이터 로드 노드 (더미 데이터 사용)"""
         try:
-            df = pd.read_excel(self.target_file, header=None)
-            
-            if len(df) >= 4:
-                header_row = df.iloc[1]
-                data_df = df.iloc[3:]
-                data_df.columns = header_row
-                column_names = df.iloc[2]
-                data_df.columns = [f"{col}_{i}" for i, col in enumerate(column_names)]
-                state["target_data"] = data_df
-            else:
-                state["target_data"] = df
+            # 더미 목표 데이터 생성
+            dummy_data = {
+                '지점': ['서울지점', '부산지점', '대구지점', '인천지점'],
+                '연간목표': [12000000, 10000000, 8000000, 9000000],
+                '월간목표': [1000000, 833333, 666667, 750000]
+            }
+            df = pd.DataFrame(dummy_data)
+            state["target_data"] = df
         except Exception as e:
             state["error"] = f"목표 데이터 로드 오류: {e}"
         return state

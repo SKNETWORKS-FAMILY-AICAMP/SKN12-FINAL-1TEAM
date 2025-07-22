@@ -314,4 +314,22 @@
 
 .send-button:hover {
   background-color: #0056b3;
+}
+
+/* 다운로드 링크 스타일 */
+.download-link {
+  color: #007bff !important;
+  text-decoration: underline !important;
+  cursor: pointer !important;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.download-link:hover {
+  color: #0056b3 !important;
+  text-decoration: none !important;
+}
+
+.download-link:active {
+  color: #004085 !important;
 } 

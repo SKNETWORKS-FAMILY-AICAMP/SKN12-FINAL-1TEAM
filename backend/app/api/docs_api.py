@@ -4,8 +4,8 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-from services.docs_agent.classify_docs import DocumentClassifyAgent
-from services.docs_agent.write_docs import DocumentDraftAgent
+from ..services.docs_agent.classify_docs import DocumentClassifyAgent
+from ..services.docs_agent.write_docs import DocumentDraftAgent
 
 # .env 로드 (현재 경로와 상위 경로에서 찾기)
 current_env = Path(__file__).parent / ".env"

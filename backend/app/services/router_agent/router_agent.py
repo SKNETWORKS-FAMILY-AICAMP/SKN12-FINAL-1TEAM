@@ -28,7 +28,7 @@ class RouterAgent:
     def __init__(self):
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.available_agents = [
-            "employee_agent", "client_agent", "db_agent", "docs_agent"
+            "employee_agent", "client_agent", "search_agent", "docs_agent"
         ]
         self.max_retry_attempts = 3
 
@@ -43,7 +43,7 @@ class RouterAgent:
                 "예: 특정 고객의 매출 추이, 거래 이력, 등급 분류, 잠재 고객 분석, "
                 "영업 성과 분석 등 외부 고객 관련 질문에 대응합니다."
             ),
-            "db_agent": (
+            "search_agent": (
                 "내부 데이터베이스에서 정보 검색을 수행합니다. "
                 "예: 문서 검색, 사내 규정, 업무 매뉴얼, 제품 정보, 교육 자료 등 "
                 "특정 정보를 정제된 DB 또는 벡터DB 기반으로 검색합니다."
@@ -61,7 +61,7 @@ class RouterAgent:
 
             1. employee_agent: {self.agent_descriptions['employee_agent']}
             2. client_agent: {self.agent_descriptions['client_agent']}
-            3. db_agent: {self.agent_descriptions['db_agent']}
+            3. search_agent: {self.agent_descriptions['search_agent']}
             4. docs_agent: {self.agent_descriptions['docs_agent']}
 
             응답 형식:
@@ -104,7 +104,7 @@ class RouterAgent:
             print("- 직원 정보 분석 중...")
         elif agent_name == "client_agent":
             print("- 거래처 분석 중...")
-        elif agent_name == "db_agent":
+        elif agent_name == "search_agent":
             print("- 데이터베이스 검색 중...")
         elif agent_name == "docs_agent":
             print("- 문서 자동 생성 중...")
@@ -127,8 +127,8 @@ class RouterAgent:
             else:
                 raise ValueError("범위를 벗어남")
         except Exception as e:
-            state.selected_agent = "db_agent"
-            self.execute_dummy_agent("db_agent")
+            state.selected_agent = "search_agent"
+            self.execute_dummy_agent("search_agent")
             state.final_response = f"예외 발생: 기본 에이전트 실행 ({str(e)})"
 
         return state

@@ -24,6 +24,26 @@ try:
 except Exception as e:
     logger.warning(f"❌ State Management 시스템 로드 실패: {str(e)}")
 
+# 🎯 라우터 API 등록
+try:
+    from .router_api import router as router_api
+    api_router.include_router(router_api, prefix="/route", tags=["Router API"])
+    logger.info("✅ 라우터 API 로드 완료")
+    logger.info("   - /api/route/router 엔드포인트")
+    logger.info("   - StateGraph 기반 쿼리 라우팅")
+except Exception as e:
+    logger.warning(f"❌ 라우터 API 로드 실패: {str(e)}")
+
+# 📁 다운로드 API 등록
+try:
+    from .download_api import router as download_api
+    api_router.include_router(download_api, prefix="/download", tags=["Download API"])
+    logger.info("✅ 다운로드 API 로드 완료")
+    logger.info("   - /api/download/{filename} 엔드포인트")
+    logger.info("   - 파일 다운로드 기능")
+except Exception as e:
+    logger.warning(f"❌ 다운로드 API 로드 실패: {str(e)}")
+
 # 메인 시스템 정보 엔드포인트
 @api_router.get("/system/info")
 async def system_info():
