@@ -1,14 +1,21 @@
 # 🐍 Python 가상환경
 .venv/
 venv/
+env/
+ENV/
 
 # 🔐 환경변수
 .env
 .env.*
+.env.local
+.env.production
+.env.test
 
 # 🧠 Python 캐시
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 
 # 📓 Jupyter Notebook 체크포인트
 .ipynb_checkpoints/
@@ -35,4 +42,20 @@ __pycache__/
 Thumbs.db
 
 # node modules
-node_modules
+node_modules/
+
+# 데이터 디렉터리 (컨테이너에서 생성됨)
+pgdata/
+pgadmin_data/
+minio_data/
+osdata1/
+osdata2/
+osdata3/
+
+# 문서 파일
+JWT_SECURITY_GUIDE.md
+TEST_TODO_LIST.md
+readmd.md
+
+# 스크립트 파일
+generate_jwt_secret.py

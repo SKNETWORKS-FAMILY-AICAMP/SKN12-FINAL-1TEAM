@@ -1,0 +1,45 @@
+# .dockerignore 비활성화 - 모든 파일 포함
+# Git 관련
+# .git
+# .gitignore
+
+# Python 관련 (필요한 것만 제외)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 가상환경
+venv/
+env/
+ENV/
+
+# IDE 관련
+.vscode/
+.idea/
+
+# OS 관련
+.DS_Store
+Thumbs.db
+
+# 환경변수 파일 (보안상 제외)
+.env
+.env.local
+.env.production
+.env.test
+
+# 데이터 디렉터리 (컨테이너에서 생성됨)
+pgdata/
+pgadmin_data/
+minio_data/
+osdata1/
+osdata2/
+osdata3/
+
+# 문서 파일 (필요한 것만 제외)
+JWT_SECURITY_GUIDE.md
+TEST_TODO_LIST.md
+readmd.md
+
+# 스크립트 파일
+generate_jwt_secret.py 
