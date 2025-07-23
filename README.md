@@ -42,20 +42,7 @@
 - **데이터베이스 자동 업데이트 및 검색**: 문서 기반 질문 답변
 - **직원 실적 분석 및 보고서 작성**: 임베딩 기반 문서 검색
 - **서류 자동화 및 규정 검토**: 직원 데이터베이스 조회
-- **거래처 실적 분석 및 등급 분류**: 일반적인 대화 처리
-
-### 💡 핵심 기술
-- **프론트엔드**: ReACT
-- **백엔드**: Django, FastAPI, Python 3.11.7
-- **LLM**: OpenAI Gpt-4o
-- **임베딩 모델** : snowflake-arctic-embed-l-v2.0-ko
-- **리랭커 모델** : dragonkue/bge-reranker-v2-m3-ko
-- **라우터**: LangGraph 0.5
-- **데이터베이스**: 오픈서치, PostgreSQL
-
-## 📁 프로젝트 구조
-
-## 📁 프로젝트 구조
+- **거래처 실우
 <img src="./team/11.png" style="width:100%; max-width:1000px;">
 <img src="./team/12.png" style="width:100%; max-width:1000px;">
 <img src="./team/13.png" style="width:100%; max-width:1000px;">
