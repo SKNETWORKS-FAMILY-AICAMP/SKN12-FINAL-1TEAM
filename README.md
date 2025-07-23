@@ -54,3 +54,11 @@
 - **데이터베이스**: 오픈서치, PostgreSQL
 
 ## 📁 프로젝트 구조
+
+## 📁 프로젝트 구조
+<img src="./team/11.png" style="width:100%; max-width:1000px;">
+<img src="./team/12.png" style="width:100%; max-width:1000px;">
+<img src="./team/13.png" style="width:100%; max-width:1000px;">
+<img src="./team/14.png" style="width:100%; max-width:1000px;">
+<img src="./team/15.png" style="width:100%; max-width:1000px;">
+<img src="./team/16.png" style="width:100%; max-width:1000px;">
