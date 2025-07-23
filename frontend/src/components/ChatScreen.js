@@ -138,6 +138,8 @@ const ChatScreen = () => {
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setIsLoading(true);
+    const currentQuery = inputValue;
+    setInputValue('');
 
     try {
       const agent = agents[selectedAgent];
@@ -146,7 +148,7 @@ const ChatScreen = () => {
       // 에이전트별 요청 데이터 구성
       switch (selectedAgent) {
         case 'router':
-          requestBody = { query: inputValue };
+          requestBody = { query: currentQuery };
           break;
         case 'employee':
           requestBody = {
@@ -164,12 +166,12 @@ const ChatScreen = () => {
           break;
         case 'docs':
           requestBody = {
-            text: inputValue,
+            text: currentQuery,
             file_type: "auto"
           };
           break;
         default:
-          requestBody = { query: inputValue };
+          requestBody = { query: currentQuery };
       }
 
       const response = await fetch(`http://localhost:8000${agent.endpoint}`, {
@@ -189,6 +191,25 @@ const ChatScreen = () => {
       let botResponseContent = '';
       
       if (data.success) {
+        // Router 에이전트에서 사용자 선택이 필요한 경우
+        if (selectedAgent === 'router' && data.needs_user_selection) {
+          const selectionMessage = {
+            type: 'agent_selection',
+            content: data.message,
+            timestamp: new Date().toLocaleTimeString(),
+            agent: 'Router Agent',
+            query: currentQuery,
+            available_agents: data.available_agents,
+            agent_descriptions: data.agent_descriptions,
+            agent_display_names: data.agent_display_names
+          };
+          
+          const messagesWithSelection = [...newMessages, selectionMessage];
+          setMessages(messagesWithSelection);
+          saveMessageToHistory(messagesWithSelection);
+          return;
+        }
+        
         switch (selectedAgent) {
           case 'router':
             botResponseContent = `🎯 라우팅 결과: ${data.agent}\n\n${data.response}\n\n분류 상세:\n• 선택된 에이전트: ${data.agent}\n• 라우팅 시도 횟수: ${data.routing_attempts}\n• 분류 결과: ${data.classification_result}`;
@@ -233,7 +254,62 @@ const ChatScreen = () => {
       saveMessageToHistory(finalMessages);
     } finally {
       setIsLoading(false);
-      setInputValue('');
+    }
+  };
+
+  // 에이전트 선택 처리 함수
+  const handleAgentSelection = async (query, selectedAgentKey) => {
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/router/select-agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: query,
+          selected_agent: selectedAgentKey
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      let botResponseContent = '';
+      if (data.success) {
+        botResponseContent = `🎯 선택된 에이전트: ${data.agent}\n\n${data.response}\n\n처리 결과:\n• 에이전트: ${data.agent}\n• 상태: 사용자 직접 선택\n• 분류 결과: ${data.classification_result}`;
+      } else {
+        botResponseContent = `❌ 에이전트 선택 처리 오류: ${data.error || data.message}`;
+      }
+
+      const botMessage = {
+        type: 'bot',
+        content: botResponseContent,
+        timestamp: new Date().toLocaleTimeString(),
+        agent: 'Router Agent'
+      };
+
+      const updatedMessages = [...messages, botMessage];
+      setMessages(updatedMessages);
+      saveMessageToHistory(updatedMessages);
+
+    } catch (error) {
+      console.error('에이전트 선택 처리 오류:', error);
+      const errorMessage = {
+        type: 'bot',
+        content: `❌ 에이전트 선택 처리 중 오류 발생: ${error.message}`,
+        timestamp: new Date().toLocaleTimeString(),
+        agent: 'System'
+      };
+      const updatedMessages = [...messages, errorMessage];
+      setMessages(updatedMessages);
+      saveMessageToHistory(updatedMessages);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -372,9 +448,39 @@ const ChatScreen = () => {
                   <span className="message-time">{message.timestamp}</span>
                 </div>
                 <div className="message-content">
-                  {message.content.split('\n').map((line, i) => (
-                    <div key={i}>{line}</div>
-                  ))}
+                  {message.type === 'agent_selection' ? (
+                    <div>
+                      <div style={{marginBottom: '15px'}}>
+                        {message.content.split('\n').map((line, i) => (
+                          <div key={i}>{line}</div>
+                        ))}
+                      </div>
+                      <div style={{marginBottom: '10px', fontWeight: 'bold', color: '#666'}}>
+                        다음 중 하나를 선택해주세요:
+                      </div>
+                      <div className="agent-selection-buttons">
+                        {message.available_agents?.map((agentKey) => (
+                          <button
+                            key={agentKey}
+                            className="agent-selection-btn"
+                            onClick={() => handleAgentSelection(message.query, agentKey)}
+                            disabled={isLoading}
+                          >
+                            <div className="agent-btn-title">
+                              {message.agent_display_names?.[agentKey] || agentKey}
+                            </div>
+                            <div className="agent-btn-description">
+                              {message.agent_descriptions?.[agentKey]?.substring(0, 100)}...
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    message.content.split('\n').map((line, i) => (
+                      <div key={i}>{line}</div>
+                    ))
+                  )}
                 </div>
               </div>
             ))}
@@ -409,7 +515,7 @@ const ChatScreen = () => {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="최"
+                placeholder="인사정보/거래처분석/실적분석/문서분류 중에 질문해주세요."
                 disabled={isLoading}
                 className="message-input"
                 rows="1"

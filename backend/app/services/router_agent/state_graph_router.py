@@ -599,3 +599,27 @@ class StateGraphRouter:
         # 그래프 실행
         final_state = self.app.invoke(initial_state)
         return final_state
+
+    def process_query_with_agent(self, query: str, selected_agent: str) -> dict:
+        """사용자가 직접 선택한 에이전트로 쿼리 처리"""
+        # 선택된 에이전트로 바로 실행
+        initial_state: GraphState = {
+            "query": query,
+            "selected_agent": selected_agent,
+            "routing_attempts": 3,  # H2H 모드였다는 것을 표시
+            "final_response": "",
+            "classification_result": "USER_SELECTED",
+            "error_message": ""
+        }
+        
+        # execute_selected_agent 노드로 직접 실행
+        final_response = call_actual_agent_api(selected_agent, query)
+        
+        return {
+            "query": query,
+            "selected_agent": selected_agent,
+            "routing_attempts": 3,
+            "final_response": final_response,
+            "classification_result": "USER_SELECTED",
+            "error_message": ""
+        }
