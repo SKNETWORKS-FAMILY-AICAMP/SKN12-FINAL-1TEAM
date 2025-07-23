@@ -35,23 +35,15 @@ async def call_agent_api(agent_name: str, query: str) -> Dict[str, Any]:
             if agent_name == "employee_agent":
                 # 직원 분석 API 호출
                 response = await client.post(
-                    f"{BASE_URL}/api/employee/analyze",
-                    json={
-                        "employee_name": "최수아",  # 기본값 또는 쿼리에서 추출
-                        "period": "202312~202403",
-                        "save_report": False
-                    },
+                    f"{BASE_URL}/api/employee/analyze-text",
+                    json={"query": query},  # 사용자 쿼리 그대로 전달 - agent에서 파싱
                     timeout=30.0
                 )
             elif agent_name == "client_agent":
                 # 거래처 분석 API 호출
                 response = await client.post(
-                    f"{BASE_URL}/api/client/analyze",
-                    json={
-                        "client_name": "서울의료센터",  # 기본값 또는 쿼리에서 추출
-                        "analysis_type": "종합분석",
-                        "save_report": False
-                    },
+                    f"{BASE_URL}/api/client/analyze-text",
+                    json={"query": query},  # 사용자 쿼리 그대로 전달 - agent에서 파싱
                     timeout=30.0
                 )
             elif agent_name == "docs_agent":

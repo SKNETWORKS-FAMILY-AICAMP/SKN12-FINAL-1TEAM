@@ -214,7 +214,7 @@ main.py - 모든 FastAPI 실행파일 (통합 서버)
 ├── /api/docs_api.py - 문서초안작성 FastAPI 실행파일  
 ├── /api/employee_api.py - 실적분석 FastAPI 실행파일
 ├── /api/router_api.py - 라우터 FastAPI 실행파일
-└── /services/
+└── /services/ # 라우터 및 3개의 에이전트 소스파일 ( API 연결 )
     ├── /client_agent/client_analysis_agent.py - 거래처분석 소스코드
     ├── /docs_agent/
     │   ├── classify_docs.py - 문서 분류 소스코드
