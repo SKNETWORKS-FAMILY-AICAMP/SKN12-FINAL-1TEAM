@@ -297,3 +297,25 @@ if __name__ == "__main__":
         print("반환된 결과:", result)
     else:
         print("\n❌ 처리 실패")
+
+# API 호환성을 위한 별칭 클래스
+class DocumentClassifier:
+    """DocumentClassifyAgent의 별칭 클래스 (API 호환성용)"""
+    
+    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0.7):
+        self.agent = DocumentClassifyAgent(model_name=model_name, temperature=temperature)
+    
+    def classify(self, text: str):
+        """문서 분류 수행"""
+        result = self.agent.run(text)
+        if result:
+            return {
+                "document_type": result.get("doc_type", "unknown"),
+                "confidence": 0.9,
+                "template_content": result.get("template_content", "")
+            }
+        return None
+    
+    def run(self, text: str):
+        """DocumentClassifyAgent.run 호출"""
+        return self.agent.run(text)

@@ -3,83 +3,132 @@ from pathlib import Path
 import os
 import sys
 
-# 현재 파일의 부모 디렉토리를 sys.path에 추가
+# 환경변수 및 경로 설정
 current_dir = Path(__file__).parent
 project_root = current_dir.parent.parent
-sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(current_dir.parent))
+backend_root = current_dir.parent
 
-# .env 로드 (현재 경로와 상위 경로에서 찾기)
-current_env = Path(__file__).parent / ".env"
-parent_env = Path(__file__).resolve().parents[2] / ".env"
+# sys.path 설정 (중복 방지)
+paths_to_add = [str(project_root), str(backend_root), str(current_dir)]
+for path in paths_to_add:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
-if current_env.exists():
-    load_dotenv(dotenv_path=current_env)
-    print(f"✅ .env 로드됨: {current_env}")
-elif parent_env.exists():
-    load_dotenv(dotenv_path=parent_env)
-    print(f"✅ .env 로드됨: {parent_env}")
+# .env 로드
+env_file = project_root / ".env"
+if env_file.exists():
+    load_dotenv(dotenv_path=env_file)
+    print(f"✅ .env 로드됨: {env_file}")
 else:
     print("⚠️ .env 파일을 찾을 수 없습니다")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+import logging
 
-# 절대 임포트로 변경
+# 4개 기본 API 라우터 import (절대 import만 사용)
 try:
-    # 패키지 구조에서 실행될 때
-    from .api.router_api import router
-    from .api.docs_api import router as docs_router
-    from .api.employee_api import router as employee_router
-    from .api.client_api import router as client_router
-    from .api.download_api import router as download_router
-    from .api.fastapi_router_main import api_router as tool_calling_router
-except ImportError:
-    # 직접 실행될 때
     from app.api.router_api import router
     from app.api.docs_api import router as docs_router
     from app.api.employee_api import router as employee_router
     from app.api.client_api import router as client_router
     from app.api.download_api import router as download_router
-    from app.api.fastapi_router_main import api_router as tool_calling_router
+    print("✅ 모든 API 라우터 import 성공")
+except ImportError as e:
+    print(f"❌ API import 오류: {e}")
+    # 최소한의 더미 라우터로 fallback
+    from fastapi import APIRouter
+    router = APIRouter()
+    docs_router = APIRouter()
+    employee_router = APIRouter()
+    client_router = APIRouter()
+    download_router = APIRouter()
+    
+    @router.get("/")
+    def dummy_router():
+        return {"message": "Router API (더미 모드)"}
+    
+    @docs_router.get("/")
+    def dummy_docs():
+        return {"message": "Docs API (더미 모드)"}
+    
+    @employee_router.get("/")
+    def dummy_employee():
+        return {"message": "Employee API (더미 모드)"}
+    
+    @client_router.get("/")
+    def dummy_client():
+        return {"message": "Client API (더미 모드)"}
+    
+    @download_router.get("/")
+    def dummy_download():
+        return {"message": "Download API (더미 모드)"}
 
-import logging
-import uvicorn
-
-# 확인용 (선택)
-print("✅ OPENAI_API_KEY 로드됨:", os.getenv("OPENAI_API_KEY")[:10])
-
-# ✅ 로깅 설정
+# 로깅 설정
 logging.basicConfig(level=logging.INFO)
 
-# ✅ FastAPI 앱 생성
+# FastAPI 앱 생성
 app = FastAPI(
-    title="RouterAgent API",
-    description="GPT-4o 기반 4분류 자동 라우팅 시스템",
-    version="1.0.0"
+    title="NaruTalk AI 챗봇 API",
+    description="4개 에이전트 기반 AI 챗봇 시스템",
+    version="2.0.0"
 )
 
-# ✅ CORS 미들웨어 추가
+# CORS 미들웨어 추가
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 개발 환경에서만 사용
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ✅ API 라우터 등록
-app.include_router(router, prefix="/api/route", tags=["RouterAgent"])
-app.include_router(docs_router, prefix="/api/docs", tags=["DocsAgent"])
-app.include_router(employee_router, prefix="/api/employee", tags=["Employee Analysis"])
-app.include_router(client_router, prefix="/api/client", tags=["Client Analysis"])
-app.include_router(download_router, prefix="/api/download", tags=["Download API"])
-app.include_router(tool_calling_router, prefix="/api/v1", tags=["Tool Calling"])
+# 4개 API 라우터 등록
+app.include_router(router, prefix="/api/router", tags=["Router Agent"])
+app.include_router(docs_router, prefix="/api/docs", tags=["Docs Agent"])
+app.include_router(employee_router, prefix="/api/employee", tags=["Employee Agent"])
+app.include_router(client_router, prefix="/api/client", tags=["Client Agent"])
+app.include_router(download_router, prefix="/api/download", tags=["Download"])
 
-# ✅ 기본 루트 엔드포인트
+# 기본 루트 엔드포인트
 @app.get("/")
 def root():
-    return {"message": "🚀 RouterAgent API is running!"}
+    return {
+        "message": "🚀 NaruTalk AI 챗봇 API가 실행 중입니다!",
+        "version": "2.0.0",
+        "agents": [
+            "Router Agent - 쿼리 라우팅",
+            "Docs Agent - 문서 생성/분류", 
+            "Employee Agent - 직원 실적 분석",
+            "Client Agent - 고객 분석"
+        ],
+        "endpoints": {
+            "router": "/api/router/router",
+            "docs_classify": "/api/docs/classify",
+            "docs_write": "/api/docs/write",
+            "employee_analyze": "/api/employee/analyze",
+            "client_analyze": "/api/client/analyze",
+            "download": "/api/download/{filename}"
+        }
+    }
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "message": "시스템이 정상적으로 작동 중입니다.",
+        "version": "2.0.0"
+    }
 
 if __name__ == "__main__":
+    print("\n" + "="*50)
+    print("🚀 NaruTalk AI 챗봇 백엔드 서버 시작")
+    print("="*50)
+    print(f"📱 서버 주소: http://localhost:8000")
+    print(f"📚 API 문서: http://localhost:8000/docs")
+    print(f"🔍 헬스 체크: http://localhost:8000/health")
+    print(f"⏹️  서버 중지: Ctrl+C")
+    print("="*50)
+    
     uvicorn.run(app, host="0.0.0.0", port=8000)

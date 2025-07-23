@@ -11,9 +11,9 @@ from pathlib import Path
 
 def setup_environment():
     """환경 설정"""
-    # 경로 설정
-    project_root = Path(__file__).parent
-    backend_path = project_root / "backend"
+# 경로 설정
+project_root = Path(__file__).parent
+backend_path = project_root / "backend"
     
     # sys.path 설정 (중복 방지)
     paths_to_add = [str(project_root), str(backend_path)]
@@ -110,7 +110,7 @@ def test_import():
     try:
         from backend.app.main import app
         print("✅ FastAPI 앱 임포트 성공")
-        return True
+    return True
     except ImportError as e:
         print(f"❌ FastAPI 앱 임포트 실패: {e}")
         return False

@@ -611,3 +611,73 @@ if __name__ == "__main__":
         print("반환된 결과:", result)
     else:
         print("\n❌ 처리 실패")
+
+# API 호환성을 위한 별칭 클래스
+class DocumentWriter:
+    """DocumentDraftAgent의 별칭 클래스 (API 호환성용)"""
+    
+    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0.7):
+        self.agent = DocumentDraftAgent(model_name=model_name, temperature=temperature)
+    
+    def write_document(self, document_type: str, content_data: dict):
+        """문서 생성 수행"""
+        try:
+            # 더미 상태로 DocumentDraftAgent 실행
+            dummy_state = {
+                "doc_type": document_type,
+                "filled_data": content_data,
+                "messages": []
+            }
+            
+            result = self.agent.run_with_state(dummy_state, str(content_data))
+            
+            if result:
+                return {
+                    "success": True,
+                    "content": self._format_document_content(document_type, result),
+                    "data": result
+                }
+            return None
+        except Exception as e:
+            print(f"문서 생성 오류: {e}")
+            return None
+    
+    def _format_document_content(self, doc_type: str, data: dict):
+        """데이터를 보기 좋은 문서 형태로 포맷팅"""
+        if doc_type == "영업방문보고서":
+            content = f"""📋 영업방문 결과보고서
+
+📅 방문 정보:
+• 방문 제목: {data.get('방문제목', '')}
+• 고객사명: {data.get('고객사명', '')}
+• 담당자: {data.get('담당자', '')}
+• 방문 Site: {data.get('방문Site', '')}
+• 담당자 소속: {data.get('담당자소속', '')}
+• 연락처: {data.get('연락처', '')}
+• 영업제공자: {data.get('영업제공자', '')}
+• 방문자: {data.get('방문자', '')}
+• 방문자 소속: {data.get('방문자소속', '')}
+
+🏢 고객사 개요:
+{data.get('고객사개요', '')}
+
+📋 프로젝트 개요:
+{data.get('프로젝트개요', '')}
+
+🎯 방문 및 협의내용:
+{data.get('방문및협의내용', '')}
+
+📈 향후계획 및 일정:
+{data.get('향후계획및일정', '')}
+
+📝 협조사항 및 공유사항:
+{data.get('협조사항및공유사항', '')}"""
+            return content
+        
+        # 기타 문서 타입은 간단한 형태로
+        content = f"📄 {doc_type}\n\n"
+        for key, value in data.items():
+            if value and not key.startswith('_'):
+                content += f"• {key}: {value}\n"
+        
+        return content
