@@ -3,8 +3,11 @@ from pathlib import Path
 import os
 import sys
 
-# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+# 현재 파일의 부모 디렉토리를 sys.path에 추가
+current_dir = Path(__file__).parent
+project_root = current_dir.parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(current_dir.parent))
 
 # .env 로드 (현재 경로와 상위 경로에서 찾기)
 current_env = Path(__file__).parent / ".env"
@@ -21,12 +24,25 @@ else:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api.router_api import router
-from .api.docs_api import router as docs_router
-from .api.employee_api import router as employee_router
-from .api.client_api import router as client_router
-from .api.download_api import router as download_router
-from .api.fastapi_router_main import api_router as tool_calling_router
+
+# 절대 임포트로 변경
+try:
+    # 패키지 구조에서 실행될 때
+    from .api.router_api import router
+    from .api.docs_api import router as docs_router
+    from .api.employee_api import router as employee_router
+    from .api.client_api import router as client_router
+    from .api.download_api import router as download_router
+    from .api.fastapi_router_main import api_router as tool_calling_router
+except ImportError:
+    # 직접 실행될 때
+    from app.api.router_api import router
+    from app.api.docs_api import router as docs_router
+    from app.api.employee_api import router as employee_router
+    from app.api.client_api import router as client_router
+    from app.api.download_api import router as download_router
+    from app.api.fastapi_router_main import api_router as tool_calling_router
+
 import logging
 import uvicorn
 
