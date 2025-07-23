@@ -26,7 +26,7 @@
       <b>이용규</b><br/><span style="font-size:14px;">QC 팀장</sub>
     </td>
     <td align="center">
-      <img src="./team/4.png" width="120px"><br/>
+      <img src="./team/6.png" width="120px"><br/>
       <b>최문영</b><br/><span style="font-size:14px;">프론트 팀장</sub>
     </td>
     <td align="center">
