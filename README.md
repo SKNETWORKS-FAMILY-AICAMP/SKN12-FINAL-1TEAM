@@ -35,17 +35,22 @@
     </td>
   </tr>
 </table>
-## 📂 **프로젝트 구조**
-## 🚀 주요 기능
 
-### 🎯 4가지 라우터 시스템
-- **데이터베이스 자동 업데이트 및 검색**: 문서 기반 질문 답변
-- **직원 실적 분석 및 보고서 작성**: 임베딩 기반 문서 검색
-- **서류 자동화 및 규정 검토**: 직원 데이터베이스 조회
-- **거래처 실우
+## 🤖 지원 에이전트<br/>
+<br/>
+1. **employee_agent**: 직원 실적 분석, 인사 정보, 조직도 관련 업무<br/>
+2. **client_agent**: 거래처 분석, 고객 데이터 분석, 매출 분석<br/>
+3. **db_agent**: 데이터베이스 검색, 문서 검색, 정보 조회<br/>
+4. **docs_agent**: 문서 자동생성, 규정 위반 여부 분석, 컴플라이언스 검토<br/>
+<br/><br/>
+  </div>
+</table>
+에이전트 흐름도<br/>        
 <img src="./team/11.png" style="width:100%; max-width:1000px;">
 <img src="./team/12.png" style="width:100%; max-width:1000px;">
 <img src="./team/13.png" style="width:100%; max-width:1000px;">
 <img src="./team/14.png" style="width:100%; max-width:1000px;">
 <img src="./team/15.png" style="width:100%; max-width:1000px;">
 <img src="./team/16.png" style="width:100%; max-width:1000px;">
+
+## 📂 **프로젝트 구조**<br/>
