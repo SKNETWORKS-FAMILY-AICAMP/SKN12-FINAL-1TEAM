@@ -45,25 +45,25 @@ except ImportError as e:
     client_router = APIRouter()
     download_router = APIRouter()
     
-    @router.get("/")
-    def dummy_router():
-        return {"message": "Router API (더미 모드)"}
+    # @router.get("/")
+    # def dummy_router():
+    #     return {"message": "Router API (더미 모드)"}
     
-    @docs_router.get("/")
-    def dummy_docs():
-        return {"message": "Docs API (더미 모드)"}
+    # @docs_router.get("/")
+    # def dummy_docs():
+    #     return {"message": "Docs API (더미 모드)"}
     
-    @employee_router.get("/")
-    def dummy_employee():
-        return {"message": "Employee API (더미 모드)"}
+    # @employee_router.get("/")
+    # def dummy_employee():
+    #     return {"message": "Employee API (더미 모드)"}
     
-    @client_router.get("/")
-    def dummy_client():
-        return {"message": "Client API (더미 모드)"}
+    # @client_router.get("/")
+    # def dummy_client():
+    #     return {"message": "Client API (더미 모드)"}
     
-    @download_router.get("/")
-    def dummy_download():
-        return {"message": "Download API (더미 모드)"}
+    # @download_router.get("/")
+    # def dummy_download():
+    #     return {"message": "Download API (더미 모드)"}
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)

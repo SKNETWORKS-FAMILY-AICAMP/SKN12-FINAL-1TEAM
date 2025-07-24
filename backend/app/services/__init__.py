@@ -1,4 +1,5 @@
 from .docs_agent.classify_docs import DocumentClassifyAgent
 from .docs_agent.write_docs import DocumentDraftAgent
 from .router_agent.state_graph_router import StateGraphRouter
-from .employee_agent.employee_agent import EmployeePerformanceAgent, AgentState
+from .employee_agent.employee_agent import analyze_employee_query
+from .client_agent.client_analysis_agent import analyze_client_query

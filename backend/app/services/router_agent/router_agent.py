@@ -39,7 +39,7 @@ class RouterAgent:
                 "성과 평가 등 직원 관련 질의 응답을 처리합니다."
             ),
             "client_agent": (
-                "고객 및 거래처에 대한 정보를 제공합니다. "
+                "고객 및 거래처에 대한 정보를 제공합니다. 반드시 병원, 제약영업과 관련이 있는 질문에만 답변합니다."
                 "예: 특정 고객의 매출 추이, 거래 이력, 등급 분류, 잠재 고객 분석, "
                 "영업 성과 분석 등 외부 고객 관련 질문에 대응합니다."
             ),
@@ -53,6 +53,15 @@ class RouterAgent:
                 "예: 보고서 초안 자동 생성, 전표/계획서 생성, 컴플라이언스 위반 여부 판단, "
                 "서식 분석 및 문서 오류 검토 등의 기능을 수행합니다."
             )
+        }
+
+    def get_agent_display_names(self):
+        """프론트엔드에서 표시할 에이전트 이름들"""
+        return {
+            "employee_agent": "직원 정보 분석",
+            "client_agent": "고객/거래처 분석", 
+            "search_agent": "내부 데이터 검색",
+            "docs_agent": "문서 생성/분류"
         }
         
     def classify_query(self, query: str) -> str:
@@ -112,23 +121,30 @@ class RouterAgent:
             print("- 알 수 없는 에이전트.")
 
     def fallback_to_h2h(self, state: RouterState) -> RouterState:
-        print("\n⚠️ 자동 분류 실패 - H2H 모드 진입")
-        print("사용자가 직접 선택해야 합니다.")
-        for i, agent in enumerate(self.available_agents, 1):
-            print(f"{i}. {agent}: {self.agent_descriptions[agent]}")
+        """H2H 모드 - 사용자 선택을 위한 선택지 제공"""
+        logger.info("⚠️ 자동 분류 실패 - H2H 모드 진입")
+        
+        # 프론트엔드로 전달할 선택지 정보 설정
+        state.selected_agent = "NEED_USER_SELECTION"
+        state.final_response = "AGENT_SELECTION_REQUIRED"
+        state.error_message = "자동 분류가 실패했습니다. 사용자가 직접 에이전트를 선택해주세요."
+        
+        return state
 
-        try:
-            selected = int(input("선택 번호 입력: "))
-            if 1 <= selected <= len(self.available_agents):
-                agent = self.available_agents[selected - 1]
-                state.selected_agent = agent
-                self.execute_dummy_agent(agent)
-                state.final_response = f"H2H 수동 선택: [{agent}] 에이전트 실행 완료"
-            else:
-                raise ValueError("범위를 벗어남")
-        except Exception as e:
+    def process_user_selection(self, state: RouterState, selected_agent: str) -> RouterState:
+        """사용자가 선택한 에이전트로 처리"""
+        logger.info(f"🤖 사용자 선택 에이전트: {selected_agent}")
+        
+        if selected_agent in self.available_agents:
+            state.selected_agent = selected_agent
+            self.execute_dummy_agent(selected_agent)
+            state.final_response = f"사용자 선택: [{selected_agent}] 에이전트로 처리됩니다."
+            state.error_message = ""
+        else:
+            # 잘못된 선택인 경우 기본 에이전트로 설정
             state.selected_agent = "search_agent"
             self.execute_dummy_agent("search_agent")
-            state.final_response = f"예외 발생: 기본 에이전트 실행 ({str(e)})"
+            state.final_response = f"잘못된 선택: 기본 에이전트({state.selected_agent})로 처리됩니다."
+            state.error_message = f"유효하지 않은 에이전트: {selected_agent}"
 
         return state
