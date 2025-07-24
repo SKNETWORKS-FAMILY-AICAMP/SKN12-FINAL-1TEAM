@@ -5,6 +5,7 @@ from app.services.employee_agent.employee_agent import analyze_employee_query
 router = APIRouter()
 
 class QueryOnlyRequest(BaseModel):
+    session_id: str
     query: str
 
 @router.post("/analyze")

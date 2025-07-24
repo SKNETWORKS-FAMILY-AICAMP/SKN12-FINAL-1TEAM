@@ -57,10 +57,12 @@ def get_doc_writer():
 
 # Pydantic 모델 정의
 class DocumentClassifyRequest(BaseModel):
+    session_id: str
     text: str
     file_type: Optional[str] = "auto"
 
 class DocumentWriteRequest(BaseModel):
+    session_id: str
     document_type: str  # "영업방문보고서", "영업계획서", "실적분석보고서" 등
     content_data: Dict[str, Any]
     save_file: bool = False

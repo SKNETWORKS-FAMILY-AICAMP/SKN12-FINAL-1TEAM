@@ -9,7 +9,13 @@ const ChatScreen = () => {
   const [selectedAgent, setSelectedAgent] = useState('router');
   const [chatHistory, setChatHistory] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
+  const [sessionId, setSessionId] = useState(null);
   const messagesEndRef = useRef(null);
+
+  // session_id 생성 함수
+  const generateSessionId = () => {
+    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  };
 
   // 4개 에이전트 정보
   const agents = {
@@ -47,25 +53,77 @@ const ChatScreen = () => {
     scrollToBottom();
   }, [messages]);
 
+  // 백엔드에서 채팅 내역 불러오기
+  const loadChatHistoryFromBackend = async () => {
+    try {
+      console.log('🔄 백엔드에서 채팅 내역 불러오는 중...');
+      const response = await fetch('http://localhost:8000/api/router/chat-history');
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.chatHistory) {
+          console.log(`✅ 백엔드에서 ${data.count}개 채팅 불러옴`);
+          setChatHistory(data.chatHistory);
+          
+          // localStorage와 동기화
+          localStorage.setItem('chatHistory', JSON.stringify(data.chatHistory));
+          
+          return data.chatHistory;
+        }
+      }
+      
+      console.log('⚠️ 백엔드에서 채팅 내역 없음, localStorage 사용');
+      // 백엔드에 데이터가 없으면 localStorage 사용
+      const savedHistory = localStorage.getItem('chatHistory');
+      if (savedHistory) {
+        const localHistory = JSON.parse(savedHistory);
+        setChatHistory(localHistory);
+        return localHistory;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('❌ 채팅 내역 불러오기 실패:', error);
+      
+      // 오류 시 localStorage 폴백
+      const savedHistory = localStorage.getItem('chatHistory');
+      if (savedHistory) {
+        const localHistory = JSON.parse(savedHistory);
+        setChatHistory(localHistory);
+        return localHistory;
+      }
+      
+      return [];
+    }
+  };
+
   // 초기 안내 메시지
   useEffect(() => {
-    const initialMessage = {
-      type: 'system',
-      content: '안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?',
-      timestamp: new Date().toLocaleTimeString()
+    const initializeChat = async () => {
+      const initialMessage = {
+        type: 'system',
+        content: '안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?',
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setMessages([initialMessage]);
+      
+      // 백엔드에서 채팅 내역 불러오기
+      const history = await loadChatHistoryFromBackend();
+      
+      // 채팅 내역이 없으면 새 채팅 시작
+      if (history.length === 0) {
+        console.log('📝 새 채팅 시작');
+        startNewChat();
+      }
     };
-    setMessages([initialMessage]);
     
-    // 로컬 스토리지에서 채팅 내역 불러오기
-    const savedHistory = localStorage.getItem('chatHistory');
-    if (savedHistory) {
-      setChatHistory(JSON.parse(savedHistory));
-    }
+    initializeChat();
   }, []);
 
   // 새로운 채팅 시작
   const startNewChat = () => {
     const chatId = Date.now().toString();
+    const newSessionId = generateSessionId();
     const initialMessage = {
       type: 'system',
       content: '안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?',
@@ -74,10 +132,12 @@ const ChatScreen = () => {
     
     setMessages([initialMessage]);
     setCurrentChatId(chatId);
+    setSessionId(newSessionId);
     
     // 새 채팅을 히스토리에 추가
     const newChat = {
       id: chatId,
+      sessionId: newSessionId,
       title: `채팅 ${new Date().toLocaleString()}`,
       messages: [initialMessage],
       createdAt: new Date().toISOString()
@@ -89,11 +149,45 @@ const ChatScreen = () => {
   };
 
   // 채팅 내역 선택
-  const selectChat = (chatId) => {
+  const selectChat = async (chatId) => {
     const selectedChat = chatHistory.find(chat => chat.id === chatId);
     if (selectedChat) {
-      setMessages(selectedChat.messages);
       setCurrentChatId(chatId);
+      setSessionId(selectedChat.sessionId);
+      
+      // 메시지가 이미 로드되어 있으면 바로 사용
+      if (selectedChat.messages && selectedChat.messages.length > 0) {
+        setMessages(selectedChat.messages);
+      } else {
+        // 백엔드에서 메시지 불러오기
+        try {
+          console.log(`🔄 세션 ${selectedChat.sessionId}의 메시지 불러오는 중...`);
+          const response = await fetch(`http://localhost:8000/api/router/sessions/${selectedChat.sessionId}/messages`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.messages) {
+              console.log(`✅ ${data.count}개 메시지 불러옴`);
+              setMessages(data.messages);
+              
+              // 채팅 히스토리 업데이트
+              const updatedHistory = chatHistory.map(chat => 
+                chat.id === chatId 
+                  ? { ...chat, messages: data.messages }
+                  : chat
+              );
+              setChatHistory(updatedHistory);
+              localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+            }
+          } else {
+            console.error('메시지 불러오기 실패');
+            setMessages(selectedChat.messages || []);
+          }
+        } catch (error) {
+          console.error('메시지 불러오기 오류:', error);
+          setMessages(selectedChat.messages || []);
+        }
+      }
     }
   };
 
@@ -148,10 +242,14 @@ const ChatScreen = () => {
       // 에이전트별 요청 데이터 구성
       switch (selectedAgent) {
         case 'router':
-          requestBody = { query: currentQuery };
+          requestBody = { 
+            session_id: sessionId,
+            query: currentQuery 
+          };
           break;
         case 'employee':
           requestBody = {
+            session_id: sessionId,
             employee_name: "최수아",
             period: "202312~202403",
             save_report: false
@@ -159,6 +257,7 @@ const ChatScreen = () => {
           break;
         case 'client':
           requestBody = {
+            session_id: sessionId,
             client_name: "서울의료센터",
             analysis_type: "종합분석",
             save_report: false
@@ -166,12 +265,16 @@ const ChatScreen = () => {
           break;
         case 'docs':
           requestBody = {
+            session_id: sessionId,
             text: currentQuery,
             file_type: "auto"
           };
           break;
         default:
-          requestBody = { query: currentQuery };
+          requestBody = { 
+            session_id: sessionId,
+            query: currentQuery 
+          };
       }
 
       const response = await fetch(`http://localhost:8000${agent.endpoint}`, {
@@ -268,6 +371,7 @@ const ChatScreen = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          session_id: sessionId,
           query: query,
           selected_agent: selectedAgentKey
         })

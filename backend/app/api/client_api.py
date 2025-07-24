@@ -5,6 +5,7 @@ from app.services.client_agent.client_analysis_agent import analyze_client_query
 router = APIRouter()
 
 class QueryRequest(BaseModel):
+    session_id: str
     query: str
 
 @router.post("/analyze")
