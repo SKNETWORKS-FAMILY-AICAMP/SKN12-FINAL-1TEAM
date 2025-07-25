@@ -264,6 +264,39 @@
   cursor: pointer;
 }
 
+/* 현재 세션 에이전트 정보 */
+.current-agent-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.agent-badge {
+  background-color: #e8f5e8;
+  color: #2d5a2d;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  border: 1px solid #c3e6c3;
+}
+
+.reset-agent-btn {
+  background-color: #f8f9fa;
+  color: #6c757d;
+  border: 1px solid #dee2e6;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reset-agent-btn:hover {
+  background-color: #e9ecef;
+  color: #495057;
+  border-color: #adb5bd;
+}
+
 /* Messages Container - 스크롤 가능 */
 .messages-container {
   flex: 1;

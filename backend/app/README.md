@@ -49,7 +49,7 @@ python main.py
 
 ### 3. 문서 API (`/api/docs`)
 
-**POST /api/docs/classify**
+**POST /api/docs/classify** (레거시)
 - **설명**: 문서 분류
 - **입력**:
   ```json
@@ -62,22 +62,22 @@ python main.py
   {
     "success": true,
     "state": {
-      "document_type": "contract",
-      "category": "legal"
+      "doc_type": "영업방문 결과보고서",
+      "template_content": "템플릿 내용..."
     },
     "error": null
   }
   ```
 
-**POST /api/docs/write**
+**POST /api/docs/write** (레거시)
 - **설명**: 문서 초안 작성
 - **입력**:
   ```json
   {
     "state": {
-      "document_type": "contract"
+      "doc_type": "영업방문 결과보고서"
     },
-    "user_input": "소프트웨어 개발 계약서 초안 작성"
+    "user_input": "방문일시: 2024-01-15, 고객사: ABC회사..."
   }
   ```
 - **출력**:
@@ -85,10 +85,83 @@ python main.py
   {
     "success": true,
     "filled_data": {
-      "title": "소프트웨어 개발 계약서",
-      "content": "계약서 내용..."
+      "title": "영업방문 결과보고서",
+      "content": "문서 내용..."
     },
     "error": null
+  }
+  ```
+
+**POST /api/docs/interactive** ⭐ (새로운 상호작용 방식)
+- **설명**: 사용자와 상호작용하는 문서 작성 처리
+- **초기 요청 (분류)**:
+  ```json
+  {
+    "session_id": "session_123",
+    "user_input": "영업방문 결과보고서를 작성해주세요",
+    "is_initial": true
+  }
+  ```
+- **초기 응답**:
+  ```json
+  {
+    "success": true,
+    "stage": "waiting_input",
+    "message": "📄 영업방문 결과보고서 작성을 시작합니다. 다음 정보를 입력해주세요:",
+    "doc_type": "영업방문 결과보고서",
+    "template": "【기본 정보】\n- 방문 제목:\n- Client(고객사명):\n...",
+    "requires_user_input": true
+  }
+  ```
+- **후속 요청 (문서 작성)**:
+  ```json
+  {
+    "session_id": "session_123",
+    "user_input": "방문 제목: 신제품 소개\nClient: ABC병원\n담당자: 김의사...",
+    "is_initial": false
+  }
+  ```
+- **완료 응답**:
+  ```json
+  {
+    "success": true,
+    "stage": "completed",
+    "message": "📄 영업방문 결과보고서 작성이 완료되었습니다!",
+    "doc_type": "영업방문 결과보고서",
+    "document": {
+      "방문_제목": "신제품 소개",
+      "Client": "ABC병원",
+      "담당자": "김의사"
+    },
+    "session_completed": true
+  }
+  ```
+
+**GET /api/docs/status/{session_id}**
+- **설명**: 문서 작성 세션 상태 조회
+- **출력**:
+  ```json
+  {
+    "session_id": "session_123",
+    "stage": "waiting_input",
+    "doc_type": "영업방문 결과보고서",
+    "has_template": true,
+    "input_count": 1,
+    "is_completed": false,
+    "has_error": false,
+    "error_message": null
+  }
+  ```
+
+**POST /api/docs/reset/{session_id}**
+- **설명**: 문서 작성 세션 리셋
+- **출력**:
+  ```json
+  {
+    "success": true,
+    "message": "세션이 초기화되었습니다. 새로운 문서 작성을 시작할 수 있습니다.",
+    "session_id": "session_123",
+    "stage": "initial"
   }
   ```
 

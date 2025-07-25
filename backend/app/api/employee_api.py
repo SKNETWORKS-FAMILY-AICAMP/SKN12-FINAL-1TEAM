@@ -16,5 +16,3 @@ async def analyze_employee_query_api(request: QueryOnlyRequest):
     query = request.query
     result = await analyze_employee_query(query)
     return result
-# 
-# 
