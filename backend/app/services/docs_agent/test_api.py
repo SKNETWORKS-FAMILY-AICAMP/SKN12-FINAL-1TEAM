@@ -12,7 +12,7 @@ def test_classify_and_write():
     print("=" * 50)
     
     classify_data = {
-        "user_input": "영업방문 결과보고서를 작성해줘"
+        "user_input": "영업방문 결과보고서 작성해줘"
     }
     
     response = requests.post(f"{BASE_URL}/api/docs/classify", json=classify_data)
@@ -32,10 +32,12 @@ def test_classify_and_write():
             
             write_data = {
                 "state": state,
-                "user_input": """고객은 아이유이비인후과, 담당자와 방문자는 손현성, 방문자 소속은 좋은제약이야.
+                "user_input": """
+고객은 아이유이비인후과, 방문일은 25년 7월 16이야 ,담당자와 방문자는 손현성, 방문자 소속은 좋은제약이야.
 연락처는 010-3752-5265이고 고객사 개요는 최근 오픈한 이비인후과야
 프로젝트 개요는 신약 거래처 확보이고
-방문 및 협의내용은 25년 7월 16일 방문하여 새로운 신약 소개 및 가격과 로얄티 소개이고, 향후계획 및 일정은 25년 7월 18일 방문하여 가격 협상 및 로얄티 협상"""
+방문 및 협의내용은 25년 7월 16일 방문하여 새로운 신약 소개 및 가격과 로얄티 소개이고, 향후계획 및 일정은 25년 7월 18일 방문하여 가격 협상 및 로얄티 협상
+"""
             }
             
             response = requests.post(f"{BASE_URL}/api/docs/write", json=write_data)

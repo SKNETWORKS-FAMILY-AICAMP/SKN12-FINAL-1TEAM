@@ -20,7 +20,7 @@ class State(TypedDict):
     end_process: Optional[bool]
     parse_retry_count: Optional[int]
     parse_failed: Optional[bool]
-0
+
 class DocumentClassifyAgent:
     """지능형 문서 초안 작성 시스템"""
     
@@ -135,13 +135,6 @@ class DocumentClassifyAgent:
             state["classification_retry_count"] = 0
         
         user_message = state["messages"][-1].content
-        
-        # 추가 정보 입력인지 확인
-        if any(keyword in user_message for keyword in ["추가", "업데이트", "수정", "보완", "더"]):
-            # 기존 문서 타입 유지
-            if state.get("doc_type"):
-                print(f"📝 추가 정보 입력 감지: {state['doc_type']}")
-                return state
         
         classification_prompt = ChatPromptTemplate.from_messages([
             ("system", """
@@ -297,25 +290,3 @@ if __name__ == "__main__":
         print("반환된 결과:", result)
     else:
         print("\n❌ 처리 실패")
-
-# API 호환성을 위한 별칭 클래스
-class DocumentClassifier:
-    """DocumentClassifyAgent의 별칭 클래스 (API 호환성용)"""
-    
-    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0.7):
-        self.agent = DocumentClassifyAgent(model_name=model_name, temperature=temperature)
-    
-    def classify(self, text: str):
-        """문서 분류 수행"""
-        result = self.agent.run(text)
-        if result:
-            return {
-                "document_type": result.get("doc_type", "unknown"),
-                "confidence": 0.9,
-                "template_content": result.get("template_content", "")
-            }
-        return None
-    
-    def run(self, text: str):
-        """DocumentClassifyAgent.run 호출"""
-        return self.agent.run(text)

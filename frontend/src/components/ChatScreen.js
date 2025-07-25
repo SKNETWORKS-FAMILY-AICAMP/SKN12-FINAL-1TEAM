@@ -9,6 +9,7 @@ const ChatScreen = () => {
   const [chatHistory, setChatHistory] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
   const [sessionId, setSessionId] = useState(null);
+  const [currentSessionAgent, setCurrentSessionAgent] = useState(null); // 현재 세션의 고정 에이전트
   const messagesEndRef = useRef(null);
 
   // session_id 생성 함수
@@ -264,9 +265,7 @@ const ChatScreen = () => {
           break;
         case 'docs':
           requestBody = {
-            session_id: sessionId,
-            text: currentQuery,
-            file_type: "auto"
+            user_input: currentQuery  // text -> user_input으로 변경
           };
           break;
         default:
@@ -323,7 +322,7 @@ const ChatScreen = () => {
             botResponseContent = `🏥 고객 분석 완료!\n\n${data.report}`;
             break;
           case 'docs':
-            botResponseContent = `📄 문서 분류 완료!\n\n• 문서 타입: ${data.result?.document_type}\n• 신뢰도: ${(data.result?.confidence * 100).toFixed(1)}%\n• 키워드: ${data.result?.keywords?.join(', ')}\n• 제안 템플릿: ${data.result?.suggested_template}`;
+            botResponseContent = `📄 문서 분류 완료!\n\n• 문서 타입: ${data.state?.doc_type}\n• 상태: 분류 성공\n• 템플릿: ${data.state?.template_content ? '준비됨' : '준비 중'}`;
             break;
           default:
             botResponseContent = data.message || '처리가 완료되었습니다.';
@@ -342,6 +341,11 @@ const ChatScreen = () => {
       const finalMessages = [...newMessages, botMessage];
       setMessages(finalMessages);
       saveMessageToHistory(finalMessages);
+
+      // 에이전트가 새로 선택되었거나 변경된 경우 현재 에이전트 정보 갱신
+      if (data.agent_selected || data.agent_fixed) {
+        checkCurrentAgent(sessionId);
+      }
 
     } catch (error) {
       console.error('API 요청 오류:', error);
@@ -400,6 +404,11 @@ const ChatScreen = () => {
       setMessages(updatedMessages);
       saveMessageToHistory(updatedMessages);
 
+      // 에이전트가 선택된 경우 현재 에이전트 정보 갱신
+      if (data.success) {
+        checkCurrentAgent(sessionId);
+      }
+
     } catch (error) {
       console.error('에이전트 선택 처리 오류:', error);
       const errorMessage = {
@@ -429,6 +438,75 @@ const ChatScreen = () => {
       startNewChat();
     }
   }, []);
+
+  // 현재 세션의 선택된 에이전트 확인
+  const checkCurrentAgent = async (sessionId) => {
+    if (!sessionId) return;
+    
+    try {
+      const response = await fetch(`http://localhost:8000/api/router/current-agent/${sessionId}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.has_selected_agent) {
+          setCurrentSessionAgent(data.agent_info);
+          console.log(`✅ 현재 세션 에이전트: ${data.agent_info.agent_name}`);
+        } else {
+          setCurrentSessionAgent(null);
+          console.log('📝 현재 세션에 고정된 에이전트 없음');
+        }
+      }
+    } catch (error) {
+      console.error('❌ 현재 에이전트 확인 실패:', error);
+    }
+  };
+
+  useEffect(() => {
+    checkCurrentAgent(sessionId);
+  }, [sessionId]);
+
+  // 에이전트 초기화
+  const resetAgent = async () => {
+    if (!sessionId) return;
+    
+    if (!window.confirm('현재 에이전트를 초기화하시겠습니까?\n다음 질문부터 새로운 에이전트가 선택됩니다.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/router/reset-agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionId
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setCurrentSessionAgent(null);
+          
+          // 시스템 메시지 추가
+          const resetMessage = {
+            type: 'system',
+            content: data.message,
+            timestamp: new Date().toLocaleTimeString(),
+            agent: 'System'
+          };
+          
+          const updatedMessages = [...messages, resetMessage];
+          setMessages(updatedMessages);
+          saveMessageToHistory(updatedMessages);
+          
+          console.log('✅ 에이전트 초기화 완료');
+        }
+      }
+    } catch (error) {
+      console.error('❌ 에이전트 초기화 실패:', error);
+    }
+  };
 
   return (
     <div className="chat-screen">
@@ -478,20 +556,37 @@ const ChatScreen = () => {
         <main className="chat-main">
           <div className="chat-title">
             <h2>AI 채팅</h2>
-            <div className="agent-selector">
-              <label>에이전트 선택:</label>
-              <select 
-                value={selectedAgent} 
-                onChange={(e) => setSelectedAgent(e.target.value)}
-                className="agent-select"
-              >
-                {Object.entries(agents).map(([key, agent]) => (
-                  <option key={key} value={key}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            
+            {/* 현재 세션 에이전트 표시 */}
+            {currentSessionAgent ? (
+              <div className="current-agent-info">
+                <div className="agent-badge">
+                  🎯 <strong>{currentSessionAgent.agent_name}</strong> (고정됨)
+                </div>
+                <button 
+                  className="reset-agent-btn"
+                  onClick={resetAgent}
+                  title="에이전트 초기화"
+                >
+                  🔄 초기화
+                </button>
+              </div>
+            ) : (
+              <div className="agent-selector">
+                <label>에이전트 선택:</label>
+                <select 
+                  value={selectedAgent} 
+                  onChange={(e) => setSelectedAgent(e.target.value)}
+                  className="agent-select"
+                >
+                  {Object.entries(agents).map(([key, agent]) => (
+                    <option key={key} value={key}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="messages-container">

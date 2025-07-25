@@ -22,9 +22,17 @@ def init_database():
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                selected_agent TEXT DEFAULT NULL
             )
         """)
+        
+        # 기존 테이블에 selected_agent 컬럼 추가 (이미 있으면 무시)
+        try:
+            c.execute("ALTER TABLE chat_sessions ADD COLUMN selected_agent TEXT DEFAULT NULL")
+        except sqlite3.OperationalError:
+            # 컬럼이 이미 존재하는 경우
+            pass
         
         # 채팅 메시지 테이블
         c.execute("""
@@ -116,13 +124,64 @@ def get_all_messages(session_id: str) -> list[dict]:
         for row in rows
     ]
 
+def get_session_selected_agent(session_id: str) -> str | None:
+    """세션의 선택된 에이전트를 조회"""
+    try:
+        with get_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT selected_agent FROM chat_sessions WHERE id = ?", (session_id,))
+            result = c.fetchone()
+            
+            if result and result[0]:
+                print(f"✅ 세션 {session_id}의 선택된 에이전트: {result[0]}")
+                return result[0]
+            else:
+                print(f"📝 세션 {session_id}에 선택된 에이전트 없음")
+                return None
+                
+    except Exception as e:
+        print(f"❌ 에이전트 조회 실패: {session_id}, 오류: {e}")
+        return None
+
+def set_session_selected_agent(session_id: str, agent_name: str):
+    """세션의 선택된 에이전트를 설정"""
+    try:
+        with get_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                UPDATE chat_sessions 
+                SET selected_agent = ?, updated_at = ?
+                WHERE id = ?
+            """, (agent_name, datetime.now().isoformat(), session_id))
+            conn.commit()
+            print(f"✅ 세션 {session_id}의 에이전트 설정: {agent_name}")
+            
+    except Exception as e:
+        print(f"❌ 에이전트 설정 실패: {session_id}, {agent_name}, 오류: {e}")
+
+def clear_session_selected_agent(session_id: str):
+    """세션의 선택된 에이전트를 초기화"""
+    try:
+        with get_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                UPDATE chat_sessions 
+                SET selected_agent = NULL, updated_at = ?
+                WHERE id = ?
+            """, (datetime.now().isoformat(), session_id))
+            conn.commit()
+            print(f"✅ 세션 {session_id}의 에이전트 초기화")
+            
+    except Exception as e:
+        print(f"❌ 에이전트 초기화 실패: {session_id}, 오류: {e}")
+
 def get_all_sessions() -> list[dict]:
     """모든 채팅 세션 목록 조회"""
     try:
         with get_connection() as conn:
             c = conn.cursor()
             c.execute("""
-                SELECT id, title, created_at, updated_at 
+                SELECT id, title, created_at, updated_at, selected_agent
                 FROM chat_sessions 
                 ORDER BY updated_at DESC
             """)
@@ -134,7 +193,8 @@ def get_all_sessions() -> list[dict]:
                     "id": row[0],
                     "title": row[1] if row[1] else f"채팅 {row[2][:10]}",
                     "created_at": row[2],
-                    "updated_at": row[3]
+                    "updated_at": row[3],
+                    "selected_agent": row[4]
                 })
             
             print(f"✅ 세션 목록 조회 성공: {len(sessions)}개")
