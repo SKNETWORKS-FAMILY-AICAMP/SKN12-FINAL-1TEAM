@@ -41,7 +41,6 @@
 
 <!-- Backend & Language -->
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Django](https://img.shields.io/badge/Django-092E20?style=for-the-badge&logo=django&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 
 <!-- Database & Search -->
@@ -71,12 +70,12 @@
 
 
 
-## 🤖 지원 에이전트<br/>
+## 지원 에이전트<br/>
 <br/>
-1. **employee_agent**: 직원 실적 분석, 인사 정보, 조직도 관련 업무<br/>
-2. **client_agent**: 거래처 분석, 고객 데이터 분석, 매출 분석<br/>
-3. **db_agent**: 데이터베이스 검색, 문서 검색, 정보 조회<br/>
-4. **docs_agent**: 문서 자동생성, 규정 위반 여부 분석, 컴플라이언스 검토<br/>
+1. employee_agent: 직원 실적 분석, 인사 정보, 조직도 관련 업무<br/>
+2. client_agent: 거래처 분석, 고객 데이터 분석, 매출 분석<br/>
+3. db_agent: 데이터베이스 검색, 문서 검색, 정보 조회<br/>
+4. docs_agent: 문서 자동생성, 규정 위반 여부 분석, 컴플라이언스 검토<br/>
 <br/><br/>
 </div>
 </table>
