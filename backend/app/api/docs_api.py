@@ -19,8 +19,8 @@ api_key = os.getenv("OPENAI_API_KEY")
 print("docs_api.py - OPENAI_API_KEY:", api_key[:10] + "..." if api_key else "없음")
 
 # Docs Agent imports
-from ..services.docs_agent.classify_docs import DocumentClassifier
-from ..services.docs_agent.write_docs import DocumentWriter
+from ..services.docs_agent.classify_docs import DocumentClassifyAgent
+from ..services.docs_agent.write_docs import DocumentDraftAgent
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,7 +35,7 @@ def get_doc_classifier():
     if doc_classifier is None:
         try:
             logger.info("Document Classifier 인스턴스 생성 시작...")
-            doc_classifier = DocumentClassifier()
+            doc_classifier = DocumentClassifyAgent()
             logger.info("Document Classifier 인스턴스 생성 성공")
         except Exception as e:
             logger.error(f"Document Classifier 인스턴스 생성 실패: {e}")
@@ -48,7 +48,7 @@ def get_doc_writer():
     if doc_writer is None:
         try:
             logger.info("Document Writer 인스턴스 생성 시작...")
-            doc_writer = DocumentWriter()
+            doc_writer = DocumentDraftAgent()
             logger.info("Document Writer 인스턴스 생성 성공")
         except Exception as e:
             logger.error(f"Document Writer 인스턴스 생성 실패: {e}")
