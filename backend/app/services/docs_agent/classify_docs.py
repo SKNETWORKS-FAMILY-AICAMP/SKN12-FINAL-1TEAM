@@ -20,7 +20,7 @@ class State(TypedDict):
     end_process: Optional[bool]
     parse_retry_count: Optional[int]
     parse_failed: Optional[bool]
-
+0
 class DocumentClassifyAgent:
     """지능형 문서 초안 작성 시스템"""
     

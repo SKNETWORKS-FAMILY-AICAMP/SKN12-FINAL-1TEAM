@@ -401,13 +401,16 @@ class DocumentDraftAgent:
         additional_placeholders = [
             "PM참석항목내용", "구분항목내용", "일시항목내용", "장소항목내용", 
             "제품명항목내용", "제품설명회시행목적항목내용", "제품설명회주요내용항목내용", 
-            "참석인원항목내용"
+            "참석인원항목내용", "방문일항목내용"
         ]
         
         for placeholder in additional_placeholders:
             if placeholder not in replacements:
                 # 해당하는 데이터 키 찾기
                 data_key = placeholder.replace("항목내용", "")
+                # 특별한 매핑 처리
+                if placeholder == "방문일항목내용":
+                    data_key = "방문날짜"
                 replacement_value = str(filled_data.get(data_key, ""))
                 replacements[placeholder] = replacement_value
         
