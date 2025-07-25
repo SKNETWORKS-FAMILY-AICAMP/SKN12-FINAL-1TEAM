@@ -165,76 +165,172 @@ python main.py
   }
   ```
 
-### 4. 직원 분석 API (`/api/employee`)
+### 4. 직원 분석 API (`/api/employee`) ⭐ (대폭 개선)
 
 **GET /api/employee/health**
-- **설명**: Employee Agent 헬스 체크
+- **설명**: Employee Agent 헬스 체크 및 시스템 상태 확인
 - **출력**:
   ```json
   {
     "status": "healthy",
-    "agent": "Employee Performance Agent",
-    "data_status": {
-      "performance_data": "loaded",
-      "target_data": "loaded"
-    }
+    "agent": "Enhanced Employee Performance Agent",
+    "database_status": "connected",
+    "available_employees": ["최수아", "조시현"],
+    "total_employees": 2,
+    "features": [
+      "자동 쿼리 분석",
+      "SQLite 기반 데이터 처리",
+      "고급 통계 분석",
+      "LLM 기반 보고서",
+      "종합 평가 시스템"
+    ]
   }
   ```
 
-**GET /api/employee/performance/summary**
-- **설명**: 직원 실적 요약 조회
+**GET /api/employee/employees**
+- **설명**: 사용 가능한 직원 목록 조회
 - **출력**:
   ```json
   {
     "success": true,
-    "summary": {
-      "employee_name": "최수아",
-      "period": "2023년 12월 ~ 2024년 3월",
-      "total_performance": 15000000,
-      "total_target": 12000000,
-      "achievement_rate": 125.0,
-      "status": "급증"
-    }
+    "employees": ["최수아", "조시현"],
+    "count": 2,
+    "message": "2명의 직원 데이터가 있습니다."
   }
   ```
 
-**POST /api/employee/analyze**
-- **설명**: 직원 실적 분석
+**POST /api/employee/analyze** ⭐ (완전 개선)
+- **설명**: 지능형 직원 실적 분석 (자동 쿼리 파싱)
 - **입력**:
   ```json
   {
-    "employee_name": "최수아",
-    "period": "2024년",
-    "save_report": true,
-    "filename": "실적분석보고서.docx"
+    "session_id": "session_123",
+    "query": "최수아의 2023년 12월부터 2024년 3월까지 실적 분석해주세요"
   }
   ```
 - **출력**:
   ```json
   {
     "success": true,
-    "analysis_result": {
-      "performance_metrics": {},
-      "trends": {},
-      "recommendations": []
+    "employee_name": "최수아",
+    "period": "202312~202403",
+    "total_performance": 15000000,
+    "achievement_rate": 125.5,
+    "evaluation": "우수",
+    "report": "📊 직원 실적 분석 보고서\n\n1. 실행 요약\n분석 결과 총 15,000,000원의 실적을 달성하였으며...",
+    "analysis_details": {
+      "comprehensive_evaluation": {
+        "total_score": 85,
+        "grade": "A",
+        "grade_description": "우수",
+        "score_breakdown": {
+          "achievement": 40,
+          "trend": 25,
+          "stability": 16,
+          "concentration": 8
+        },
+        "strengths": ["목표 달성률 우수", "성장 추세 양호"],
+        "weaknesses": []
+      },
+      "detailed_trend": {
+        "trend": "상승",
+        "slope": 125.5,
+        "trend_strength": "강함",
+        "prediction": 1650000
+      },
+      "product_pareto": {
+        "total_items": 15,
+        "pareto_point": 3,
+        "pareto_efficiency": "상위 3개 항목이 전체의 80% 차지"
+      },
+      "forecast": {
+        "method": "가중 평균 (선형회귀 + 이동평균)",
+        "forecast": [1650000, 1720000, 1780000],
+        "confidence": "높음"
+      }
     },
-    "report": "상세 분석 보고서 텍스트...",
-    "message": "분석 완료. 보고서가 저장되었습니다."
+    "message": "실적 분석이 완료되었습니다."
   }
   ```
 
-**POST /api/employee/report/generate**
-- **설명**: 실적 보고서 생성 및 다운로드
-- **입력**: analyze 엔드포인트와 동일
-- **출력**:
+**POST /api/employee/analyze-detailed**
+- **설명**: 상세 파라미터를 지원하는 분석
+- **입력**:
   ```json
   {
-    "success": true,
-    "message": "보고서가 성공적으로 저장되었습니다.",
-    "filename": "최수아_실적분석보고서.docx",
-    "report_preview": "보고서 미리보기 텍스트..."
+    "session_id": "session_123",
+    "query": "실적 분석해주세요",
+    "employee_name": "최수아",
+    "period": "202312~202403",
+    "analysis_type": "종합분석"
   }
   ```
+
+## 새로운 Employee Agent 주요 기능
+
+### 🔍 **자동 쿼리 분석**
+- **자연어 처리**: "최수아의 작년 실적 어떤가요?" → 자동으로 직원명, 기간 추출
+- **LLM 기반 파싱**: OpenAI를 활용한 정확한 의도 파악
+- **기본값 설정**: 누락된 정보 자동 보완
+
+### 🗄️ **SQLite 기반 데이터 처리**
+- **실적 데이터**: `performance_swest_sua.sqlite`에서 월별 실적 조회
+- **목표 데이터**: `joonpharma_target.sqlite`에서 목표 정보 조회
+- **동적 쿼리**: 조건에 따른 유연한 데이터 필터링
+
+### 📊 **고급 계산 도구**
+- **트렌드 분석**: 선형회귀, R² 계산, 예측값 생성
+- **파레토 분석**: 80-20 법칙 기반 제품/거래처 집중도 분석
+- **분산 분석**: 변동계수(CV), 안정성 평가
+- **계절성 분석**: 월별 패턴 및 계절성 지수
+- **상관관계 분석**: 피어슨 상관계수
+- **예측 분석**: 이동평균 + 선형회귀 결합
+
+### 🎯 **종합 평가 시스템**
+- **점수 체계**: 100점 만점 (목표달성 40점, 트렌드 30점, 안정성 20점, 집중도 10점)
+- **등급 분류**: S(탁월), A(우수), B(양호), C(보통), D(개선필요)
+- **강점/약점 식별**: 자동 분석 및 개선 우선순위 제안
+
+### 📝 **LLM 기반 보고서**
+- **지능형 보고서**: GPT를 활용한 전문적이고 실행 가능한 인사이트
+- **구조화된 형식**: 실행요약, 성과분석, 트렌드예측, 개선방안
+- **폴백 시스템**: LLM 실패시 기본 보고서 자동 생성
+
+### 🔧 **사용 예시**
+
+```python
+# 테스트 실행
+python backend/app/services/employee_agent/test_enhanced_agent.py
+
+# 다양한 쿼리 예시
+"최수아의 실적을 분석해주세요"
+"2023년 12월부터 2024년 3월까지 트렌드 분석"
+"목표 달성률과 제품별 성과 보고서 만들어줘"
+"직원 성과 평가하고 개선 방안 제안해줘"
+```
+
+### 📋 **데이터베이스 구조**
+
+**performance_swest_sua.sqlite (실적 데이터)**
+```sql
+CREATE TABLE sales_performance (
+  담당자 TEXT,
+  ID TEXT,        -- 거래처명
+  품목 TEXT,      -- 제품명
+  년월 INTEGER,   -- YYYYMM
+  실적금액 REAL   -- 판매금액
+);
+```
+
+**joonpharma_target.sqlite (목표 데이터)**
+```sql
+CREATE TABLE monthly_target (
+  지점 TEXT,
+  담당자 TEXT,
+  년월 INTEGER,
+  목표 REAL
+);
+```
 
 ### 5. 거래처 분석 API (`/api/client`)
 

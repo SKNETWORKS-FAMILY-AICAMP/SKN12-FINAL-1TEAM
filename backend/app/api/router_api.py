@@ -72,7 +72,7 @@ async def call_agent_api(agent_name: str, query: str, session_id: str = None) ->
                     if result.get("success", True):
                         employee_name = result.get("employee_name", "N/A")
                         period = result.get("period", "N/A")
-                        analysis_result = result.get("result", "분석 결과가 없습니다.")
+                        analysis_result = result.get("report", "분석 결과가 없습니다.")  # result → report로 수정
 
                         formatted_response = (
                             f"📊 **직원 실적 분석 완료!**\n\n"
@@ -89,7 +89,7 @@ async def call_agent_api(agent_name: str, query: str, session_id: str = None) ->
                         }
                     return {
                         "success": False,
-                        "error": result.get("result", "직원 분석 실패"),
+                        "error": result.get("error", "직원 분석 실패"),  # result → error로 수정
                     }
 
             # ─────────── 거래처 분석 ───────────
