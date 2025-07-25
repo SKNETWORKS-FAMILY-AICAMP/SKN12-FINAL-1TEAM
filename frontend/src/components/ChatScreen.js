@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
 import './ChatScreen.css';
 
 const ChatScreen = () => {
@@ -433,56 +432,11 @@ const ChatScreen = () => {
 
   return (
     <div className="chat-screen">
-      {/* Header */}
-      <header className="chat-header">
-        <div className="header-left">
-          <div className="logo">
-            <span className="logo-icon">💊</span>
-            <span className="logo-text">Pharma-Helper</span>
-          </div>
-        </div>
-        
-        <div className="header-right">
-          <nav className="header-nav">
-            <Link to="/" className="nav-link">홈</Link>
-            <button 
-              className="nav-link ai-btn"
-              style={{
-                background: '#6c5ce7',
-                color: 'white',
-                border: 'none',
-                padding: '8px 16px',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
-            >
-              AI 채팅
-            </button>
-            <Link to="/performance" className="nav-link">고객/데이터 위기</Link>
-            <Link to="/" className="nav-link">문서 생성</Link>
-            <Link to="/" className="nav-link">실적 확인</Link>
-          </nav>
-          
-          <div className="header-actions">
-            <button className="notification-btn" title="알림">
-              🔔
-            </button>
-            <div className="user-profile">
-              <img 
-                src="https://via.placeholder.com/32x32.png?text=👤" 
-                alt="사용자" 
-                title="프로필"
-              />
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* Main Content */}
       <div className="chat-container">
-        {/* Sidebar */}
-        <aside className="chat-sidebar">
-          <div className="chat-history">
+        {/* Chat Management Panel */}
+        <aside className="chat-panel">
+          <div className="chat-management">
             <h3>Chat</h3>
             <button className="new-chat-btn" onClick={startNewChat}>
               + New Chat

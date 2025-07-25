@@ -1,0 +1,179 @@
+.docs-page {
+  padding: 30px;
+  background-color: #fff;
+  min-height: 100vh;
+}
+
+.docs-header {
+  margin-bottom: 30px;
+}
+
+.docs-header h1 {
+  font-size: 2rem;
+  color: #333;
+  margin: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.docs-header p {
+  color: #666;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.docs-container {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 30px;
+}
+
+.docs-sidebar {
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  height: fit-content;
+}
+
+.docs-sidebar h3 {
+  margin: 0 0 20px 0;
+  font-size: 1.1rem;
+  color: #333;
+  font-weight: 600;
+}
+
+.doc-types {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.doc-type {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.doc-type:hover {
+  background-color: #e9ecef;
+}
+
+.doc-type.selected {
+  background-color: #6f42c1;
+  color: white;
+  border-color: #6f42c1;
+}
+
+.doc-type-icon {
+  font-size: 1.2rem;
+}
+
+.doc-type-name {
+  font-weight: 500;
+}
+
+.docs-main {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.doc-editor {
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.doc-editor h3 {
+  margin: 0 0 16px 0;
+  font-size: 1.1rem;
+  color: #333;
+  font-weight: 600;
+}
+
+.doc-textarea {
+  width: 100%;
+  padding: 16px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 200px;
+  transition: border-color 0.3s ease;
+}
+
+.doc-textarea:focus {
+  outline: none;
+  border-color: #6f42c1;
+}
+
+.doc-actions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.generate-button {
+  padding: 12px 24px;
+  background-color: #6f42c1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.generate-button:hover:not(:disabled) {
+  background-color: #5a32a3;
+}
+
+.generate-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.doc-templates {
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.doc-templates h3 {
+  margin: 0 0 20px 0;
+  font-size: 1.1rem;
+  color: #333;
+  font-weight: 600;
+}
+
+.template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.template-item {
+  background-color: white;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.template-item h4 {
+  margin: 0 0 8px 0;
+  color: #333;
+  font-weight: 600;
+}
+
+.template-item p {
+  margin: 0;
+  color: #666;
+  font-size: 0.9rem;
+  line-height: 1.4;
+} 
