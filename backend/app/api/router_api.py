@@ -4,20 +4,15 @@ from typing import Dict, Any
 from fastapi import APIRouter
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import httpx
-import asyncio
-import json
 
 # ────────────────────────────────────────────────────────────────────────────────
-# 내부 모듈 import
+# 통합 그래프 import  
 # ────────────────────────────────────────────────────────────────────────────────
-# · StateGraphRouter  : LangGraph 분류기
-# · RouterAgent       : 에이전트 메타정보
-# · add_session       : 세션 row 생성 (중복 무시)
-# · add_message       : 메시지 저장 (role/user/assistant, metadata 포함)
-# ------------------------------------------------------------------------------
-from ..services.router_agent.state_graph_router import StateGraphRouter
-from ..services.router_agent.router_agent import RouterAgent
+from ..services.router_agent.unified_agent_graph import unified_graph
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 메모리 저장소 (기존 세션 관리 유지)
+# ────────────────────────────────────────────────────────────────────────────────
 from ..services.router_agent.memory_store_sqlite import (
     add_session,
     add_message,
@@ -29,17 +24,12 @@ from ..services.router_agent.memory_store_sqlite import (
 )
 
 # ────────────────────────────────────────────────────────────────────────────────
-# 환경 변수 및 라우터 초기화
+# 환경 변수
 # ────────────────────────────────────────────────────────────────────────────────
 api_key = os.getenv("OPENAI_API_KEY")
 print("router_api.py - OPENAI_API_KEY:", api_key[:10] + "…" if api_key else "없음")
 
-router: APIRouter = APIRouter()
-state_graph_router = StateGraphRouter()
-router_agent = RouterAgent()
-
-# 내부‑API 베이스 URL (FastAPI 동일 앱이라면 localhost 그대로 OK)
-BASE_URL = "http://localhost:8000"
+router = APIRouter()
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Pydantic 스키마
@@ -53,336 +43,201 @@ class AgentSelectionRequest(BaseModel):
     query: str
     selected_agent: str
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 공통 함수: 선택된 에이전트 API 호출
-# ────────────────────────────────────────────────────────────────────────────────
-async def call_agent_api(agent_name: str, query: str, session_id: str = None) -> Dict[str, Any]:
-    """선택된 에이전트 이름과 쿼리를 받아 실제 API 호출"""
-    try:
-        async with httpx.AsyncClient() as client:
-            # ─────────── 직원 분석 ───────────
-            if agent_name == "employee_agent":
-                response = await client.post(
-                    f"{BASE_URL}/api/employee/analyze",
-                    json={"session_id": session_id, "query": query},
-                    timeout=30.0,
-                )
-                if response.status_code == 200:
-                    result = response.json()
-                    if result.get("success", True):
-                        employee_name = result.get("employee_name", "N/A")
-                        period = result.get("period", "N/A")
-                        analysis_result = result.get("report", "분석 결과가 없습니다.")  # result → report로 수정
-
-                        formatted_response = (
-                            f"📊 **직원 실적 분석 완료!**\n\n"
-                            f"👤 분석 대상: {employee_name}\n"
-                            f"📅 분석 기간: {period}\n\n"
-                            f"📈 분석 결과:\n{analysis_result}\n\n"
-                            f"✅ 직원 성과 분석이 완료되었습니다!"
-                        )
-                        return {
-                            "success": True,
-                            "agent": agent_name,
-                            "response": formatted_response,
-                            "api_result": result,
-                        }
-                    return {
-                        "success": False,
-                        "error": result.get("error", "직원 분석 실패"),  # result → error로 수정
-                    }
-
-            # ─────────── 거래처 분석 ───────────
-            elif agent_name == "client_agent":
-                response = await client.post(
-                    f"{BASE_URL}/api/client/analyze",
-                    json={"session_id": session_id, "query": query},
-                    timeout=30.0,
-                )
-                if response.status_code == 200:
-                    result = response.json()
-                    if result.get("success", True):
-                        client_name = result.get("client_name", "N/A")
-                        analysis_type = result.get("analysis_type", "N/A")
-                        analysis_result = result.get("result", "분석 결과가 없습니다.")
-
-                        formatted_response = (
-                            f"🏥 **고객 분석 완료!**\n\n"
-                            f"🏢 분석 대상: {client_name}\n"
-                            f"📊 분석 유형: {analysis_type}\n\n"
-                            f"📈 분석 결과:\n{analysis_result}\n\n"
-                            f"✅ 고객 분석이 완료되었습니다!"
-                        )
-                        return {
-                            "success": True,
-                            "agent": agent_name,
-                            "response": formatted_response,
-                            "api_result": result,
-                        }
-                    return {
-                        "success": False,
-                        "error": result.get("result", "고객 분석 실패"),
-                    }
-
-            # ─────────── 문서 분류/작성 ───────────                        
-            elif agent_name == "docs_agent":
-                # 먼저 세션 상태 확인
-                session_status = None
-                try:
-                    if session_id:
-                        status_response = await client.get(
-                            f"{BASE_URL}/api/docs/status/{session_id}",
-                            timeout=10.0,
-                        )
-                        if status_response.status_code == 200:
-                            session_status = status_response.json()
-                except:
-                    pass  # 세션 상태 확인 실패 시 초기 요청으로 처리
-                
-                # 세션 상태에 따라 초기 요청인지 후속 입력인지 판단
-                is_initial = True
-                if session_status and session_status.get("stage") in ["classified", "waiting_input"]:
-                    is_initial = False
-                
-                # 문서 상호작용 API 호출
-                response = await client.post(
-                    f"{BASE_URL}/api/docs/interactive",
-                    json={
-                        "session_id": session_id or "temp_session",
-                        "user_input": query,
-                        "is_initial": is_initial
-                    },
-                    timeout=30.0,
-                )
-                if response.status_code == 200:
-                    result = response.json()
-                    if result.get("success", True):
-                        # 상호작용 단계별 처리
-                        stage = result.get("stage", "")
-                        doc_type = result.get("doc_type", "문서")
-                        message = result.get("message", "")
-                        
-                        if stage == "waiting_input":
-                            # 사용자 입력 대기 단계 - 템플릿 제공
-                            template = result.get("template", "")
-                            formatted_response = (
-                                f"📄 **문서 분류 완료!**\n\n"
-                                f"📋 분류 결과: {doc_type}\n\n"
-                                f"{message}\n\n"
-                                f"📝 **입력 템플릿:**\n"
-                                f"```\n{template}\n```\n\n"
-                                f"💡 **다음 단계:** 위 템플릿에 맞춰 정보를 입력해주시면 문서를 작성해드립니다!"
-                            )
-                        elif stage == "completed":
-                            # 문서 작성 완료
-                            document = result.get("document", {})
-                            formatted_response = (
-                                f"📄 **{doc_type} 작성 완료!**\n\n"
-                                f"{message}\n\n"
-                                f"📋 **작성된 문서:**\n"
-                                f"```json\n{json.dumps(document, indent=2, ensure_ascii=False)}\n```"
-                            )
-                        else:
-                            # 기타 상태 (processing, error 등)
-                            formatted_response = (
-                                f"📄 **문서 처리 상태**\n\n"
-                                f"단계: {stage}\n"
-                                f"{message}"
-                            )
-                        
-                        return {
-                            "success": True,
-                            "agent": agent_name,
-                            "response": formatted_response,
-                            "api_result": result,
-                            "stage": stage,
-                            "requires_followup": stage == "waiting_input"  # 후속 입력 필요 여부
-                        }
-                    return {
-                        "success": False,
-                        "error": result.get("error", "문서 처리 실패"),
-                    }
-
-            # ─────────── 검색 (더미) ───────────
-            elif agent_name == "search_agent":
-                formatted_response = (
-                    f"🔍 **내부 데이터 검색 완료!**\n\n"
-                    f"🔎 검색 쿼리: \"{query}\"\n\n"
-                    f"📋 검색 결과:\n"
-                    f"• 관련 문서 5건 발견 등...\n\n"
-                    f"✅ 내부 데이터 검색이 완료되었습니다!"
-                )
-                return {
-                    "success": True,
-                    "agent": agent_name,
-                    "response": formatted_response,
-                }
-
-            # ─────────── 알 수 없는 에이전트 ───────────
-            return {
-                "success": False,
-                "error": f"Unknown agent: {agent_name}",
-            }
-
-    except httpx.TimeoutException:
-        return {"success": False, "error": "API 호출 시간 초과"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-# ────────────────────────────────────────────────────────────────────────────────
-# 메인 라우터: LangGraph 라우팅
-# ────────────────────────────────────────────────────────────────────────────────
-@router.post("/router")
-async def route_with_state_graph(req: QueryRequest):
-    """사용자 쿼리를 분석하고 적절한 에이전트로 라우팅 (세션별 에이전트 고정)"""
-    try:
-        # 1) 세션 보장 & 사용자 질문 저장
-        add_session(req.session_id)
-        add_message(req.session_id, "user", req.query)
-
-        # 2) 세션에 이미 선택된 에이전트가 있는지 확인
-        selected_agent = get_session_selected_agent(req.session_id)
-        
-        if selected_agent and selected_agent in router_agent.available_agents:
-            # ── 이미 선택된 에이전트가 있는 경우: 바로 API 호출 ────────────────
-            print(f"🎯 세션 {req.session_id}에서 기존 에이전트 사용: {selected_agent}")
-            
-            api_result = await call_agent_api(selected_agent, req.query, req.session_id)
-
-            # assistant 응답 저장
-            add_message(
-                req.session_id,
-                "assistant",
-                api_result.get("response", ""),
-                metadata={"agent": selected_agent, "error": api_result.get("error"), "session_agent": True},
-            )
-
-            return {
-                "success": api_result.get("success", True),
-                "agent": selected_agent,
-                "response": api_result.get("response", ""),
-                "api_result": api_result.get("api_result"),
-                "error": api_result.get("error"),
-                "session_agent": True,  # 세션 고정 에이전트임을 표시
-            }
-
-        # 3) 선택된 에이전트가 없는 경우: LangGraph 분류 진행
-        print(f"🔍 세션 {req.session_id}에서 새로운 에이전트 분류 시작")
-        result = state_graph_router.process_query(req.query)
-
-        # ── (A) 사용자 직접 선택이 필요한 경우 ────────────────────────────────
-        if result.get("selected_agent") == "NEED_USER_SELECTION":
-            assistant_msg = "질문의 의도가 불분명합니다. 4개 중 하나를 선택해주세요.\n\n💡 선택하신 에이전트가 이 채팅에서 고정됩니다."
-            add_message(
-                req.session_id,
-                "assistant",
-                assistant_msg,
-                metadata={"needs_user_selection": True},
-            )
-            return {
-                "success": True,
-                "needs_user_selection": True,
-                "message": assistant_msg,
-                "available_agents": router_agent.available_agents,
-                "agent_descriptions": router_agent.agent_descriptions,
-                "agent_display_names": router_agent.get_agent_display_names(),
-                "query": req.query,
-            }
-
-        # ── (B) 에이전트가 결정된 경우 ────────────────────────────────────────
-        classified_agent = result.get("selected_agent")
-        if classified_agent in router_agent.available_agents:
-            # 🔹 세션에 에이전트 저장 (고정)
-            set_session_selected_agent(req.session_id, classified_agent)
-            
-            api_result = await call_agent_api(classified_agent, req.query, req.session_id)
-
-            # assistant 응답 저장
-            add_message(
-                req.session_id,
-                "assistant",
-                api_result.get("response", ""),
-                metadata={"agent": classified_agent, "error": api_result.get("error"), "agent_selected": True},
-            )
-
-            return {
-                "success": api_result.get("success", True),
-                "agent": classified_agent,
-                "response": api_result.get("response", ""),
-                "api_result": api_result.get("api_result"),
-                "error": api_result.get("error"),
-                "agent_selected": True,  # 새로 선택된 에이전트임을 표시
-                "message": f"🎯 '{router_agent.get_agent_display_names().get(classified_agent, classified_agent)}'가 이 채팅의 전담 에이전트가 되었습니다."
-            }
-
-        # ── (C) 분류 결과는 나왔지만 매칭되는 에이전트가 없을 때 ─────────────
-        fallback_msg = "적절한 에이전트를 찾지 못했습니다."
-        add_message(
-            req.session_id,
-            "assistant",
-            fallback_msg,
-            metadata={"agent": "unknown"},
-        )
-        return {
-            "success": False,
-            "message": fallback_msg,
-            "query": req.query,
-        }
-
-    except Exception as e:
-        return {"success": False, "error": str(e), "message": "라우팅 처리 중 오류"}
-
-# ────────────────────────────────────────────────────────────────────────────────
-# 사용자 선택 에이전트 처리
-# ────────────────────────────────────────────────────────────────────────────────
-@router.post("/select-agent")
-async def process_agent_selection(req: AgentSelectionRequest):
-    """프론트에서 사용자가 에이전트를 직접 골랐을 때 (세션에 고정)"""
-    try:
-        add_session(req.session_id)
-        # 사용자 선택 정보도 user role 로 남김(옵션)
-        add_message(
-            req.session_id,
-            "user",
-            f"[사용자 선택] {req.selected_agent}",
-            metadata={"manual_select": True},
-        )
-
-        # 🔹 세션에 선택된 에이전트 저장 (고정)
-        set_session_selected_agent(req.session_id, req.selected_agent)
-
-        api_result = await call_agent_api(req.selected_agent, req.query, req.session_id)
-
-        # 에이전트 고정 안내 메시지 추가
-        agent_display_name = router_agent.get_agent_display_names().get(req.selected_agent, req.selected_agent)
-        enhanced_response = f"🎯 '{agent_display_name}'가 이 채팅의 전담 에이전트가 되었습니다.\n\n{api_result.get('response', '')}"
-
-        add_message(
-            req.session_id,
-            "assistant",
-            enhanced_response,
-            metadata={"agent": req.selected_agent, "error": api_result.get("error"), "manual_select": True},
-        )
-
-        return {
-            "success": api_result.get("success", True),
-            "agent": req.selected_agent,
-            "response": enhanced_response,
-            "error": api_result.get("error"),
-            "agent_fixed": True,  # 에이전트 고정됨을 표시
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e), "message": "선택 처리 중 오류"}
-
-# ────────────────────────────────────────────────────────────────────────────────
-# 세션별 에이전트 관리 API
-# ────────────────────────────────────────────────────────────────────────────────
-
 class NewChatRequest(BaseModel):
     session_id: str
 
 class ResetAgentRequest(BaseModel):
     session_id: str
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 메인 라우터: 통합 LangGraph 사용
+# ────────────────────────────────────────────────────────────────────────────────
+@router.post("/router")
+async def route_with_unified_graph(req: QueryRequest):
+    """통합 LangGraph를 사용한 쿼리 처리"""
+    try:
+        # 1) 세션 보장 & 사용자 질문 저장
+        add_session(req.session_id)
+        add_message(req.session_id, "user", req.query)
+
+        print(f"🚀 통합 그래프 처리 시작: {req.session_id}")
+        
+        # 2) 통합 그래프로 쿼리 처리
+        result = await unified_graph.process_query(req.query, req.session_id)
+
+        if not result.get("success"):
+            # 실패한 경우
+            add_message(
+                req.session_id,
+                "assistant",
+                result.get("response", "처리 실패"),
+                metadata={"error": result.get("error"), "stage": result.get("stage")}
+            )
+            
+            return {
+                "success": False,
+                "response": result.get("response", "처리 중 오류가 발생했습니다."),
+                "error": result.get("error"),
+                "stage": result.get("stage"),
+                "session_id": req.session_id
+            }
+        
+        # 3) 성공한 경우 응답 저장
+        response_text = result.get("response", "")
+        agent_name = result.get("agent")
+        stage = result.get("stage")
+        
+        # 에이전트가 결정된 경우 세션에 저장 (기존 로직 유지)
+        if agent_name and agent_name in ["employee_agent", "client_agent", "create_document_agent", "search_agent"]:
+            set_session_selected_agent(req.session_id, agent_name)
+            print(f"✅ 세션 에이전트 저장: {agent_name}")
+        
+        # assistant 응답 저장
+        add_message(
+            req.session_id,
+            "assistant",
+            response_text,
+            metadata={
+                "agent": agent_name,
+                "stage": stage,
+                "unified_graph": True,
+                "requires_followup": result.get("requires_followup", False),
+                "user_selection_needed": result.get("user_selection_needed", False)
+            }
+        )
+
+        # 4) 프론트엔드 응답 구성
+        response_data = {
+            "success": True,
+            "response": response_text,
+            "agent": agent_name,
+            "stage": stage,
+            "session_id": req.session_id,
+            "unified_graph": True  # 통합 그래프 사용 표시
+        }
+        
+        # 사용자 선택이 필요한 경우
+        if result.get("user_selection_needed"):
+            response_data.update({
+                "needs_user_selection": True,
+                "available_agents": result.get("available_agents", []),
+                "message": "에이전트 선택이 필요합니다."
+            })
+        
+        # 후속 입력이 필요한 경우 (문서 작성 등)
+        if result.get("requires_followup"):
+            response_data.update({
+                "requires_followup": True,
+                "message": "추가 입력이 필요합니다."
+            })
+        
+        # 메모리 정보 (디버깅용)
+        if result.get("memory"):
+            response_data["memory_count"] = len(result["memory"])
+        
+        print(f"✅ 통합 그래프 처리 완료: {agent_name} ({stage})")
+        return response_data
+
+    except Exception as e:
+        error_msg = f"통합 그래프 처리 중 오류: {str(e)}"
+        print(f"❌ {error_msg}")
+        
+        # 오류 메시지 저장
+        add_message(
+            req.session_id,
+            "assistant",
+            "시스템 처리 중 오류가 발생했습니다.",
+            metadata={"error": str(e), "unified_graph_error": True}
+        )
+        
+        return {
+            "success": False,
+            "error": error_msg,
+            "response": "시스템 처리 중 오류가 발생했습니다. 다시 시도해주세요.",
+            "session_id": req.session_id,
+            "stage": "system_error"
+        }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 기존 사용자 선택 엔드포인트 (통합 그래프 사용)
+# ────────────────────────────────────────────────────────────────────────────────
+@router.post("/select-agent")
+async def process_agent_selection(req: AgentSelectionRequest):
+    """사용자가 에이전트를 직접 선택한 경우 처리"""
+    try:
+        add_session(req.session_id)
+        
+        # 사용자 선택 정보 저장
+        add_message(
+            req.session_id,
+            "user",
+            f"[에이전트 선택] {req.selected_agent}: {req.query}",
+            metadata={"manual_select": True, "selected_agent": req.selected_agent}
+        )
+
+        print(f"👤 사용자 직접 선택: {req.selected_agent}")
+        
+        # 선택된 에이전트를 명시적으로 포함한 쿼리로 재처리
+        enhanced_query = f"[{req.selected_agent}] {req.query}"
+        
+        # 통합 그래프로 처리
+        result = await unified_graph.process_query(enhanced_query, req.session_id)
+        
+        if result.get("success"):
+            # 에이전트 세션에 저장
+            set_session_selected_agent(req.session_id, req.selected_agent)
+            
+            response_text = result.get("response", "")
+            
+            # 선택 안내 메시지 추가  
+            agent_display_names = {
+                "employee_agent": "직원 실적 분석",
+                "client_agent": "고객/거래처 분석", 
+                "create_document_agent": "문서 초안 작성",
+                "search_agent": "내부 데이터 검색"
+            }
+            
+            agent_name = agent_display_names.get(req.selected_agent, req.selected_agent)
+            enhanced_response = f"🎯 '{agent_name}'가 선택되었습니다.\n\n{response_text}"
+            
+            # 응답 저장
+            add_message(
+                req.session_id,
+                "assistant",
+                enhanced_response,
+                metadata={
+                    "agent": req.selected_agent,
+                    "manual_select": True,
+                    "unified_graph": True,
+                    "stage": result.get("stage")
+                }
+            )
+            
+            return {
+                "success": True,
+                "agent": req.selected_agent,
+                "response": enhanced_response,
+                "stage": result.get("stage"),
+                "agent_fixed": True,
+                "unified_graph": True
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "선택된 에이전트 처리 실패"),
+                "response": result.get("response", "처리 중 오류가 발생했습니다.")
+            }
+            
+    except Exception as e:
+        return {
+            "success": False, 
+            "error": str(e), 
+            "message": "에이전트 선택 처리 중 오류"
+        }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 기존 세션 관리 API들 (그대로 유지)
+# ────────────────────────────────────────────────────────────────────────────────
 
 @router.post("/new-chat")
 def start_new_chat(req: NewChatRequest):
@@ -396,13 +251,14 @@ def start_new_chat(req: NewChatRequest):
             req.session_id,
             "system", 
             "안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?",
-            metadata={"new_chat": True}
+            metadata={"new_chat": True, "unified_graph": True}
         )
         
         return {
             "success": True,
-            "message": "새로운 채팅이 시작되었습니다. 질문해주시면 적절한 에이전트를 선택해드립니다.",
-            "session_id": req.session_id
+            "message": "새로운 채팅이 시작되었습니다. 질문해주시면 통합 AI가 적절히 처리해드립니다.",
+            "session_id": req.session_id,
+            "unified_graph": True
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -413,23 +269,39 @@ def get_current_agent(session_id: str):
     try:
         selected_agent = get_session_selected_agent(session_id)
         
+        agent_display_names = {
+            "employee_agent": "직원 실적 분석",
+            "client_agent": "고객/거래처 분석", 
+            "create_document_agent": "문서 초안 작성",
+            "search_agent": "내부 데이터 검색"
+        }
+        
+        agent_descriptions = {
+            "employee_agent": "사내 직원의 실적 분석, 성과 평가, 인사 정보 조회",
+            "client_agent": "고객 분석, 거래처 매출 분석, 영업 성과 분석",
+            "create_document_agent": "문서 초안 작성, 양식 생성, 컴플라이언스 검토",
+            "search_agent": "내부 데이터베이스 검색, 정보 조회, 문서 검색"
+        }
+        
         if selected_agent:
             agent_info = {
                 "agent_key": selected_agent,
-                "agent_name": router_agent.get_agent_display_names().get(selected_agent, selected_agent),
-                "agent_description": router_agent.agent_descriptions.get(selected_agent, ""),
+                "agent_name": agent_display_names.get(selected_agent, selected_agent),
+                "agent_description": agent_descriptions.get(selected_agent, ""),
             }
             return {
                 "success": True,
                 "has_selected_agent": True,
                 "agent_info": agent_info,
-                "message": f"현재 '{agent_info['agent_name']}'가 이 채팅의 전담 에이전트입니다."
+                "message": f"현재 '{agent_info['agent_name']}'가 활성화되어 있습니다.",
+                "unified_graph": True
             }
         else:
             return {
                 "success": True,
                 "has_selected_agent": False,
-                "message": "아직 선택된 에이전트가 없습니다. 질문해주시면 적절한 에이전트를 선택해드립니다."
+                "message": "통합 AI가 질문에 따라 적절한 에이전트를 자동 선택합니다.",
+                "unified_graph": True
             }
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -444,46 +316,103 @@ def reset_session_agent(req: ResetAgentRequest):
         # 에이전트 초기화
         clear_session_selected_agent(req.session_id)
         
+        agent_display_names = {
+            "employee_agent": "직원 실적 분석",
+            "client_agent": "고객/거래처 분석", 
+            "create_document_agent": "문서 초안 작성",
+            "search_agent": "내부 데이터 검색"
+        }
+        
         # 초기화 메시지 추가
         reset_message = (
-            f"🔄 에이전트가 초기화되었습니다.\n"
-            f"{'기존: ' + router_agent.get_agent_display_names().get(current_agent, current_agent) if current_agent else ''}\n\n"
-            f"이제 새로운 질문에 맞는 에이전트를 다시 선택해드립니다."
+            f"🔄 **에이전트가 초기화되었습니다.**\n"
+            f"{'이전: ' + agent_display_names.get(current_agent, current_agent) if current_agent else ''}\n\n"
+            f"이제 통합 AI가 새로운 질문에 맞는 에이전트를 자동으로 선택합니다."
         )
         
         add_message(
             req.session_id,
             "system",
             reset_message,
-            metadata={"agent_reset": True, "previous_agent": current_agent}
+            metadata={
+                "agent_reset": True, 
+                "previous_agent": current_agent,
+                "unified_graph": True
+            }
         )
         
         return {
             "success": True,
             "message": reset_message,
-            "previous_agent": current_agent
+            "previous_agent": current_agent,
+            "unified_graph": True
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 # ────────────────────────────────────────────────────────────────────────────────
-# 헬프용 엔드포인트: 사용 가능한 에이전트 목록
+# 시스템 정보 API들
 # ────────────────────────────────────────────────────────────────────────────────
+
 @router.get("/agents")
 def get_available_agents():
+    """사용 가능한 에이전트 목록"""
     try:
+        available_agents = ["employee_agent", "client_agent", "create_document_agent", "search_agent"]
+        
+        agent_descriptions = {
+            "employee_agent": "사내 직원의 실적 분석, 성과 평가, 인사 정보 조회",
+            "client_agent": "고객 분석, 거래처 매출 분석, 영업 성과 분석", 
+            "create_document_agent": "문서 초안 작성, 양식 생성, 컴플라이언스 검토",
+            "search_agent": "내부 데이터베이스 검색, 정보 조회, 문서 검색"
+        }
+        
+        agent_display_names = {
+            "employee_agent": "직원 실적 분석",
+            "client_agent": "고객/거래처 분석",
+            "create_document_agent": "문서 초안 작성", 
+            "search_agent": "내부 데이터 검색"
+        }
+        
         return {
             "success": True,
-            "available_agents": router_agent.available_agents,
-            "agent_descriptions": router_agent.agent_descriptions,
-            "agent_display_names": router_agent.get_agent_display_names(),
+            "available_agents": available_agents,
+            "agent_descriptions": agent_descriptions,
+            "agent_display_names": agent_display_names,
+            "unified_graph": True,
+            "message": "통합 LangGraph 기반 다중 에이전트 시스템"
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@router.get("/system-info")
+def get_system_info():
+    """시스템 정보"""
+    return {
+        "success": True,
+        "system": "NaruTalk AI - Unified Agent System",
+        "version": "2.0.0",
+        "architecture": "LangGraph + FastAPI",
+        "agents": {
+            "employee_agent": "직원 실적 분석",
+            "client_agent": "고객/거래처 분석",
+            "create_document_agent": "문서 초안 작성",
+            "search_agent": "내부 데이터 검색"
+        },
+        "features": [
+            "통합 LangGraph 워크플로우",
+            "자동 에이전트 분류",
+            "상태 기반 대화 관리",
+            "실시간 메모리 관리",
+            "폴백 및 오류 처리"
+        ],
+        "unified_graph": True
+    }
+
 # ────────────────────────────────────────────────────────────────────────────────
-# 채팅 내역 조회 API
+# 채팅 내역 조회 API (기존 유지)
 # ────────────────────────────────────────────────────────────────────────────────
+
 @router.get("/sessions")
 def get_chat_sessions():
     """모든 채팅 세션 목록 조회"""
@@ -493,7 +422,8 @@ def get_chat_sessions():
             "success": True,
             "sessions": sessions,
             "count": len(sessions),
-            "message": f"{len(sessions)}개의 채팅 세션을 찾았습니다."
+            "message": f"{len(sessions)}개의 채팅 세션을 찾았습니다.",
+            "unified_graph": True
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -508,7 +438,8 @@ def get_session_messages_api(session_id: str):
             "session_id": session_id,
             "messages": messages,
             "count": len(messages),
-            "message": f"{len(messages)}개의 메시지를 찾았습니다."
+            "message": f"{len(messages)}개의 메시지를 찾았습니다.",
+            "unified_graph": True
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -535,7 +466,8 @@ def get_full_chat_history():
             "success": True,
             "chatHistory": full_history,
             "count": len(full_history),
-            "message": f"{len(full_history)}개의 채팅 내역을 불러왔습니다."
+            "message": f"{len(full_history)}개의 채팅 내역을 불러왔습니다.",
+            "unified_graph": True
         }
     except Exception as e:
         return {"success": False, "error": str(e)}

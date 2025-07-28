@@ -28,7 +28,7 @@ class RouterAgent:
     def __init__(self):
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.available_agents = [
-            "employee_agent", "client_agent", "search_agent", "docs_agent"
+            "employee_agent", "client_agent", "search_agent", "create_document_agent"
         ]
         self.max_retry_attempts = 3
 
@@ -48,8 +48,8 @@ class RouterAgent:
                 "예: 문서 검색, 사내 규정, 업무 매뉴얼, 제품 정보, 교육 자료 등 "
                 "특정 정보를 정제된 DB 또는 벡터DB 기반으로 검색합니다."
             ),
-            "docs_agent": (
-                "문서 자동 생성 및 규정 검토를 담당합니다. "
+            "create_document_agent": (
+                "문서 초안 작성 및 생성을 담당합니다. "
                 "예: 보고서 초안 자동 생성, 전표/계획서 생성, 컴플라이언스 위반 여부 판단, "
                 "서식 분석 및 문서 오류 검토 등의 기능을 수행합니다."
             )
@@ -58,10 +58,10 @@ class RouterAgent:
     def get_agent_display_names(self):
         """프론트엔드에서 표시할 에이전트 이름들"""
         return {
-            "employee_agent": "직원 정보 분석",
+            "employee_agent": "직원 실적 분석",
             "client_agent": "고객/거래처 분석", 
             "search_agent": "내부 데이터 검색",
-            "docs_agent": "문서 생성/분류"
+            "create_document_agent": "문서 초안 작성"
         }
         
     def classify_query(self, query: str) -> str:
@@ -71,7 +71,7 @@ class RouterAgent:
             1. employee_agent: {self.agent_descriptions['employee_agent']}
             2. client_agent: {self.agent_descriptions['client_agent']}
             3. search_agent: {self.agent_descriptions['search_agent']}
-            4. docs_agent: {self.agent_descriptions['docs_agent']}
+            4. create_document_agent: {self.agent_descriptions['create_document_agent']}
 
             응답 형식:
             AGENT: [에이전트명]
@@ -115,8 +115,8 @@ class RouterAgent:
             print("- 거래처 분석 중...")
         elif agent_name == "search_agent":
             print("- 데이터베이스 검색 중...")
-        elif agent_name == "docs_agent":
-            print("- 문서 자동 생성 중...")
+        elif agent_name == "create_document_agent":
+            print("- 문서 초안 작성 중...")
         else:
             print("- 알 수 없는 에이전트.")
 
