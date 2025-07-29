@@ -12,6 +12,7 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 from app.services.router_agent.router_agent import RouterAgent, AVAILABLE_AGENT_IDS, AGENT_DESCS
+from app.services.common.context_manager import context_manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -122,6 +123,11 @@ async def chat(req: QueryRequest):
             }
         
         session = sessions[req.session_id]
+        
+        # 컨텍스트 기반 쿼리 처리
+        enhanced_query = context_manager.process_query(req.session_id, req.query)
+        logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{enhanced_query}'")
+        
         session["messages"].append({"role": "user", "content": req.query})
         
         # RouterAgent를 통한 분류 시도 (최대 3회)
@@ -131,8 +137,8 @@ async def chat(req: QueryRequest):
         if router_agent:
             for attempt in range(max_attempts):
                 session["routing_attempts"] = attempt + 1
-                # 대화 이력을 포함하여 분류
-                classified_agent = await router_agent.classify(req.query, session["messages"])
+                # 보완된 쿼리로 분류
+                classified_agent = await router_agent.classify(enhanced_query, session["messages"])
                 
                 if classified_agent and classified_agent in AVAILABLE_AGENT_IDS:
                     logger.info(f"분류 성공 (시도 {attempt + 1}): {classified_agent}")
@@ -164,7 +170,7 @@ async def chat(req: QueryRequest):
             }
         
         # 에이전트 실행
-        result = await run_agent(classified_agent, req.query, req.session_id)
+        result = await run_agent(classified_agent, enhanced_query, req.session_id)
         result["routing_attempts"] = session["routing_attempts"]
         result["classification_result"] = f"자동 분류: {classified_agent}"
         
@@ -174,6 +180,9 @@ async def chat(req: QueryRequest):
             "content": result.get("response", ""),
             "agent": classified_agent
         })
+        
+        # 컨텍스트 업데이트
+        context_manager.update_context(req.session_id, req.query, result)
         
         return result
         
@@ -227,8 +236,12 @@ async def select_agent(req: SelectionRequest):
                 "example_questions": example_questions
             }
         
+        # 컨텍스트 기반 쿼리 처리
+        enhanced_query = context_manager.process_query(req.session_id, req.query)
+        logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{enhanced_query}'")
+        
         # 질문이 있으면 에이전트 실행
-        result = await run_agent(agent_id, req.query, req.session_id)
+        result = await run_agent(agent_id, enhanced_query, req.session_id)
         result["agent_selected"] = True
         result["classification_result"] = f"사용자 선택: {agent_id}"
         
@@ -242,6 +255,9 @@ async def select_agent(req: SelectionRequest):
             "content": result.get("response", ""),
             "agent": agent_id
         })
+        
+        # 컨텍스트 업데이트
+        context_manager.update_context(req.session_id, req.query, result)
         
         return result
         
