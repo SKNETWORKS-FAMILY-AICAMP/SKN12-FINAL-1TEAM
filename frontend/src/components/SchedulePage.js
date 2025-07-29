@@ -63,8 +63,8 @@ const SchedulePage = () => {
   return (
     <div className="schedule-page">
       <div className="schedule-header">
-        <h1>📅 일정 관리</h1>
-        <p>방문 일정과 업무 일정을 관리하세요</p>
+        <h2>일정 관리</h2>
+        
       </div>
 
       <div className="schedule-controls">
@@ -163,13 +163,13 @@ const SchedulePage = () => {
           )}
         </div>
 
-        <div className="schedule-calendar">
+        {/* <div className="schedule-calendar">
           <h3>월간 일정</h3>
           <div className="calendar-placeholder">
             <p>달력 뷰는 추후 구현 예정입니다.</p>
             <p>현재는 목록 뷰로 일정을 확인할 수 있습니다.</p>
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );

@@ -594,10 +594,8 @@ const ChatScreen = () => {
 
   return (
     <div className="chat-screen">
-      {/* Main Content */}
-      <div className="chat-container">
-        {/* Chat Management Panel */}
-        <aside className="chat-panel">
+      {/* Chat Management Panel */}
+      <aside className="chat-panel">
           <div className="chat-management">
             <h3>Chat</h3>
             <button className="new-chat-btn" onClick={startNewChat}>
@@ -636,7 +634,9 @@ const ChatScreen = () => {
           </div>
         </aside>
 
-        {/* Main Chat Area */}
+        {/* Main Content */}
+        <div className="chat-container">
+          {/* Main Chat Area */}
         <main className="chat-main">
           <div className="chat-title">
             <h2>AI 채팅</h2>
@@ -814,7 +814,7 @@ const ChatScreen = () => {
             </div>
           </div>
         </main>
-      </div>
+        </div>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import React from 'react';
 import './Dashboard.css';
 
-const Dashboard = () => {
+const Dashboard = ({ currentUser }) => {
   const summaryCards = [
     { title: '오늘 방문 일정', value: '3건', color: '#6f42c1' },
     { title: '미제출 보고서', value: '1건', color: '#dc3545' },
@@ -30,7 +30,7 @@ const Dashboard = () => {
   return (
     <div className="dashboard">
       <div className="dashboard-header">
-        <h1>김복남님, 좋은 하루입니다!</h1>
+        <h1>{currentUser?.name || '사용자'}님, 좋은 하루입니다!</h1>
       </div>
 
       {/* 요약 정보 카드 */}
