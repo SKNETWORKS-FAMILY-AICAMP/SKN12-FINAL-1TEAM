@@ -120,8 +120,8 @@ class OpenSearchClient:
     def embedding_dim(self):
         """임베딩 차원 반환"""
         if self._embedding_dim is None:
-            # 모델이 로딩되지 않은 경우 기본값 사용
-            return self._default_embedding_dim
+            # KURE-v1 모델은 1024차원 벡터를 생성
+            return 1024
         return self._embedding_dim
 
     def _check_client(self) -> bool:
