@@ -17,6 +17,14 @@ const ChatScreen = () => {
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   };
 
+  // 백엔드 에이전트 ID를 프론트엔드 키로 매핑
+  const agentKeyMapping = {
+    'employee_agent': 'employee',
+    'client_agent': 'client',
+    'search_agent': 'search',
+    'create_document_agent': 'docs'
+  };
+
   // 4개 에이전트 정보
   const agents = {
     router: {
@@ -38,6 +46,13 @@ const ChatScreen = () => {
       description: '고객/거래처 분석 및 영업 전략',
       color: '#f59e0b',
       agentType: 'client_agent'
+    },
+    search: {
+      name: 'Search Agent',
+      endpoint: '/api/select-agent',
+      description: '정보 검색',
+      color: '#06b6d4',
+      agentType: 'search_agent'
     },
     docs: {
       name: 'Docs Agent',
@@ -103,12 +118,42 @@ const ChatScreen = () => {
   // 초기 안내 메시지
   useEffect(() => {
     const initializeChat = async () => {
-      const initialMessage = {
+      // 시스템 안내 메시지
+      const systemMessage = {
         type: 'system',
         content: '안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?',
         timestamp: new Date().toLocaleTimeString()
       };
-      setMessages([initialMessage]);
+      
+      // 에이전트 선택 메시지 (H2H와 동일한 형태)
+      const agentSelectionMessage = {
+        type: 'agent_selection',
+        content: `저희 시스템은 다음 기능을 제공합니다:
+- 직원 실적/평가 조회
+- 고객/거래처(병원,약국) 정보 관리
+- 영업 데이터 검색
+- 보고서/문서 자동 생성
+
+원하시는 기능을 선택하시거나, 바로 질문을 입력하셔도 됩니다.`,
+        timestamp: new Date().toLocaleTimeString(),
+        agent: 'System',
+        query: '',  // 초기 선택이므로 query 없음
+        available_agents: ['employee_agent', 'client_agent', 'search_agent', 'create_document_agent'],
+        agent_descriptions: {
+          "employee_agent": "사내 직원에 대한 정보 제공을 담당합니다. 예: 개인 실적 조회, 인사 이력, 직책, 소속 부서, 조직도 확인, 성과 평가 등 직원 관련 질의 응답을 처리합니다.",
+          "client_agent": "고객 및 거래처에 대한 정보를 제공합니다. 반드시 병원, 제약영업과 관련이 있는 질문에만 답변합니다.예: 특정 고객의 매출 추이, 거래 이력, 등급 분류, 잠재 고객 분석, 영업 성과 분석 등 외부 고객 관련 질문에 대응합니다.",
+          "search_agent": "내부 데이터베이스에서 정보 검색을 수행합니다. 예: 문서 검색, 사내 규정, 업무 매뉴얼, 제품 정보, 교육 자료 등 특정 정보를 정제된 DB 또는 벡터DB 기반으로 검색합니다.",
+          "create_document_agent": "문서 자동 생성 및 규정 검토를 담당합니다. 예: 보고서 초안 자동 생성, 전표/계획서 생성, 컴플라이언스 위반 여부 판단, 서식 분석 및 문서 오류 검토 등의 기능을 수행합니다."
+        },
+        agent_display_names: {
+          "employee_agent": "직원 실적 분석",
+          "client_agent": "고객/거래처 분석",
+          "search_agent": "정보 검색",
+          "create_document_agent": "문서 생성"
+        }
+      };
+      
+      setMessages([systemMessage, agentSelectionMessage]);
       
       // 백엔드에서 채팅 내역 불러오기
       const history = await loadChatHistoryFromBackend();
@@ -127,13 +172,43 @@ const ChatScreen = () => {
   const startNewChat = () => {
     const chatId = Date.now().toString();
     const newSessionId = generateSessionId();
-    const initialMessage = {
+    
+    // 시스템 메시지
+    const systemMessage = {
       type: 'system',
       content: '안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?',
       timestamp: new Date().toLocaleTimeString()
     };
     
-    setMessages([initialMessage]);
+    // 에이전트 선택 메시지
+    const agentSelectionMessage = {
+      type: 'agent_selection',
+      content: `저희 시스템은 다음 기능을 제공합니다:
+- 직원 실적/평가 조회
+- 고객/거래처(병원,약국) 정보 관리
+- 영업 데이터 검색
+- 보고서/문서 자동 생성
+
+원하시는 기능을 선택하시거나, 바로 질문을 입력하셔도 됩니다.`,
+      timestamp: new Date().toLocaleTimeString(),
+      agent: 'System',
+      query: '',
+      available_agents: ['employee_agent', 'client_agent', 'search_agent', 'create_document_agent'],
+      agent_descriptions: {
+        "employee_agent": "사내 직원에 대한 정보 제공을 담당합니다. 예: 개인 실적 조회, 인사 이력, 직책, 소속 부서, 조직도 확인, 성과 평가 등 직원 관련 질의 응답을 처리합니다.",
+        "client_agent": "고객 및 거래처에 대한 정보를 제공합니다. 반드시 병원, 제약영업과 관련이 있는 질문에만 답변합니다.예: 특정 고객의 매출 추이, 거래 이력, 등급 분류, 잠재 고객 분석, 영업 성과 분석 등 외부 고객 관련 질문에 대응합니다.",
+        "search_agent": "내부 데이터베이스에서 정보 검색을 수행합니다. 예: 문서 검색, 사내 규정, 업무 매뉴얼, 제품 정보, 교육 자료 등 특정 정보를 정제된 DB 또는 벡터DB 기반으로 검색합니다.",
+        "create_document_agent": "문서 자동 생성 및 규정 검토를 담당합니다. 예: 보고서 초안 자동 생성, 전표/계획서 생성, 컴플라이언스 위반 여부 판단, 서식 분석 및 문서 오류 검토 등의 기능을 수행합니다."
+      },
+      agent_display_names: {
+        "employee_agent": "직원 실적 분석",
+        "client_agent": "고객/거래처 분석",
+        "search_agent": "정보 검색",
+        "create_document_agent": "문서 생성"
+      }
+    };
+    
+    setMessages([systemMessage, agentSelectionMessage]);
     setCurrentChatId(chatId);
     setSessionId(newSessionId);
     
@@ -142,7 +217,7 @@ const ChatScreen = () => {
       id: chatId,
       sessionId: newSessionId,
       title: `채팅 ${new Date().toLocaleString()}`,
-      messages: [initialMessage],
+      messages: [systemMessage, agentSelectionMessage],
       createdAt: new Date().toISOString()
     };
     
@@ -350,7 +425,10 @@ const ChatScreen = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/api/select-agent', {
+      // 초기 화면에서 선택하는 경우 (query가 비어있음)
+      const endpoint = query === '' ? '/api/initial-agent-select' : '/api/select-agent';
+      
+      const response = await fetch(`http://localhost:8000${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -384,8 +462,9 @@ const ChatScreen = () => {
           setMessages(updatedMessages);
           saveMessageToHistory(updatedMessages);
           
-          // 선택된 에이전트 상태 업데이트 (임시)
-          setSelectedAgent(data.selected_agent);
+          // 선택된 에이전트 상태 업데이트 (백엔드 ID를 프론트엔드 키로 변환)
+          const frontendKey = agentKeyMapping[data.selected_agent] || data.selected_agent;
+          setSelectedAgent(frontendKey);
         } else {
           // 실제 에이전트 응답
           const botMessage = {
@@ -624,7 +703,8 @@ const ChatScreen = () => {
                                 key={idx}
                                 onClick={() => {
                                   setInputValue(example);
-                                  setSelectedAgent(message.selected_agent);
+                                  const frontendKey = agentKeyMapping[message.selected_agent] || message.selected_agent;
+                                  setSelectedAgent(frontendKey);
                                 }}
                                 style={{
                                   textAlign: 'left',

@@ -252,6 +252,54 @@ async def select_agent(req: SelectionRequest):
             "error": str(e)
         }
 
+@router.post("/initial-agent-select")
+async def initial_agent_select(req: SelectionRequest):
+    """초기 화면에서 에이전트 직접 선택"""
+    try:
+        agent_id = req.selected_agent or req.agent
+        
+        if not agent_id or agent_id not in AVAILABLE_AGENT_IDS:
+            return {
+                "success": False,
+                "error": "유효하지 않은 에이전트입니다."
+            }
+        
+        # 세션 초기화
+        if req.session_id not in sessions:
+            sessions[req.session_id] = {
+                "messages": [],
+                "routing_attempts": 0
+            }
+        
+        # 선택된 에이전트 정보와 예시 질문 제공
+        agent_name = AGENT_DISPLAY_NAMES.get(agent_id, agent_id)
+        example_questions = AGENT_EXAMPLE_QUESTIONS.get(agent_id, [])
+        
+        guide_message = f"""{agent_name}을(를) 선택하셨습니다.
+
+이 에이전트는 다음과 같은 질문에 답변할 수 있습니다:
+"""
+        for i, example in enumerate(example_questions, 1):
+            guide_message += f"\n{i}. {example}"
+        
+        guide_message += "\n\n위 예시를 참고하여 질문을 입력해주세요."
+        
+        return {
+            "success": True,
+            "agent_selected": True,
+            "needs_new_question": True,
+            "selected_agent": agent_id,
+            "message": guide_message,
+            "example_questions": example_questions
+        }
+        
+    except Exception as e:
+        logger.error(f"Initial agent select error: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @router.get("/test")
 async def test():
     """테스트 엔드포인트"""
