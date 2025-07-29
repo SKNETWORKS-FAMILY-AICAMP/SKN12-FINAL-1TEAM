@@ -145,7 +145,7 @@ def calculate_confidence_score(search_results: List[Dict[str, Any]]) -> float:
     return round(normalized_score, 2)
 
 # 자연어 질문-답변 함수
-def question_answering(question: str, top_k: int = 5, include_sources: bool = True, use_rerank: bool = False) -> Dict[str, Any]:
+def question_answering(question: str, top_k: int = 5, include_sources: bool = True) -> Dict[str, Any]:
     """
     질문에 대한 답변을 생성합니다.
     
@@ -153,7 +153,6 @@ def question_answering(question: str, top_k: int = 5, include_sources: bool = Tr
         question: 사용자 질문
         top_k: 검색할 문서 수
         include_sources: 소스 정보 포함 여부
-        use_rerank: 재순위 사용 여부 (기본값: False)
         
     Returns:
         답변 결과 딕셔너리
@@ -166,14 +165,14 @@ def question_answering(question: str, top_k: int = 5, include_sources: bool = Tr
         # 2. Search Pipeline 기반 하이브리드 검색 수행
         search_results = []
         try:
-            # Search Pipeline 기반 하이브리드 검색 수행
+            # Search Pipeline 기반 하이브리드 검색 수행 (재순위 무조건 적용)
             search_results = opensearch_client.search_with_pipeline(
                 query_text=question,
                 keywords=keywords,
                 pipeline_id=SEARCH_PIPELINE_ID,
                 index_name=DOCUMENT_INDEX_NAME,
                 top_k=top_k,
-                use_rerank=use_rerank,  # 선택적으로 재순위 사용
+                use_rerank=True,  # 무조건 재순위 적용
                 rerank_top_k=3
             )
             

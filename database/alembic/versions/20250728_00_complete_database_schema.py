@@ -48,6 +48,7 @@ def upgrade() -> None:
         sa.Column('incentive_pay', sa.Integer),
         sa.Column('avg_monthly_budget', sa.Integer),
         sa.Column('latest_evaluation', sa.String),
+        sa.Column('responsibilities', sa.String),  # 책임업무/담당업무
         sa.Column('created_at', sa.DateTime),
         sa.Column('updated_at', sa.DateTime),
     )

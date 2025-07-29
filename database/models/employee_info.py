@@ -32,6 +32,9 @@ class EmployeeInfo(Base):
     # 평가 정보
     latest_evaluation = Column(String)  # 최근 평가 결과 (예: A, B, C 등급)
     
+    # 업무 정보
+    responsibilities = Column(String)  # 책임업무/담당업무
+    
     # 시스템 정보
     created_at = Column(DateTime, default=func.now())  # 인사 정보 생성 일시
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())  # 인사 정보 수정 일시

@@ -874,23 +874,28 @@ class OpenSearchClient:
                 logger.info(f"   파일명: {source.get('file_name', 'N/A')}")
                 logger.info(f"   내용: {source.get('content', 'N/A')[:100]}...")
             
-            # 리랭크 적용
-            if use_rerank and results and self.reranker:
-                logger.info(f"\n🔄 BGE Reranker로 상위 {rerank_top_k}개 선별 중...")
-                reranked_results = self._rerank_documents_with_pipeline(query_text, results, rerank_top_k)
-                
-                logger.info(f"\n=== BGE Reranker 최종 결과 (상위 {len(reranked_results)}개) ===")
-                for i, doc in enumerate(reranked_results):
-                    source = doc['source']
-                    logger.info(f"\n{i+1}. 리랭크 점수: {doc['rerank_score']:.6f}")
-                    logger.info(f"   Pipeline 점수: {doc['score']:.6f}")
-                    logger.info(f"   문서명: {source.get('title', 'N/A')}")
-                    logger.info(f"   파일명: {source.get('file_name', 'N/A')}")
-                    logger.info(f"   내용: {source.get('content', 'N/A')[:100]}...")
-                
-                return reranked_results
-            
-            return results
+            # 리랭크 적용 (무조건 적용)
+            if results:
+                if self.reranker:
+                    logger.info(f"\n🔄 BGE Reranker로 상위 {rerank_top_k}개 선별 중...")
+                    reranked_results = self._rerank_documents_with_pipeline(query_text, results, rerank_top_k)
+                    
+                    logger.info(f"\n=== BGE Reranker 최종 결과 (상위 {len(reranked_results)}개) ===")
+                    for i, doc in enumerate(reranked_results):
+                        source = doc['source']
+                        logger.info(f"\n{i+1}. 리랭크 점수: {doc['rerank_score']:.6f}")
+                        logger.info(f"   Pipeline 점수: {doc['score']:.6f}")
+                        logger.info(f"   문서명: {source.get('title', 'N/A')}")
+                        logger.info(f"   파일명: {source.get('file_name', 'N/A')}")
+                        logger.info(f"   내용: {source.get('content', 'N/A')[:100]}...")
+                    
+                    return reranked_results
+                else:
+                    logger.warning("⚠️ 재순위 모델이 로드되지 않아 기본 검색 결과를 반환합니다.")
+                    return results
+            else:
+                logger.warning("⚠️ 검색 결과가 없어 재순위를 적용할 수 없습니다.")
+                return results
             
         except Exception as e:
             logger.error(f"❌ Search pipeline 검색 오류: {e}")
