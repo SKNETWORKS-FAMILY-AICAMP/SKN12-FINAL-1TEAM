@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from services.opensearch_service import search_document
 from services.query_analyzer import query_analyzer
-from services.text2sql_classifier import text2sql_classifier
+from services.text2sql_search import text2sql_search_service
 import time
 
 logger = logging.getLogger(__name__)
@@ -72,14 +72,17 @@ class HybridSearchService:
     def _search_table_data(self, query: str, analysis: Dict, limit: int) -> List[Dict]:
         """테이블 데이터 검색 (Text2SQL 기반)"""
         try:
-            # Text2SQL을 사용한 테이블 데이터 검색
-            # 현재는 벡터 검색이 비활성화되어 있으므로 빈 결과 반환
-            logger.info("테이블 데이터 검색: 벡터 검색이 비활성화되어 있음")
+            logger.info(f"Text2SQL 기반 테이블 데이터 검색: '{query}'")
             
-            # 향후 Text2SQL 기반 검색으로 확장 가능
-            # 예: text2sql_classifier.search_table_data(query, limit)
+            # Text2SQL 분류기를 사용한 검색
+            search_result = text2sql_search_service.search_table_data(query, limit)
             
-            return []
+            if not search_result['success']:
+                logger.error(f"Text2SQL 검색 실패: {search_result['message']}")
+                return []
+            
+            logger.info(f"Text2SQL 검색 완료: {len(search_result['results'])}개 결과")
+            return search_result['results']
             
         except Exception as e:
             logger.error(f"테이블 데이터 검색 중 오류: {e}")

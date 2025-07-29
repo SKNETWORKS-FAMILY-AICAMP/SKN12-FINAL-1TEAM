@@ -201,12 +201,12 @@ class Text2SQLTableClassifier:
             }
     
     def _perform_llm_classification(self, columns: List[str], sample_data: List[Dict], table_description: str) -> Dict[str, Any]:
-        """LLM을 사용한 테이블 분류 및 컬럼 매핑"""
+        """LLM을 사용한 테이블 분류"""
         try:
-            # 프롬프트 생성
+            # LLM 프롬프트 생성
             prompt = self._create_llm_classification_prompt(columns, sample_data, table_description)
             
-            # 공통 OpenAI 서비스 사용
+            # OpenAI API 호출
             messages = [
                 {"role": "system", "content": "당신은 Excel 테이블 데이터를 분석하여 적절한 데이터베이스 테이블을 선택하고 컬럼 매핑을 제공하는 전문가입니다."},
                 {"role": "user", "content": prompt}
@@ -227,15 +227,35 @@ class Text2SQLTableClassifier:
                     'confidence': 0.0
                 }
             
-            logger.info(f"LLM 분류 완료: {result['target_table']} (신뢰도: {result['confidence']})")
-            logger.info(f"LLM 컬럼 매핑 결과: {result['column_mapping']}")
+            # 기본 검증
+            if 'target_table' not in result or 'column_mapping' not in result:
+                return {
+                    'success': False,
+                    'message': 'LLM 응답 형식이 올바르지 않습니다.',
+                    'target_table': None,
+                    'confidence': 0.0
+                }
+            
+            # 컬럼 매핑 정규화 (안전한 방식)
+            normalized_mapping = {}
+            for key, value in result['column_mapping'].items():
+                try:
+                    str_key = str(key)
+                    str_value = str(value)
+                    if str_value in columns:  # 실제 컬럼이 존재하는지 확인
+                        normalized_mapping[str_key] = str_value
+                except (TypeError, AttributeError, ValueError):
+                    continue
+            
+            logger.info(f"LLM 분류 완료: {result.get('target_table')} (신뢰도: {result.get('confidence', 0)})")
+            logger.info(f"LLM 컬럼 매핑 결과: {normalized_mapping}")
             
             return {
                 'success': True,
-                'target_table': result['target_table'],
-                'confidence': result['confidence'],
-                'reasoning': result['reasoning'],
-                'column_mapping': result['column_mapping']
+                'target_table': result.get('target_table'),
+                'confidence': result.get('confidence', 0.0),
+                'reasoning': result.get('reasoning', ''),
+                'column_mapping': normalized_mapping
             }
             
         except Exception as e:
@@ -259,7 +279,7 @@ class Text2SQLTableClassifier:
 사용 가능한 테이블:
 - employee_info: 직원 인사 정보 (name, employee_number, team, position, business_unit, branch, contact_number, base_salary, incentive_pay, avg_monthly_budget, latest_evaluation)
 - customers: 고객 정보 (customer_name, address, doctor_name, total_patients)
-            - sales_records: 매출 기록 (employee_name, employee_number, customer_name, product_name, sale_amount, sale_date) - 이름과 사번으로 ID를 자동 매핑
+- sales_records: 매출 기록 (employee_name, employee_number, customer_name, product_name, sale_amount, sale_date) - 이름과 사번으로 ID를 자동 매핑
 - products: 제품 정보 (product_name, description, category, is_active)
 - interaction_logs: 상호작용 기록 (employee_id, customer_id, interaction_type, summary, sentiment, compliance_risk, interacted_at)
 - assignment_map: 배정 관계 (employee_id, customer_id)
@@ -272,46 +292,39 @@ class Text2SQLTableClassifier:
 3. 필수 필드가 모두 매핑되는지 확인
 4. 가장 높은 신뢰도로 매핑할 수 있는 테이블을 선택
 
-            특별 주의사항:
-            - employee_info 테이블: 
-              * employee_number(사번)은 동명이인 구분을 위해 사용, 고유값으로 관리
-              * 사번 컬럼이 있으면 반드시 employee_number로 매핑
-              * 사번이 없으면 이름만으로 처리
-            - customers 테이블: customer_grade와 notes는 시스템에서 관리하므로 매핑하지 않음
-            - address 필드: customer_name에서 주소 정보를 추출하거나 별도 컬럼에서 매핑 가능
-            - customer_type은 사용하지 않음
-            - customer_name과 address의 조합으로 중복 체크 (같은 지역의 같은 이름은 중복 불가)
-            - 각 테이블의 필드만 해당 테이블에 매핑 (employee_info 필드를 customers에 매핑하지 않음)
-            - sales_records 테이블: 
-              * 월별 매출 데이터 감지: 컬럼명이 202312, 202401 등 YYYYMM 형태인 경우 월별 매출 데이터로 분류
-              * LLM은 원본 컬럼만 매핑 (담당자, 사번, ID, 품목, 202312, 202401 등)
-              * 사번 컬럼이 있으면 employee_number로 매핑 (동명이인 구분용)
-              * sale_amount와 sale_date는 LLM이 매핑하지 않음 (시스템에서 자동 변환)
-              * 월별 데이터 변환: 각 행을 12개의 개별 매출 기록으로 분할하여 처리
-              * 합계 행 처리: 품목이나 거래처에 "합계"가 포함된 행은 월별 총합이므로 개별 매출 기록으로 변환하지 않음
+특별 주의사항:
+- employee_info 테이블: 
+  * employee_number(사번)은 동명이인 구분을 위해 사용, 고유값으로 관리
+  * 사번 컬럼이 있으면 반드시 employee_number로 매핑
+  * 사번이 없으면 이름만으로 처리
+- customers 테이블: customer_grade와 notes는 시스템에서 관리하므로 매핑하지 않음
+- address 필드: customer_name에서 주소 정보를 추출하거나 별도 컬럼에서 매핑 가능
+- customer_type은 사용하지 않음
+- customer_name과 address의 조합으로 중복 체크 (같은 지역의 같은 이름은 중복 불가)
+- 각 테이블의 필드만 해당 테이블에 매핑 (employee_info 필드를 customers에 매핑하지 않음)
+- sales_records 테이블: 
+  * 월별 매출 데이터 감지: 컬럼명이 202312, 202401 등 YYYYMM 형태인 경우 월별 매출 데이터로 분류
+  * LLM은 기본 컬럼만 매핑 (담당자, 사번, ID, 품목 등)
+  * 월별 컬럼(202312, 202401 등)은 매핑하지 말 것 - 시스템에서 자동 처리
+  * 사번 컬럼이 있으면 employee_number로 매핑 (동명이인 구분용)
+  * sale_amount와 sale_date는 LLM이 매핑하지 않음 (시스템에서 자동 변환)
+  * 월별 데이터 변환: 각 행을 12개의 개별 매출 기록으로 분할하여 처리
+  * 합계 행 처리: 품목이나 거래처에 "합계"가 포함된 행은 월별 총합이므로 개별 매출 기록으로 변환하지 않음
+  * 고객명 컬럼: "ID" 컬럼이 실제로는 고객명인 경우가 많음, 주의해서 매핑
+
+중요한 매핑 규칙:
+1. 직원 관련 테이블(employee_info, sales_records, assignment_map, interaction_logs)에서는 반드시 employee_number(사번)을 매핑해야 함
+2. sales_records 테이블에서 employee_name 컬럼이 있으면 반드시 employee_number로도 매핑해야 함
+3. 사번이 없는 경우 시스템에서 직원을 찾을 수 없어 데이터 처리가 실패함
+4. 직원명 컬럼이 있으면 employee_name으로 매핑하고, 추가로 employee_number 컬럼이 있으면 그것도 매핑해야 함
 
 JSON 형식으로 응답:
 {{
     "target_table": "테이블명",
-    "confidence": 0.0-1.0,
-    "reasoning": "선택 이유 및 분석 근거",
-    "column_mapping": {{
-        "db_field": "excel_column"
-    }}
-}}
-
-예시:
-컬럼명: ["사번", "성명", "부서", "직급", "기본급"]
-응답: {{
-    "target_table": "employee_info",
     "confidence": 0.95,
-    "reasoning": "직원 인사 정보와 정확히 일치하는 컬럼들",
+    "reasoning": "분류 이유",
     "column_mapping": {{
-        "employee_number": "사번",
-        "name": "성명",
-        "team": "부서", 
-        "position": "직급",
-        "base_salary": "기본급"
+        "데이터베이스필드": "Excel컬럼명"
     }}
 }}
 """
@@ -374,37 +387,34 @@ JSON 형식으로 응답:
     # === 데이터 삽입 메서드들 ===
     
     def _insert_employee_info(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str]) -> Dict[str, Any]:
-        """직원 인사 정보 삽입"""
+        """직원 인사 정보 삽입 (사번으로만 조회)"""
         processed_count = 0
         skipped_count = 0
         
         try:
             for row in table_data:
-                # 매핑된 컬럼에서 데이터 추출
-                name = str(row[column_mapping['name']]).strip() if 'name' in column_mapping and row.get(column_mapping['name']) else None
-                
-                if not name:
-                    logger.warning(f"이름을 찾을 수 없는 행 건너뜀: {row}")
-                    continue
-                
-                # 사번 추출 (있는 경우)
+                # 사번 추출 (필수)
                 employee_number = None
                 if 'employee_number' in column_mapping and row.get(column_mapping['employee_number']):
                     employee_number = str(row[column_mapping['employee_number']]).strip()
                 
-                # 기존 직원 확인 (사번 우선, 이름 백업)
-                existing_employee = None
-                if employee_number:
-                    # 사번으로 먼저 찾기
-                    existing_employee = session.query(EmployeeInfo).filter(
-                        EmployeeInfo.employee_number == employee_number
-                    ).first()
+                if not employee_number or employee_number == 'nan':
+                    logger.warning(f"사번이 없거나 유효하지 않은 행 건너뜀: {row}")
+                    skipped_count += 1
+                    continue
                 
-                if not existing_employee:
-                    # 사번이 없거나 찾지 못한 경우 이름으로 찾기
-                    existing_employee = session.query(EmployeeInfo).filter(
-                        EmployeeInfo.name == name
-                    ).first()
+                # 이름 추출
+                name = str(row[column_mapping['name']]).strip() if 'name' in column_mapping and row.get(column_mapping['name']) else None
+                
+                if not name:
+                    logger.warning(f"이름을 찾을 수 없는 행 건너뜀: {row}")
+                    skipped_count += 1
+                    continue
+                
+                # 사번으로만 기존 직원 확인
+                existing_employee = session.query(EmployeeInfo).filter(
+                    EmployeeInfo.employee_number == employee_number
+                ).first()
                 
                 if existing_employee:
                     # 업데이트
@@ -420,7 +430,7 @@ JSON 형식으로 응답:
             
             return {
                 'success': True,
-                'message': f'직원 인사 정보 삽입 완료: {processed_count}명 처리됨, {skipped_count}명 중복 건너뜀',
+                'message': f'직원 인사 정보 삽입 완료: {processed_count}명 처리됨, {skipped_count}명 건너뜀',
                 'processed_count': processed_count,
                 'skipped_count': skipped_count
             }
@@ -540,8 +550,11 @@ JSON 형식으로 응답:
         """고객 객체 생성"""
         customer_data = {}
         
+        # Customer 모델의 유효한 필드만 추출
+        valid_customer_fields = ['customer_name', 'address', 'doctor_name', 'total_patients']
+        
         for db_field, source_column in column_mapping.items():
-            if source_column in row and row[source_column] is not None:
+            if db_field in valid_customer_fields and source_column in row and row[source_column] is not None:
                 value = str(row[source_column]).strip()
                 
                 # 숫자 필드 처리
@@ -558,7 +571,7 @@ JSON 형식으로 응답:
             customer_name = customer_data.get('customer_name', '')
             if customer_name:
                 # customer_name에서 주소 추출하고 깔끔한 이름으로 정리
-                address, clean_name = self._extract_address_and_clean_name(customer_name)
+                clean_name, address = self._extract_address_and_clean_name(customer_name)  # (이름, 주소) 순서로 받기
                 if address:
                     customer_data['address'] = address
                     customer_data['customer_name'] = clean_name  # 주소 부분 제거된 깔끔한 이름
@@ -614,7 +627,7 @@ JSON 형식으로 응답:
             if any(keyword in bracket_content for keyword in address_keywords):
                 # 주소 추출 및 이름에서 주소 부분 제거
                 clean_name = re.sub(r'[\(（][^\)）]+[\)）]', '', customer_name).strip()
-                return bracket_content, clean_name
+                return clean_name, bracket_content  # (이름, 주소) 순서로 반환
         
         # 특정 패턴에서 주소 추출
         address_patterns = [
@@ -629,9 +642,9 @@ JSON 형식으로 응답:
                 address = match.group(1).strip()
                 # 주소 부분을 제거한 깔끔한 이름
                 clean_name = re.sub(pattern, '', customer_name).strip()
-                return address, clean_name
+                return clean_name, address  # (이름, 주소) 순서로 반환
         
-        return None, customer_name
+        return customer_name, None  # 주소를 찾지 못한 경우 (이름, None) 반환
     
     def _update_customer(self, customer: Customer, row: Dict[str, Any], column_mapping: Dict[str, str]):
         """고객 정보 업데이트"""
@@ -675,25 +688,14 @@ JSON 형식으로 응답:
                 sample_row = table_data[0]
                 monthly_columns = [col for col in sample_row.keys() if re.match(r'^\d{6}$', str(col))]
                 is_monthly_data = len(monthly_columns) >= 10
-                if is_monthly_data:
-                    logger.info(f"원본 데이터에서 월별 컬럼 감지: {len(monthly_columns)}개")
-                    logger.info(f"감지된 월별 컬럼: {monthly_columns[:5]}...")  # 처음 5개만 로그
             
             if is_monthly_data:
                 # 월별 데이터를 개별 매출 기록으로 변환
                 transformed_data = self._transform_monthly_sales_data(table_data, column_mapping)
                 logger.info(f"월별 매출 데이터 변환: {len(table_data)}행 → {len(transformed_data)}개 매출 기록")
                 
-                # 변환된 데이터 샘플 로깅
-                if transformed_data:
-                    sample_record = transformed_data[0]
-                    logger.info(f"변환된 데이터 샘플: {sample_record}")
-                
                 table_data = transformed_data
                 column_mapping = self._get_standard_sales_mapping()  # 표준 매핑 사용
-            
-            # 컬럼 매핑 결과 로깅
-            logger.info(f"최종 컬럼 매핑 결과: {column_mapping}")
             
             for row in table_data:
                 # 매출 금액 추출
@@ -719,14 +721,13 @@ JSON 형식으로 응답:
                     skipped_count += 1
                     continue
                 
-                # 직원 ID 찾기 (사번 우선, 이름 백업)
+                # 직원 ID 찾기 (사번으로만 조회)
                 employee_id = None
                 employee_name = ""
                 
-                # 사번으로 먼저 찾기
+                # 사번으로만 찾기
                 if 'employee_number' in column_mapping and row.get(column_mapping['employee_number']):
                     employee_number = str(row[column_mapping['employee_number']]).strip()
-                    logger.info(f"사번 매핑 확인: 컬럼 '{column_mapping['employee_number']}' → 값 '{employee_number}'")
                     if employee_number and employee_number != 'nan':
                         # 사번으로 employee_info에서 찾기
                         employee_info = session.query(EmployeeInfo).filter(
@@ -735,62 +736,42 @@ JSON 형식으로 응답:
                         if employee_info and employee_info.employee_info_id:
                             employee_id = employee_info.employee_info_id
                             employee_name = employee_info.name
-                            logger.info(f"사번으로 직원 찾음: {employee_number} → {employee_name} (ID: {employee_id})")
+                            logger.info(f"✅ 사번으로 직원 조회 성공: {employee_name} (사번: {employee_number}, ID: {employee_id})")
                         else:
                             logger.warning(f"사번으로 직원을 찾을 수 없음: {employee_number}")
                     else:
-                        logger.info(f"사번 값이 비어있거나 유효하지 않음: '{employee_number}'")
+                        logger.warning(f"유효하지 않은 사번: {employee_number}")
                 else:
-                    logger.info(f"사번 매핑이 없거나 값이 없음: employee_number 컬럼 매핑 확인")
-                    logger.info(f"현재 컬럼 매핑 전체: {column_mapping}")
-                    logger.info(f"사번 관련 매핑 확인: 'employee_number' in column_mapping = {'employee_number' in column_mapping}")
+                    # 사번 컬럼이 매핑에 없거나 실제 데이터에 없는 경우
                     if 'employee_number' in column_mapping:
-                        logger.info(f"employee_number 매핑된 컬럼: {column_mapping['employee_number']}")
-                        logger.info(f"해당 컬럼의 값: {row.get(column_mapping['employee_number'], '값 없음')}")
-                
-                # 사번으로 찾지 못한 경우 이름으로 찾기 (employee_info에서만)
-                if not employee_id and 'employee_name' in column_mapping and row.get(column_mapping['employee_name']):
-                    employee_name = str(row[column_mapping['employee_name']]).strip()
-                    
-                    # employee_info에서만 이름으로 찾기
-                    employee_info = session.query(EmployeeInfo).filter(
-                        EmployeeInfo.name.ilike(f"%{employee_name}%")
-                    ).first()
-                    
-                    if employee_info and employee_info.employee_info_id:
-                        employee_id = employee_info.employee_info_id
-                        logger.info(f"employee_info에서 직원 찾음: {employee_name} (ID: {employee_id})")
+                        mapped_column = column_mapping['employee_number']
+                        logger.warning(f"사번 컬럼 '{mapped_column}'이 실제 데이터에 없음: {column_mapping}")
                     else:
-                        logger.warning(f"employee_info에서 직원을 찾을 수 없음: {employee_name}")
+                        logger.warning(f"사번 컬럼 매핑 없음: {column_mapping}")
                 
-                # 고객 ID 찾기
-                customer_id = None
-                if 'customer_name' in column_mapping and row.get(column_mapping['customer_name']):
-                    customer_name = str(row[column_mapping['customer_name']]).strip()
-                    customer = session.query(Customer).filter(
-                        Customer.customer_name.ilike(f"%{customer_name}%")
-                    ).first()
-                    if customer:
-                        customer_id = customer.customer_id
-                
-                # 제품 ID 찾기
-                product_id = None
-                if 'product_name' in column_mapping and row.get(column_mapping['product_name']):
-                    product_name = str(row[column_mapping['product_name']]).strip()
-                    product = session.query(Product).filter(
-                        Product.product_name.ilike(f"%{product_name}%")
-                    ).first()
-                    if product:
-                        product_id = product.product_id
-                
-                # ID를 찾지 못한 경우 해당 레코드 건너뛰기
+                # 사번이 없거나 직원을 찾을 수 없는 경우 해당 행 건너뛰기
                 if not employee_id:
                     logger.warning(f"직원 ID를 찾을 수 없는 행 건너뜀: {row}")
                     skipped_count += 1
                     continue
                 
+                # 고객 ID 찾기 (개선된 로직)
+                customer_id = self._get_or_create_customer_id(session, row, column_mapping)
                 if not customer_id:
                     logger.warning(f"고객 ID를 찾을 수 없는 행 건너뜀: {row}")
+                    skipped_count += 1
+                    continue
+                
+                # 제품 ID 찾기 (개선된 로직)
+                product_id = self._get_or_create_product_id(session, row, column_mapping)
+                if not product_id:
+                    logger.warning(f"제품 ID를 찾을 수 없는 행 건너뜀: {row}")
+                    skipped_count += 1
+                    continue
+                
+                # ID를 찾지 못한 경우 해당 레코드 건너뛰기
+                if not employee_id:
+                    logger.warning(f"직원 ID를 찾을 수 없는 행 건너뜀: {row}")
                     skipped_count += 1
                     continue
                 
@@ -822,6 +803,163 @@ JSON 형식으로 응답:
         except SQLAlchemyError as e:
             logger.error(f"매출 기록 삽입 중 DB 오류: {e}")
             raise
+
+    def _get_or_create_customer_id(self, session: Session, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
+        """고객 ID를 안전하게 가져오거나 생성 (고객명+주소로 정확히 특정)"""
+        if 'customer_name' not in column_mapping or not row.get(column_mapping['customer_name']):
+            return None
+            
+        customer_name = str(row[column_mapping['customer_name']]).strip()
+        logger.info(f"🔍 고객 조회 시작: 원본 고객명 = '{customer_name}'")
+        
+        # 고객명에서 주소 추출
+        parsed_customer_name, parsed_address = self._extract_address_and_clean_name(customer_name)
+        logger.info(f"🔍 파싱 결과: 고객명 = '{parsed_customer_name}', 주소 = '{parsed_address}'")
+        
+        # 고객명과 주소로 정확히 조회
+        logger.info(f"🔍 고객명+주소로 정확히 조회 - 고객명='{parsed_customer_name}', 주소='{parsed_address}'")
+        
+        if parsed_address:
+            # 주소가 있는 경우: 고객명+주소로 정확히 조회
+            customer = session.query(Customer).filter(
+                Customer.customer_name == parsed_customer_name,
+                Customer.address == parsed_address
+            ).first()
+        else:
+            # 주소가 없는 경우: 고객명으로만 조회
+            customer = session.query(Customer).filter(
+                Customer.customer_name == parsed_customer_name
+            ).first()
+        
+        if customer:
+            logger.info(f"✅ 고객 조회 성공: 고객 ID = {customer.customer_id}, 이름 = '{customer.customer_name}', 주소 = '{customer.address}'")
+            return customer.customer_id
+        else:
+            logger.warning(f"❌ 고객 조회 실패: '{parsed_customer_name}' (주소: '{parsed_address}') 고객을 찾을 수 없음")
+        
+        # 고객이 없으면 자동 생성 (안전한 방식)
+        logger.info(f"🔍 새 고객 생성 시도 - 고객명='{parsed_customer_name}', 주소='{parsed_address}'")
+        
+        # 고객 생성 전에 한 번 더 확인 (동시성 문제 방지)
+        if parsed_address:
+            customer = session.query(Customer).filter(
+                Customer.customer_name == parsed_customer_name,
+                Customer.address == parsed_address
+            ).first()
+        else:
+            customer = session.query(Customer).filter(
+                Customer.customer_name == parsed_customer_name
+            ).first()
+        
+        if customer:
+            logger.info(f"✅ 동시성 체크: 기존 고객 발견 - 고객 ID = {customer.customer_id}")
+            return customer.customer_id
+        
+        # 새 고객 생성 시도
+        try:
+            new_customer = self._create_customer(row, column_mapping)
+            logger.info(f"🔍 생성할 고객 정보: 이름='{new_customer.customer_name}', 주소='{new_customer.address}'")
+            session.add(new_customer)
+            session.flush()  # ID 생성
+            customer_id = new_customer.customer_id
+            logger.info(f"✅ 새 고객 자동 생성: '{new_customer.customer_name}' (ID: {customer_id})")
+            return customer_id
+            
+        except Exception as e:
+            # 중복 제약 조건 위반 시 기존 고객 찾기
+            if "duplicate key value violates unique constraint" in str(e) or "unique constraint" in str(e).lower():
+                logger.warning(f"⚠️ 고객 중복 발견, 기존 고객 찾기: '{customer_name}'")
+                
+                # 세션 롤백 후 재조회
+                session.rollback()
+                
+                # 다시 조회 시도
+                if parsed_address:
+                    customer = session.query(Customer).filter(
+                        Customer.customer_name == parsed_customer_name,
+                        Customer.address == parsed_address
+                    ).first()
+                else:
+                    customer = session.query(Customer).filter(
+                        Customer.customer_name == parsed_customer_name
+                    ).first()
+                
+                if customer:
+                    logger.info(f"✅ 중복 고객 사용: '{customer.customer_name}' (ID: {customer.customer_id})")
+                    return customer.customer_id
+                else:
+                    logger.error(f"❌ 중복 고객을 찾을 수 없음: '{customer_name}'")
+                    return None
+            else:
+                logger.error(f"❌ 고객 생성 중 예상치 못한 오류: {e}")
+                session.rollback()
+                return None
+
+    def _get_or_create_product_id(self, session: Session, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
+        """제품 ID를 안전하게 가져오거나 생성 (정확한 제품명으로만 조회)"""
+        if 'product_name' not in column_mapping or not row.get(column_mapping['product_name']):
+            return None
+            
+        product_name = str(row[column_mapping['product_name']]).strip()
+        logger.info(f"🔍 제품 조회 시작: 원본 제품명 = '{product_name}'")
+        
+        # 제품명으로 조회
+        logger.info(f"🔍 1단계: 제품명으로 조회 시도 - '{product_name}'")
+        product = session.query(Product).filter(
+            Product.product_name == product_name
+        ).first()
+        
+        if product:
+            logger.info(f"✅ 제품 조회 성공: 제품 ID = {product.product_id}, 이름 = '{product.product_name}'")
+            return product.product_id
+        else:
+            logger.warning(f"❌ 제품 조회 실패: '{product_name}' 제품을 찾을 수 없음")
+        
+        # 제품이 없으면 자동 생성 (안전한 방식)
+        logger.info(f"🔍 새 제품 생성 시도 - 제품명='{product_name}'")
+        
+        # 제품 생성 전에 한 번 더 확인 (동시성 문제 방지)
+        product = session.query(Product).filter(
+            Product.product_name == product_name
+        ).first()
+        
+        if product:
+            logger.info(f"✅ 동시성 체크: 기존 제품 발견 - 제품 ID = {product.product_id}")
+            return product.product_id
+        
+        # 새 제품 생성 시도
+        try:
+            new_product = self._create_product(row, column_mapping)
+            logger.info(f"🔍 생성할 제품 정보: 이름='{new_product.product_name}'")
+            session.add(new_product)
+            session.flush()  # ID 생성
+            product_id = new_product.product_id
+            logger.info(f"✅ 새 제품 자동 생성: '{new_product.product_name}' (ID: {product_id})")
+            return product_id
+            
+        except Exception as e:
+            # 중복 제약 조건 위반 시 기존 제품 찾기
+            if "duplicate key value violates unique constraint" in str(e) or "unique constraint" in str(e).lower():
+                logger.warning(f"⚠️ 제품 중복 발견, 기존 제품 찾기: '{product_name}'")
+                
+                # 세션 롤백 후 재조회
+                session.rollback()
+                
+                # 다시 조회 시도
+                product = session.query(Product).filter(
+                    Product.product_name == product_name
+                ).first()
+                
+                if product:
+                    logger.info(f"✅ 중복 제품 사용: '{product.product_name}' (ID: {product.product_id})")
+                    return product.product_id
+                else:
+                    logger.error(f"❌ 중복 제품을 찾을 수 없음: '{product_name}'")
+                    return None
+            else:
+                logger.error(f"❌ 제품 생성 중 예상치 못한 오류: {e}")
+                session.rollback()
+                return None
     
     def _insert_products(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str]) -> Dict[str, Any]:
         """제품 데이터 삽입"""
@@ -869,9 +1007,20 @@ JSON 형식으로 응답:
         """제품 객체 생성"""
         product_data = {}
         
+        # Product 모델의 유효한 필드만 추출
+        valid_product_fields = ['product_name', 'description', 'category', 'is_active']
+        
         for db_field, source_column in column_mapping.items():
-            if source_column in row and row[source_column] is not None:
+            if db_field in valid_product_fields and source_column in row and row[source_column] is not None:
                 value = str(row[source_column]).strip()
+                
+                # Boolean 필드 처리
+                if db_field == 'is_active':
+                    try:
+                        value = bool(value.lower() in ['true', '1', 'yes', '활성', '활성화'])
+                    except:
+                        value = True
+                
                 product_data[db_field] = value
         
         return Product(**product_data)
@@ -941,23 +1090,24 @@ JSON 형식으로 응답:
             raise
     
     def _insert_assignment_map(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str]) -> Dict[str, Any]:
-        """직원-고객 배정 관계 삽입"""
+        """직원-고객 배정 관계 삽입 (사번으로만 직원 조회)"""
         processed_count = 0
         skipped_count = 0
         
         try:
             for row in table_data:
-                # 직원명과 고객명 추출
-                employee_name = str(row[column_mapping['employee_id']]).strip() if 'employee_id' in column_mapping and row.get(column_mapping['employee_id']) else None
+                # 사번과 고객명 추출
+                employee_number = str(row[column_mapping['employee_id']]).strip() if 'employee_id' in column_mapping and row.get(column_mapping['employee_id']) else None
                 customer_name = str(row[column_mapping['customer_id']]).strip() if 'customer_id' in column_mapping and row.get(column_mapping['customer_id']) else None
                 
-                if not employee_name or not customer_name:
-                    logger.warning(f"직원명 또는 고객명을 찾을 수 없는 행 건너뜀: {row}")
+                if not employee_number or not customer_name:
+                    logger.warning(f"사번 또는 고객명을 찾을 수 없는 행 건너뜀: {row}")
+                    skipped_count += 1
                     continue
                 
-                # 직원 ID 찾기 (employee_info에서 찾기)
+                # 직원 ID 찾기 (사번으로만 조회)
                 employee_info = session.query(EmployeeInfo).filter(
-                    EmployeeInfo.name == employee_name
+                    EmployeeInfo.employee_number == employee_number
                 ).first()
                 
                 # 고객 ID 찾기 (customer_name으로만 조회 - address 정보가 없으므로)
@@ -966,7 +1116,8 @@ JSON 형식으로 응답:
                 ).first()
                 
                 if not employee_info or not customer:
-                    logger.warning(f"직원 또는 고객을 찾을 수 없음: {employee_name}, {customer_name}")
+                    logger.warning(f"직원 또는 고객을 찾을 수 없음: 사번={employee_number}, 고객명={customer_name}")
+                    skipped_count += 1
                     continue
                 
                 # 기존 배정 관계 확인
@@ -976,7 +1127,7 @@ JSON 형식으로 응답:
                 ).first()
                 
                 if existing_assignment:
-                    logger.info(f"배정 관계가 이미 존재함: {employee_name} - {customer_name}")
+                    logger.info(f"배정 관계가 이미 존재함: {employee_info.name} (사번: {employee_number}) - {customer_name}")
                     skipped_count += 1
                 else:
                     # 새 배정 관계 생성
@@ -985,13 +1136,13 @@ JSON 형식으로 응답:
                         customer_id=customer.customer_id
                     )
                     session.add(new_assignment)
-                    logger.info(f"새 배정 관계 생성: {employee_name} - {customer_name}")
+                    logger.info(f"새 배정 관계 생성: {employee_info.name} (사번: {employee_number}) - {customer_name}")
                 
                 processed_count += 1
             
             return {
                 'success': True,
-                'message': f'배정 관계 삽입 완료: {processed_count}건 처리됨, {skipped_count}건 중복 건너뜀',
+                'message': f'배정 관계 삽입 완료: {processed_count}건 처리됨, {skipped_count}건 건너뜀',
                 'processed_count': processed_count,
                 'skipped_count': skipped_count
             }
@@ -1160,20 +1311,24 @@ JSON 형식으로 응답:
         # 상위 행의 거래처 값을 추적하기 위한 변수
         last_customer_name = ""
         
+        # 변환 통계
+        processed_rows = 0
+        total_records = 0
+        
         for row in table_data:
+            processed_rows += 1
+            
             # 기본 정보 추출 (LLM 매핑된 컬럼명만 사용)
             employee_name = ""
+            employee_number = ""  # 사번 추가
             customer_name = ""
             product_name = ""
             
             # 매핑된 컬럼명에서 추출
             employee_name = str(row.get(column_mapping.get('employee_name', ''), '')).strip()
+            employee_number = str(row.get(column_mapping.get('employee_number', ''), '')).strip()  # 사번 추출
             customer_name = str(row.get(column_mapping.get('customer_name', ''), '')).strip()
             product_name = str(row.get(column_mapping.get('product_name', ''), '')).strip()
-            
-            # 디버깅: 매핑 정보와 추출된 값 로그
-            logger.debug(f"매핑 정보: {column_mapping}")
-            logger.debug(f"추출된 값 - employee_name: '{employee_name}', customer_name: '{customer_name}', product_name: '{product_name}'")
             
             # 담당자와 품목이 비어있으면 해당 행 제외
             if not employee_name or employee_name == 'nan':
@@ -1188,7 +1343,10 @@ JSON 형식으로 응답:
             summary_keywords = ['합계', '총합계', 'total', 'sum']
             if any(keyword in str(product_name).lower() for keyword in summary_keywords) or \
                any(keyword in str(customer_name).lower() for keyword in summary_keywords):
-                logger.info(f"합계 행 제외: 품목={product_name}, 거래처={customer_name}")
+                # 로그를 한 번만 출력하도록 수정
+                if not hasattr(self, '_summary_row_logged'):
+                    logger.info(f"합계 행 제외: 품목={product_name}, 거래처={customer_name}")
+                    self._summary_row_logged = True
                 continue
             
             # 거래처(ID)가 비어있으면 상위 행의 값 사용
@@ -1198,6 +1356,7 @@ JSON 형식으로 응답:
                 customer_name = last_customer_name
             
             # 월별 매출 데이터 추출 (원본 컬럼명에서)
+            row_records = 0
             for source_column, value in row.items():
                 if re.match(r'^\d{6}$', str(source_column)) and value is not None:
                     try:
@@ -1206,32 +1365,40 @@ JSON 형식으로 응답:
                             # YYYYMM → YYYY-MM 형식으로 변환
                             year = str(source_column)[:4]
                             month = str(source_column)[4:6]
-                            sale_date = f"{year}-{month}"
+                            sale_date = f"{year}-{month}-01"  # 날짜 형식 개선
                             
                             # 개별 매출 기록 생성
                             sale_record = {
                                 'employee_name': employee_name,
+                                'employee_number': employee_number, # 사번 추가
                                 'customer_name': customer_name,
                                 'product_name': product_name,
                                 'sale_amount': sale_amount,
                                 'sale_date': sale_date
                             }
                             transformed_data.append(sale_record)
+                            row_records += 1
                     except (ValueError, TypeError):
+                        # 숫자가 아닌 값은 건너뛰기
                         continue
+            
+            total_records += row_records
         
+        logger.info(f"월별 데이터 변환 완료: {processed_rows}행 처리, {len(transformed_data)}개 매출 기록 생성")
         return transformed_data
     
     def _get_standard_sales_mapping(self) -> Dict[str, str]:
         """표준 매출 데이터 매핑 반환"""
         return {
             'employee_name': 'employee_name',
+            'employee_number': 'employee_number',  # 사번 추가
             'customer_name': 'customer_name',
             'product_name': 'product_name',
             'sale_amount': 'sale_amount',
             'sale_date': 'sale_date'
         }
     
+
 
 
 # 싱글턴 인스턴스

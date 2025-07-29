@@ -40,7 +40,7 @@ class PgAdminSettings(BaseSettings):
     password: SecretStr
 
     class Config:
-        env_prefix = "PGADMIN_DEFAULT_"
+        env_prefix = "PGADMIN_"
 
 
 class MinIOSettings(BaseSettings):

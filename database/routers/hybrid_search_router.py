@@ -16,8 +16,8 @@ class HybridSearchRequest(BaseModel):
 
 class TableSearchResult(BaseModel):
     """테이블 검색 결과 모델"""
-    id: int
-    doc_id: int
+    id: Optional[int] = None
+    doc_id: Optional[int] = None
     table_type: str
     content: Dict[str, Any]
     created_at: Optional[str] = None
@@ -79,23 +79,41 @@ def hybrid_search(
         
         for result in search_result['results']:
             if result['type'] == 'table':
+                # created_at 안전 처리
+                created_at = result['created_at']
+                if created_at and hasattr(created_at, 'isoformat'):
+                    created_at = created_at.isoformat()
+                elif created_at and isinstance(created_at, str):
+                    created_at = created_at
+                else:
+                    created_at = None
+                
                 table_result = TableSearchResult(
                     id=result['id'],
                     doc_id=result['doc_id'],
                     table_type=result['table_type'],
                     content=result['content'],
-                    created_at=result['created_at'].isoformat() if result['created_at'] else None,
+                    created_at=created_at,
                     similarity_score=result['similarity_score'],
                     source=result['source']
                 )
                 table_results.append(table_result)
             else:  # text
+                # created_at 안전 처리
+                created_at = result['created_at']
+                if created_at and hasattr(created_at, 'isoformat'):
+                    created_at = created_at.isoformat()
+                elif created_at and isinstance(created_at, str):
+                    created_at = created_at
+                else:
+                    created_at = None
+                
                 text_result = TextSearchResult(
                     id=result['id'],
                     doc_id=result['doc_id'],
                     doc_title=result.get('doc_title'),
                     content=result['content'],
-                    created_at=result['created_at'].isoformat() if result['created_at'] else None,
+                    created_at=created_at,
                     similarity_score=result['similarity_score'],
                     source=result['source']
                 )
@@ -154,23 +172,41 @@ def hybrid_search_get(
         
         for result in search_result['results']:
             if result['type'] == 'table':
+                # created_at 안전 처리
+                created_at = result['created_at']
+                if created_at and hasattr(created_at, 'isoformat'):
+                    created_at = created_at.isoformat()
+                elif created_at and isinstance(created_at, str):
+                    created_at = created_at
+                else:
+                    created_at = None
+                
                 table_result = TableSearchResult(
                     id=result['id'],
                     doc_id=result['doc_id'],
                     table_type=result['table_type'],
                     content=result['content'],
-                    created_at=result['created_at'].isoformat() if result['created_at'] else None,
+                    created_at=created_at,
                     similarity_score=result['similarity_score'],
                     source=result['source']
                 )
                 table_results.append(table_result)
             else:  # text
+                # created_at 안전 처리
+                created_at = result['created_at']
+                if created_at and hasattr(created_at, 'isoformat'):
+                    created_at = created_at.isoformat()
+                elif created_at and isinstance(created_at, str):
+                    created_at = created_at
+                else:
+                    created_at = None
+                
                 text_result = TextSearchResult(
                     id=result['id'],
                     doc_id=result['doc_id'],
                     doc_title=result.get('doc_title'),
                     content=result['content'],
-                    created_at=result['created_at'].isoformat() if result['created_at'] else None,
+                    created_at=created_at,
                     similarity_score=result['similarity_score'],
                     source=result['source']
                 )

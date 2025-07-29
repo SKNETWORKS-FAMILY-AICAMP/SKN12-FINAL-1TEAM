@@ -430,7 +430,12 @@ class OpenSearchClient:
         """재순위 모델 로드 (private 메서드)"""
         try:
             logger.info("🔄 BGE Reranker 모델 로드 중...")
-            reranker = FlagReranker('dragonkue/bge-reranker-v2-m3-ko', use_fp16=True, use_auth_token=None)
+            reranker = FlagReranker(
+                'dragonkue/bge-reranker-v2-m3-ko', 
+                use_fp16=True, 
+                use_auth_token=None,
+                cache_dir="/app/.cache/huggingface"  # 캐시 폴더 지정
+            )
             logger.info("✅ BGE Reranker 모델 로드 완료")
             return reranker
         except Exception as e:
@@ -441,7 +446,10 @@ class OpenSearchClient:
         """임베딩 모델 로드 (private 메서드)"""
         try:
             logger.info("🤖 임베딩 모델 로드 중...")
-            model = SentenceTransformer("dragonkue/snowflake-arctic-embed-l-v2.0-ko")
+            model = SentenceTransformer(
+                "dragonkue/snowflake-arctic-embed-l-v2.0-ko",
+                cache_folder="/app/.cache/huggingface"  # 캐시 폴더 지정
+            )
             logger.info("✅ 임베딩 모델 로드 완료")
             return model
         except Exception as e:

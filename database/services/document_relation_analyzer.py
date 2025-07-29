@@ -87,7 +87,7 @@ class DocumentRelationAnalyzer:
         if table_data:
             for row in table_data:
                 for key, value in row.items():
-                    if any(keyword in key.lower() for keyword in ['고객', 'customer', '병원', 'hospital']):
+                    if any(keyword in str(key).lower() for keyword in ['고객', 'customer', '병원', 'hospital']):
                         if value and str(value).strip():
                             customer_names.append(str(value).strip())
         
@@ -140,7 +140,7 @@ class DocumentRelationAnalyzer:
         if table_data:
             for row in table_data:
                 for key, value in row.items():
-                    if any(keyword in key.lower() for keyword in ['제품', 'product', '상품', 'item']):
+                    if any(keyword in str(key).lower() for keyword in ['제품', 'product', '상품', 'item']):
                         if value and str(value).strip():
                             product_names.append(str(value).strip())
         
@@ -193,7 +193,7 @@ class DocumentRelationAnalyzer:
         if table_data:
             for row in table_data:
                 for key, value in row.items():
-                    if any(keyword in key.lower() for keyword in ['직원', 'employee', '담당자', '담당']):
+                    if any(keyword in str(key).lower() for keyword in ['직원', 'employee', '담당자', '담당']):
                         if value and str(value).strip():
                             employee_names.append(str(value).strip())
         
