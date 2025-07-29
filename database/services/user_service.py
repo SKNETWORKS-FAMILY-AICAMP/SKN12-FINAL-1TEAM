@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def get_employee_by_email(db: Session, email: str):
-    return db.query(Employee).filter(Employee.email == email).first()
+    return db.query(Employee).filter(
+        Employee.email == email,
+        Employee.is_deleted == False
+    ).first()
 
 def create_employee(db: Session, user: EmployeeCreate):
     hashed_password = pwd_context.hash(user.password)

@@ -28,17 +28,47 @@ def init_admin(user: EmployeeCreate, db: Session = Depends(get_db)):
     최초 1회만 사용 가능한 관리자 계정 생성 API (인증 불필요)
     이미 관리자가 존재하면 400 에러 반환
     """
-    existing_admin = db.query(Employee).filter(Employee.role == "admin").first()
+    # 1. 기존 관리자 확인 (soft delete 고려)
+    existing_admin = db.query(Employee).filter(
+        Employee.role == "admin",
+        Employee.is_deleted == False
+    ).first()
     if existing_admin:
         raise HTTPException(status_code=400, detail="관리자 계정이 이미 존재합니다.")
-    try:
-        new_user = create_employee(db, user)
-        if new_user.role != "admin":
-            raise HTTPException(status_code=400, detail="role은 반드시 'admin'이어야 합니다.")
-        return EmployeeInfo.from_orm(new_user)
-    except IntegrityError:
-        db.rollback()
+    
+    # 2. 역할 검증
+    if user.role != "admin":
+        raise HTTPException(status_code=400, detail="role은 반드시 'admin'이어야 합니다.")
+    
+    # 3. 이메일 중복 체크
+    existing_user = get_employee_by_email(db, email=user.email)
+    if existing_user:
         raise HTTPException(status_code=400, detail="이메일이 이미 존재합니다.")
+    
+    # 4. 사용자명 중복 체크
+    existing_username = db.query(Employee).filter(
+        Employee.username == user.username,
+        Employee.is_deleted == False
+    ).first()
+    if existing_username:
+        raise HTTPException(status_code=400, detail="사용자명이 이미 존재합니다.")
+    
+    try:
+        # 5. 관리자 계정 생성
+        new_user = create_employee(db, user)
+        return EmployeeInfo.from_orm(new_user)
+    except IntegrityError as e:
+        db.rollback()
+        # 더 구체적인 오류 메시지 제공
+        if "email" in str(e).lower():
+            raise HTTPException(status_code=400, detail="이메일이 이미 존재합니다.")
+        elif "username" in str(e).lower():
+            raise HTTPException(status_code=400, detail="사용자명이 이미 존재합니다.")
+        else:
+            raise HTTPException(status_code=400, detail="데이터베이스 제약 조건 위반: " + str(e))
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"관리자 계정 생성 중 오류 발생: {str(e)}")
 
 @router.post("/migrate")
 def run_alembic_migration():
