@@ -25,6 +25,14 @@ const ChatScreen = () => {
     'create_document_agent': 'docs'
   };
 
+  // 에이전트 표시 이름
+  const AGENT_DISPLAY_NAMES = {
+    'employee_agent': '직원 실적 분석',
+    'client_agent': '고객/거래처 분석',
+    'search_agent': '정보 검색',
+    'create_document_agent': '문서 생성'
+  };
+
   // 4개 에이전트 정보
   const agents = {
     router: {
@@ -314,25 +322,13 @@ const ChatScreen = () => {
     setInputValue('');
 
     try {
-      const agent = agents[selectedAgent];
-      let requestBody = {};
-      
-      // 에이전트별 요청 데이터 구성
-      if (selectedAgent === 'router') {
-        requestBody = { 
-          session_id: sessionId,
-          query: currentQuery 
-        };
-      } else {
-        // 다른 에이전트들은 select-agent API 사용
-        requestBody = {
-          session_id: sessionId,
-          agent: agent.agentType || selectedAgent,
-          query: currentQuery
-        };
-      }
+      // 항상 Router를 통해 전송하여 동적 라우팅 활성화
+      const requestBody = { 
+        session_id: sessionId,
+        query: currentQuery 
+      };
 
-      const response = await fetch(`http://localhost:8000${agent.endpoint}`, {
+      const response = await fetch('http://localhost:8000/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -347,10 +343,11 @@ const ChatScreen = () => {
       const data = await response.json();
       
       let botResponseContent = '';
+      let responseAgent = 'Router Agent';
       
       if (data.success) {
         // Router 에이전트에서 사용자 선택이 필요한 경우
-        if (selectedAgent === 'router' && data.needs_user_selection) {
+        if (data.needs_user_selection) {
           const selectionMessage = {
             type: 'agent_selection',
             content: data.message,
@@ -368,21 +365,18 @@ const ChatScreen = () => {
           return;
         }
         
-        switch (selectedAgent) {
-          case 'router':
-            botResponseContent = `🎯 라우팅 결과: ${data.agent}\n\n${data.response}\n\n분류 상세:\n• 선택된 에이전트: ${data.agent}\n• 라우팅 시도 횟수: ${data.routing_attempts}\n• 분류 결과: ${data.classification_result}`;
-            break;
-          case 'employee':
-            botResponseContent = `📊 직원 실적 분석 완료!\n\n${data.report}`;
-            break;
-          case 'client':
-            botResponseContent = `🏥 고객 분석 완료!\n\n${data.report}`;
-            break;
-          case 'docs':
-            botResponseContent = `📄 문서 분류 완료!\n\n• 문서 타입: ${data.state?.doc_type}\n• 상태: 분류 성공\n• 템플릿: ${data.state?.template_content ? '준비됨' : '준비 중'}`;
-            break;
-          default:
-            botResponseContent = data.message || '처리가 완료되었습니다.';
+        // 응답에서 실제 사용된 에이전트 정보 추출
+        const usedAgent = data.agent || data.classification_result?.split(': ')[1];
+        if (usedAgent) {
+          responseAgent = AGENT_DISPLAY_NAMES[usedAgent] || usedAgent;
+        }
+        
+        // 기본 응답 내용
+        botResponseContent = data.response || data.message || '처리가 완료되었습니다.';
+        
+        // 라우팅 정보가 있으면 추가
+        if (data.classification_result) {
+          botResponseContent += `\n\n[${data.classification_result}]`;
         }
       } else {
         botResponseContent = `❌ 오류 발생: ${data.error || data.message}`;
@@ -392,7 +386,7 @@ const ChatScreen = () => {
         type: 'bot',
         content: botResponseContent,
         timestamp: new Date().toLocaleTimeString(),
-        agent: agent.name
+        agent: responseAgent
       };
 
       const finalMessages = [...newMessages, botMessage];
@@ -462,9 +456,8 @@ const ChatScreen = () => {
           setMessages(updatedMessages);
           saveMessageToHistory(updatedMessages);
           
-          // 선택된 에이전트 상태 업데이트 (백엔드 ID를 프론트엔드 키로 변환)
-          const frontendKey = agentKeyMapping[data.selected_agent] || data.selected_agent;
-          setSelectedAgent(frontendKey);
+          // 선택된 에이전트는 표시용으로만 사용하고 고정하지 않음
+          // 모든 메시지는 Router를 통해 동적으로 라우팅됨
         } else {
           // 실제 에이전트 응답
           const botMessage = {
@@ -787,11 +780,11 @@ const ChatScreen = () => {
 
           <div className="message-input-container">
             <div className="selected-agent-info">
-              <span style={{ color: agents[selectedAgent].color }}>
-                ● {agents[selectedAgent].name}
+              <span style={{ color: agents.router.color }}>
+                ● {agents.router.name}
               </span>
               <span className="agent-description">
-                {agents[selectedAgent].description}
+                질문에 따라 자동으로 적절한 에이전트가 선택됩니다
               </span>
             </div>
             <div className="input-area">
