@@ -14,6 +14,4 @@ from .chat_history import ChatHistory
 from .system_trace_logs import SystemTraceLog
 from .assignment_map import AssignmentMap
 from .document_relations import DocumentRelation
-from .document_interaction_map import DocumentInteractionMap
-from .document_sales_map import DocumentSalesMap
  

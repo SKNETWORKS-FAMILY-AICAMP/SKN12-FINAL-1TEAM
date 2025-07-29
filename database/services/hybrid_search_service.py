@@ -104,21 +104,43 @@ class HybridSearchService:
                 "size": limit
             })
             
+            logger.info(f"OpenSearch 검색 결과: {len(text_results)}개")
+            if text_results:
+                logger.info(f"첫 번째 OpenSearch 결과 구조: {text_results[0]}")
+            
             # 결과 포맷 변환
             formatted_results = []
             for result in text_results:
-                formatted_results.append({
+                # OpenSearch 결과 구조 안전 처리
+                # _source 또는 source 필드에서 데이터 추출
+                source = result.get('_source') or result.get('source', {})
+                
+                formatted_result = {
                     'type': 'text',
                     'id': result.get('_id'),
-                    'doc_id': result.get('_source', {}).get('doc_id'),
-                    'doc_title': result.get('_source', {}).get('doc_title'),
-                    'content': result.get('_source', {}).get('content'),
-                    'created_at': result.get('_source', {}).get('created_at'),
-                    'similarity_score': result.get('_score', 0.0),
+                    'doc_id': source.get('document_id') or source.get('doc_id'),
+                    'doc_title': source.get('title') or source.get('doc_title') or source.get('file_name'),
+                    'content': source.get('content'),
+                    'created_at': source.get('created_at'),
+                    'similarity_score': result.get('_score') or result.get('score', 0.0),
                     'source': 'opensearch'
-                })
+                }
+                
+                # null 값 처리
+                if formatted_result['content'] is None:
+                    # content가 없으면 다른 필드에서 텍스트 찾기
+                    formatted_result['content'] = source.get('text') or source.get('body') or source.get('document_content') or "내용 없음"
+                
+                if formatted_result['doc_title'] is None:
+                    # doc_title이 없으면 다른 필드에서 제목 찾기
+                    formatted_result['doc_title'] = source.get('name') or "제목 없음"
+                
+                formatted_results.append(formatted_result)
             
             logger.info(f"텍스트 검색 완료: {len(formatted_results)}개 결과")
+            if formatted_results:
+                logger.info(f"첫 번째 포맷된 결과: {formatted_results[0]}")
+            
             return formatted_results
             
         except Exception as e:

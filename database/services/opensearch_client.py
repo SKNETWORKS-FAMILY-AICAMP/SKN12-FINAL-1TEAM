@@ -214,7 +214,8 @@ class OpenSearchClient:
         
         # 장(Chapter) 패턴 매칭
         chapter_pattern = r'제(\d+)장\s*([^\n]+)'
-        article_pattern = r'제(\d+)조\s*\[([^\]]+)\]\s*([^\n]+)'
+        # 조(Article) 패턴 수정: [제목] -> (제목) 형식으로 변경
+        article_pattern = r'제(\d+)조\s*\(([^)]+)\)\s*([^\n]*)'
         
         lines = text.split('\n')
         current_chapter = None

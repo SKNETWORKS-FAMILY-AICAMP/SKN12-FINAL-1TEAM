@@ -159,24 +159,6 @@ def upgrade() -> None:
         sa.UniqueConstraint('doc_id', 'related_entity_type', 'related_entity_id', name='uq_doc_relation_unique'),
     )
     
-    # document_interaction_map
-    op.create_table(
-        'document_interaction_map',
-        sa.Column('link_id', sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column('doc_id', sa.Integer, sa.ForeignKey('documents.doc_id'), nullable=False),
-        sa.Column('interaction_id', sa.Integer, sa.ForeignKey('interaction_logs.log_id'), nullable=False),
-        sa.UniqueConstraint('doc_id', 'interaction_id', name='uq_doc_interaction_doc_interaction'),
-    )
-    
-    # document_sales_map
-    op.create_table(
-        'document_sales_map',
-        sa.Column('link_id', sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column('doc_id', sa.Integer, sa.ForeignKey('documents.doc_id'), nullable=False),
-        sa.Column('sales_record_id', sa.Integer, sa.ForeignKey('sales_records.record_id'), nullable=False),
-        sa.UniqueConstraint('doc_id', 'sales_record_id', name='uq_doc_sales_doc_sales'),
-    )
-    
     # customer_monthly_performance_mv (Materialized View)
     op.execute("""
     CREATE MATERIALIZED VIEW customer_monthly_performance_mv AS
@@ -208,8 +190,6 @@ def downgrade() -> None:
     
     # 테이블 목록 (외래키 의존성 순서 고려)
     tables = [
-        'document_sales_map',
-        'document_interaction_map', 
         'document_relations',
         'assignment_map',
         'system_trace_logs',

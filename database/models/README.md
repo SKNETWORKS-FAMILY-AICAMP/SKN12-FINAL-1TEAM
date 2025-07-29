@@ -108,26 +108,6 @@ Table Assignment_Map as AM {
   }
 } 
 
-Table Document_Interaction_Map as DIM {
-  link_id int [pk, increment, note: '문서-활동 연결 고유 식별자']
-  doc_id int [ref: > D.doc_id, not null, note: '문서 참조 키']
-  interaction_id int [ref: > IL.log_id, not null, note: '영업 활동 기록 참조 키']
-
-  indexes {
-    (doc_id, interaction_id) [unique]
-  }
-}
-
-Table Document_Sales_Map as DSM {
-  link_id int [pk, increment, note: '문서-실적 연결 고유 식별자']
-  doc_id int [ref: > D.doc_id, not null, note: '문서 참조 키']
-  sales_record_id int [ref: > SR.record_id, not null, note: '판매 실적 참조 키']
-
-  indexes {
-    (doc_id, sales_record_id) [unique]
-  }
-}
-
 // 신규 추가: 사용자 채팅 기록
 Table Chat_History as CH {
   message_id bigserial [pk, note: '메시지 고유 식별자']
@@ -168,8 +148,6 @@ Table System_Trace_Logs as STL {
 ### 매핑 테이블 (Mapping Tables)
 - **Assignment_Map (AM)**: 직원-거래처 담당 관계
 - **Document_Relations (DR)**: 문서 간 관계
-- **Document_Interaction_Map (DIM)**: 문서-영업활동 연결
-- **Document_Sales_Map (DSM)**: 문서-판매실적 연결
 
 ### 웹로그 테이블 (Web Log Tables)
 - **Chat_History (CH)**: 사용자 채팅 기록

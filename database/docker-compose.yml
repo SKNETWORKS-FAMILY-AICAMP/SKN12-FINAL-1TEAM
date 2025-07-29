@@ -176,7 +176,7 @@ services:
       - OPENSEARCH_HOSTS=["http://opensearch-node1:9200","http://opensearch-node2:9200","http://opensearch-node3:9200"]
       - OPENSEARCH_USERNAME=${OPENSEARCH_USER}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
-      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=false
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
     ports:
       - "5601:5601"
     depends_on:

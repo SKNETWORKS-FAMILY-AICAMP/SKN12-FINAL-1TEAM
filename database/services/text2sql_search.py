@@ -191,8 +191,9 @@ class Text2SQLSearchService:
         1. JOIN을 사용하여 관련 정보를 함께 조회
         2. ORDER BY를 사용하여 최신 데이터 우선
         3. LIMIT을 사용하여 결과 개수 제한
-        4. 고객명 검색 시 LIKE 연산자 사용 (부분 일치)
-        5. JSON 형식으로 응답:
+        4. 고객명, 직원명, 제품명이 쿼리에 포함된 경우 반드시 WHERE 조건에 추가
+        5. 날짜 범위가 있는 경우 sale_date 조건 추가
+        6. JSON 형식으로 응답:
         {{
             "sql": "실제 SQL 쿼리",
             "target_table": "주요 테이블명",
@@ -203,9 +204,12 @@ class Text2SQLSearchService:
         예시 쿼리:
         - "최수아 매출" → SELECT ... FROM sales_records sr JOIN employee_info ei ON sr.employee_id = ei.employee_info_id WHERE ei.name LIKE '%최수아%'
         - "폭세틴 판매" → SELECT ... FROM sales_records sr JOIN products p ON sr.product_id = p.product_id WHERE p.product_name LIKE '%폭세틴%'
-        - "강서미라클이비인후과 매출" → SELECT ... FROM sales_records sr JOIN customers c ON sr.customer_id = c.customer_id WHERE c.customer_name LIKE '%강서미라클이비인후과%'
+        - "우리가족의원 2024년 2월부터 5월까지 매출" → SELECT ... FROM sales_records sr JOIN customers c ON sr.customer_id = c.customer_id WHERE c.customer_name LIKE '%우리가족의원%' AND sr.sale_date >= '2024-02-01' AND sr.sale_date <= '2024-05-31'
         
-        중요: 고객명, 직원명, 제품명 검색 시 반드시 LIKE 연산자를 사용하여 부분 일치 검색을 수행하세요.
+        중요: 
+        - 고객명, 직원명, 제품명이 쿼리에 언급되면 반드시 WHERE 조건에 포함해야 함
+        - LIKE 연산자를 사용하여 부분 일치 검색 수행
+        - 날짜 범위와 고객명 조건을 모두 포함해야 함
         """
     
     def _execute_search_sql(self, sql: str, limit: int) -> Dict[str, Any]:

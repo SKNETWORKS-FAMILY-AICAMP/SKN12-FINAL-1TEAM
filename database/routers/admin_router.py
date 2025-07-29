@@ -74,8 +74,7 @@ def init_admin(user: EmployeeCreate, db: Session = Depends(get_db)):
 def run_alembic_migration():
     """
     Alembic migration을 실행하는 관리자용 API입니다.
-    기존 테이블을 모두 삭제하고 새로 생성합니다.
-    운영 환경에서는 반드시 인증/권한 체크를 추가하세요!
+    기존 데이터를 보존하면서 스키마를 최신화합니다.
     """
     try:
         env = os.environ.copy()
@@ -86,18 +85,17 @@ def run_alembic_migration():
         # alembic 명령어 실행 디렉터리 (프로젝트 루트)
         alembic_dir = project_root
         
-        # 1. 기존 마이그레이션을 모두 되돌리기 (테이블 삭제)
-        # IF EXISTS 옵션으로 안전하게 처리
-        downgrade_result = subprocess.run(
-            ["alembic", "downgrade", "base"],
+        # 1. 현재 마이그레이션 상태 확인
+        current_result = subprocess.run(
+            ["alembic", "current"],
             cwd=alembic_dir,
             capture_output=True,
             text=True,
-            check=False,  # downgrade 실패해도 계속 진행
+            check=True,
             env=env
         )
         
-        # 2. 최신 마이그레이션으로 업그레이드 (테이블 재생성)
+        # 2. 최신 마이그레이션으로 업그레이드 (기존 데이터 보존)
         upgrade_result = subprocess.run(
             ["alembic", "upgrade", "head"],
             cwd=alembic_dir,
@@ -109,13 +107,22 @@ def run_alembic_migration():
         
         return {
             "success": True, 
-            "message": "테이블 삭제 후 재생성 완료",
-            "downgrade_stdout": downgrade_result.stdout,
-            "downgrade_stderr": downgrade_result.stderr,
+            "message": "스키마 최신화 완료 (기존 데이터 보존)",
+            "current_status": current_result.stdout,
             "upgrade_stdout": upgrade_result.stdout
         }
     except subprocess.CalledProcessError as e:
-        return {"success": False, "stderr": e.stderr}
+        return {
+            "success": False, 
+            "error": "마이그레이션 실행 중 오류 발생",
+            "stderr": e.stderr,
+            "stdout": e.stdout
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"예상치 못한 오류: {str(e)}"
+        }
 
 @router.delete("/cleanup-corrupted-documents")
 def cleanup_corrupted_documents(admin: EmployeeInfo = Depends(get_current_admin_user)):

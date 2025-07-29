@@ -4,8 +4,6 @@ import re
 from sqlalchemy.orm import Session
 from models.documents import Document
 from models.document_relations import DocumentRelation
-from models.document_interaction_map import DocumentInteractionMap
-from models.document_sales_map import DocumentSalesMap
 from models.customers import Customer
 from models.products import Product
 from models.employees import Employee
