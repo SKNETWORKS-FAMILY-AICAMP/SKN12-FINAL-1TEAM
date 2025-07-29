@@ -285,13 +285,13 @@ def classify_company_by_rate_interaction(company_name, df, thresholds=None, star
 def classify_company_final(company_name, df, start_month=None, end_month=None):
     
     revenue_grade = classify_company_by_revenue_estimates(company_name, df, thresholds.revenue_threshold, start_month, end_month)
-    print(revenue_grade)
+    #print(revenue_grade)
     profit_grade = classify_company_by_profit(company_name, df, thresholds.profit_threshold, start_month, end_month)
-    print(profit_grade)
+    #print(profit_grade)
     patience_grade = classify_company_by_number_patience(company_name, df, thresholds.patience_threshold, start_month, end_month)
-    print(patience_grade)
+    #print(patience_grade)
     interaction_grade = classify_company_by_rate_interaction(company_name, df, thresholds.interaction_threshold, start_month, end_month)
-    print(interaction_grade)
+    #print(interaction_grade)
 
     if '데이터없음' in (revenue_grade, profit_grade, patience_grade, interaction_grade):
         return {
@@ -319,7 +319,30 @@ def classify_company_final(company_name, df, start_month=None, end_month=None):
     }
 
 #print(classify_company_final(company_name="우리가족의원(강서구 가양동)", df=df, start_month=202402, end_month=202405))     *디버깅용(성공)
-    
+
+
+#############################################################################################################################################################
+#############################################################################################################################################################
+                                                                    #전체 거래처데이터 등급추출함수
+
+def classify_all_companies(df, start_month=None, end_month=None):
+    unique_companies = df["거래처ID"].unique().tolist()
+    all_grades = {}
+    for company in unique_companies:
+        result = classify_company_final(company, df, start_month, end_month)
+        all_grades[company] = result["최종등급"]
+    return all_grades
+
+##############################################################################################################################################################   
+##############################################################################################################################################################
+                                                                    #동일 등급 리스트 추출
+
+def get_same_grade_companies(company_name, grade_result, all_grades):
+    return [
+        company for company, grade in all_grades.items()
+        if grade == grade_result["최종등급"] and company != company_name
+    ]
+
 ##############################################################################################################################################################   
 ##############################################################################################################################################################
                                                                     # 등급분류분석 레포트작성
@@ -348,6 +371,17 @@ async def generate_company_grade_report(company_name: str, grade_result: dict):
     )
 
     return response.choices[0].message.content.strip()
+
+##############################################################################################################################################################   
+##############################################################################################################################################################
+                                                                    # 동일등급 거래처 리스트로 추출
+
+def get_same_grade_companies(target_company, grade_result, all_grades):
+    target_grade = grade_result["최종등급"]
+    return [
+        company for company, grade in all_grades.items()
+        if grade == target_grade and company != target_company
+    ]
 
 ##############################################################################################################################################################
 ##############################################################################################################################################################
@@ -450,6 +484,60 @@ async def generate_sales_strategy_report(company_name,grade_result: dict,start_m
 
 ###############################################################################################################################################################
 ###############################################################################################################################################################
+                                                                    #동일 등급 거래처 비교함수
+
+async def generate_compare_report(company_name: str, same_grade_companies: list, df: pd.DataFrame,
+                                grade_result: dict, start_month: str = None, end_month: str = None):
+    
+    data = df.copy()
+
+    data['월'] = data['월'].astype(str)  
+    data['월'] = pd.to_datetime(data['월'], format='%Y%m', errors='coerce')
+ 
+    if start_month:
+        start_date = pd.to_datetime(start_month, format='%Y%m')
+        data = data[data['월'] >= start_date]
+    if end_month:
+        end_date = pd.to_datetime(end_month, format='%Y%m')
+        data = data[data['월'] <= end_date]
+
+    comparison_data = []
+    for comp_name in same_grade_companies:
+        comp_rows = data[data["거래처ID"] == comp_name]
+        if comp_rows.empty:
+            continue
+
+
+        avg_revenue = comp_rows["매출"].mean()
+        avg_expense = comp_rows["사용 예산"].mean()
+        avg_ratio = round(avg_expense / avg_revenue, 2) if avg_revenue > 0 else 0
+        avg_rate = round((comp_rows["총환자수"].sum() * 30000) / comp_rows["매출"].sum() * 100, 2) if comp_rows["매출"].sum() > 0 else 0
+
+        comparison_data.append({
+            "거래처명": comp_name,
+            "매출": int(avg_revenue),
+            "사용예산": int(avg_expense),
+            "이익률": avg_ratio,
+            "거래율": avg_rate
+        })
+
+    prompt = f"""
+'{company_name}'와 동일 등급 거래처들의 데이터를 비교 분석해 주세요.
+
+등급: {grade_result['최종등급']}
+동일 등급 거래처 데이터:
+{json.dumps(comparison_data, ensure_ascii=False, indent=2)}
+"""
+
+    response = await client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+    )
+    return response.choices[0].message.content.strip()
+
+###############################################################################################################################################################
+###############################################################################################################################################################
 from langgraph.graph import StateGraph
 from pydantic import BaseModel
 from typing import Optional, Any, TypedDict
@@ -461,7 +549,10 @@ class ReportState(TypedDict):
     end_month: str
     df: pd.DataFrame
     grade_result: dict
+    all_grades: dict
     grade_report: str
+    same_grade_companies: list
+    compare_report: str 
     growth_report: str
     strategy_report: str
     merged_report: str
@@ -476,6 +567,7 @@ async def parse_query_node(state):
         "end_month": result["end_month"]
     }
 
+
 def classify_node(state):
     company_name = state["company_name"]
     df = state["df"]
@@ -483,14 +575,29 @@ def classify_node(state):
     end_month = state["end_month"]
 
     grade_result = classify_company_final(company_name, df, start_month, end_month)
-    return {"grade_result": grade_result}
+
+    all_grades = classify_all_companies(df, start_month, end_month)
+
+    return {
+        "grade_result": grade_result,
+        "all_grades": all_grades
+    }
+
 
 async def grade_report_node(state):
     company_name = state["company_name"]
     grade_result = state["grade_result"]
+    all_grades = state["all_grades"]
+
+    same_grade_companies = get_same_grade_companies(company_name, grade_result, all_grades)
+
 
     report = await generate_company_grade_report(company_name, grade_result)
-    return {"grade_report": report}
+
+    return {"grade_report": report,
+            "same_grade_companies": same_grade_companies
+            }
+
 
 async def growth_report_node(state):
     company_name = state["company_name"]
@@ -498,6 +605,7 @@ async def growth_report_node(state):
 
     report = await generate_growth_analysis_report(company_name, df)
     return {"growth_report": report}
+
 
 async def strategy_report_node(state):
     company_name = state["company_name"]
@@ -509,12 +617,32 @@ async def strategy_report_node(state):
     report = await generate_sales_strategy_report(company_name, grade_result, start_month, end_month)
     return {"strategy_report": report}
 
+
+async def compare_report_node(state):
+    company_name = state["company_name"]
+    same_grade_companies = state["same_grade_companies"]
+    df = state["df"]
+    grade_result = state["grade_result"]
+    start_month = state["start_month"]
+    end_month = state["end_month"]
+
+    report = await generate_compare_report(
+        company_name,
+        same_grade_companies,
+        df,
+        grade_result,
+        start_month,
+        end_month
+    )
+    return {"compare_report": report}
+
+
 def merged_report_node(state):
     grade = state["grade_result"]
     grade_report = state["grade_report"]
     growth = state["growth_report"]
     strategy = state["strategy_report"]
-
+    compare = state["compare_report"]
     merged = f"""
 <등급>
 
@@ -531,9 +659,15 @@ def merged_report_node(state):
 <영업 전략 보고서>
 
 {strategy}
+
+<동일 등급 거래처 비교 보고서>
+
+{compare}
+
 """
     state["merged_report"] = merged.strip()
     return {"merged_report": merged.strip()}
+
 
 builder = StateGraph(state_schema=ReportState)
 
@@ -542,6 +676,7 @@ builder.add_node("classify", classify_node)
 builder.add_node("grade_report", grade_report_node)
 builder.add_node("growth_report", growth_report_node)
 builder.add_node("strategy_report", strategy_report_node)
+builder.add_node("compare_report", compare_report_node)
 builder.add_node("merged_report", merged_report_node)  
 
 builder.set_entry_point("parse_query")
@@ -550,9 +685,11 @@ builder.add_edge("classify", "grade_report")
 
 builder.add_edge("grade_report", "growth_report")
 builder.add_edge("grade_report", "strategy_report")
+builder.add_edge("grade_report", "compare_report")
 
 builder.add_edge("growth_report", "merged_report")
 builder.add_edge("strategy_report", "merged_report")
+builder.add_edge("compare_report", "merged_report")
 
 builder.set_finish_point("merged_report")
 
