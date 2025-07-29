@@ -14,23 +14,48 @@ logger = logging.getLogger(__name__)
 
 class OpenSearchClient:
     def __init__(self, max_retries: int = 3, timeout: int = 10):
-        """
-        OpenSearch 클라이언트 초기화
-        
-        Args:
-            max_retries: 최대 재시도 횟수 (기본값: 3)
-            timeout: 연결 타임아웃 (초) (기본값: 10)
-        """
-        # ML 모델들을 지연 로딩으로 변경
+        """OpenSearch 클라이언트 초기화"""
+        self.client = None
         self._model = None
         self._reranker = None
         self._embedding_dim = None
+        self._default_embedding_dim = 1024
         
-        # OpenSearch 클라이언트 초기화 (재시도 로직 포함)
+        # 클라이언트 생성
         self.client = self._create_client_with_retry(max_retries, timeout)
         
-        # 기본 임베딩 차원 설정 (모델 로딩 전)
-        self._default_embedding_dim = 768  # KURE-v1 모델의 기본 차원
+        # 모델 미리 로드 (백그라운드에서)
+        if self.client:
+            self._preload_models()
+
+    def _preload_models(self):
+        """모델들을 미리 로드합니다 (백그라운드에서)"""
+        try:
+            logger.info("🚀 모델 사전 로딩 시작...")
+            
+            # 임베딩 모델 미리 로드
+            if not self._model:
+                logger.info("🤖 임베딩 모델 사전 로딩 중...")
+                self._model = self._embeddings_model()
+                if self._model:
+                    self._embedding_dim = len(self._model.encode("dummy_text"))
+                    logger.info(f"✅ 임베딩 모델 사전 로딩 완료 (차원: {self._embedding_dim})")
+                else:
+                    logger.error("❌ 임베딩 모델 사전 로딩 실패")
+            
+            # 재순위 모델 미리 로드
+            if not self._reranker:
+                logger.info("🔄 재순위 모델 사전 로딩 중...")
+                self._reranker = self._rerank_model()
+                if self._reranker:
+                    logger.info("✅ 재순위 모델 사전 로딩 완료")
+                else:
+                    logger.error("❌ 재순위 모델 사전 로딩 실패")
+                    
+            logger.info("🎉 모든 모델 사전 로딩 완료")
+            
+        except Exception as e:
+            logger.error(f"❌ 모델 사전 로딩 중 오류: {e}")
 
     def _create_client_with_retry(self, max_retries: int, timeout: int):
         """
@@ -416,7 +441,7 @@ class OpenSearchClient:
         """임베딩 모델 로드 (private 메서드)"""
         try:
             logger.info("🤖 임베딩 모델 로드 중...")
-            model = SentenceTransformer("nlpai-lab/KURE-v1")
+            model = SentenceTransformer("dragonkue/snowflake-arctic-embed-l-v2.0-ko")
             logger.info("✅ 임베딩 모델 로드 완료")
             return model
         except Exception as e:

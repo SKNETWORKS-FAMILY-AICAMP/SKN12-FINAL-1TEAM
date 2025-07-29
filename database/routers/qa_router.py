@@ -23,6 +23,7 @@ class QaRequest(BaseModel):
     top_k: int = Field(default=5, description="검색할 문서 수", ge=1, le=20)
     include_summary: bool = Field(default=True, description="요약 포함 여부")
     include_sources: bool = Field(default=True, description="원본 문서 정보 포함 여부")
+    use_rerank: bool = Field(default=False, description="재순위 사용 여부 (응답 시간이 길어질 수 있음)")
 
 class QaResponse(BaseModel):
     """자연어 질문 응답 모델"""
@@ -112,7 +113,8 @@ async def ask_question(request: QaRequest):
         result = question_answering(
             question=request.question,
             top_k=request.top_k,
-            include_sources=request.include_sources
+            include_sources=request.include_sources,
+            use_rerank=request.use_rerank
         )
         
         # 요약 생성 (선택적)
@@ -141,7 +143,8 @@ async def test_qa():
         result = question_answering(
             question=test_question,
             top_k=5,
-            include_sources=True
+            include_sources=True,
+            use_rerank=False  # 테스트에서는 재순위 사용하지 않음
         )
         
         # 요약 생성

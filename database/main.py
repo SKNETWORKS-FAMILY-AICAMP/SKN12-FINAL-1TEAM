@@ -48,6 +48,31 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("⚠️ Search Pipeline 초기화 실패 - 기본 검색 모드로 동작")
     
+    # 모델 사전 로딩 (QA 시스템 준비)
+    logger.info("🤖 AI 모델 사전 로딩 중...")
+    try:
+        from services.opensearch_client import opensearch_client
+        if opensearch_client:
+            # 임베딩 모델 사전 로드
+            embedding_model = opensearch_client.model
+            if embedding_model:
+                logger.info("✅ 임베딩 모델 사전 로딩 완료")
+            else:
+                logger.warning("⚠️ 임베딩 모델 사전 로딩 실패")
+            
+            # 재순위 모델 사전 로드
+            reranker_model = opensearch_client.reranker
+            if reranker_model:
+                logger.info("✅ 재순위 모델 사전 로딩 완료")
+            else:
+                logger.warning("⚠️ 재순위 모델 사전 로딩 실패")
+        else:
+            logger.warning("⚠️ OpenSearch 클라이언트가 초기화되지 않음")
+    except Exception as e:
+        logger.error(f"❌ 모델 사전 로딩 중 오류: {e}")
+    
+    logger.info("🎉 모든 시스템 초기화 완료")
+    
     yield
     
     # 종료 시 실행 (필요시)
