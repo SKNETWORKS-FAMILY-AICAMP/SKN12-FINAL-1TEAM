@@ -17,10 +17,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Context Manager import with error handling
-context_manager = None
 try:
-    from app.services.common.context_manager import context_manager as cm
-    context_manager = cm
+    from app.services.common.context_manager import context_manager
     logger.info("Context Manager imported successfully")
 except Exception as e:
     logger.error(f"Failed to import context_manager: {e}")
@@ -133,16 +131,15 @@ async def chat(req: QueryRequest):
         
         session = sessions[req.session_id]
         
-        # 쿼리 처리 - enhanced_query를 안전하게 처리
-        query_to_process = req.query
-        
+        # 컨텍스트 기반 쿼리 처리
+        enhanced_query = req.query  # 기본값 설정
         if context_manager:
             try:
-                query_to_process = context_manager.process_query(req.session_id, req.query)
-                logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{query_to_process}'")
+                enhanced_query = context_manager.process_query(req.session_id, req.query)
+                logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{enhanced_query}'")
             except Exception as e:
                 logger.error(f"Context processing error: {e}")
-                query_to_process = req.query
+                enhanced_query = req.query
         else:
             logger.warning("Context manager not available, using original query")
         
@@ -156,7 +153,7 @@ async def chat(req: QueryRequest):
             for attempt in range(max_attempts):
                 session["routing_attempts"] = attempt + 1
                 # 보완된 쿼리로 분류
-                classified_agent = await router_agent.classify(query_to_process, session["messages"])
+                classified_agent = await router_agent.classify(enhanced_query, session["messages"])
                 
                 if classified_agent and classified_agent in AVAILABLE_AGENT_IDS:
                     logger.info(f"분류 성공 (시도 {attempt + 1}): {classified_agent}")
@@ -188,7 +185,7 @@ async def chat(req: QueryRequest):
             }
         
         # 에이전트 실행
-        result = await run_agent(classified_agent, query_to_process, req.session_id)
+        result = await run_agent(classified_agent, enhanced_query, req.session_id)
         result["routing_attempts"] = session["routing_attempts"]
         result["classification_result"] = f"자동 분류: {classified_agent}"
         
@@ -201,10 +198,7 @@ async def chat(req: QueryRequest):
         
         # 컨텍스트 업데이트
         if context_manager:
-            try:
-                context_manager.update_context(req.session_id, req.query, result)
-            except Exception as e:
-                logger.error(f"Context update error: {e}")
+            context_manager.update_context(req.session_id, req.query, result)
         
         return result
         
@@ -258,21 +252,20 @@ async def select_agent(req: SelectionRequest):
                 "example_questions": example_questions
             }
         
-        # 쿼리 처리
-        query_to_process = req.query
-        
+        # 컨텍스트 기반 쿼리 처리
+        enhanced_query = req.query  # 기본값 설정
         if context_manager:
             try:
-                query_to_process = context_manager.process_query(req.session_id, req.query)
-                logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{query_to_process}'")
+                enhanced_query = context_manager.process_query(req.session_id, req.query)
+                logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{enhanced_query}'")
             except Exception as e:
                 logger.error(f"Context processing error: {e}")
-                query_to_process = req.query
+                enhanced_query = req.query
         else:
             logger.warning("Context manager not available, using original query")
         
         # 질문이 있으면 에이전트 실행
-        result = await run_agent(agent_id, query_to_process, req.session_id)
+        result = await run_agent(agent_id, enhanced_query, req.session_id)
         result["agent_selected"] = True
         result["classification_result"] = f"사용자 선택: {agent_id}"
         
@@ -289,10 +282,7 @@ async def select_agent(req: SelectionRequest):
         
         # 컨텍스트 업데이트
         if context_manager:
-            try:
-                context_manager.update_context(req.session_id, req.query, result)
-            except Exception as e:
-                logger.error(f"Context update error: {e}")
+            context_manager.update_context(req.session_id, req.query, result)
         
         return result
         
