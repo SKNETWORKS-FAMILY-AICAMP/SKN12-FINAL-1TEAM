@@ -1,473 +1,330 @@
-import os
-from typing import Dict, Any
-
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from dotenv import load_dotenv
+from typing import Dict, Any, Optional, List
+import asyncio
+import logging
+import sys
+from pathlib import Path
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 통합 그래프 import  
-# ────────────────────────────────────────────────────────────────────────────────
-from ..services.router_agent.unified_agent_graph import unified_graph
+# 경로 설정
+backend_dir = Path(__file__).parent.parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 메모리 저장소 (기존 세션 관리 유지)
-# ────────────────────────────────────────────────────────────────────────────────
-from ..services.router_agent.memory_store_sqlite import (
-    add_session,
-    add_message,
-    get_all_sessions,
-    get_session_messages,
-    get_session_selected_agent,
-    set_session_selected_agent,
-    clear_session_selected_agent,
-)
+from app.services.router_agent.router_agent import RouterAgent, AVAILABLE_AGENT_IDS, AGENT_DESCS
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 환경 변수
-# ────────────────────────────────────────────────────────────────────────────────
-api_key = os.getenv("OPENAI_API_KEY")
-print("router_api.py - OPENAI_API_KEY:", api_key[:10] + "…" if api_key else "없음")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Pydantic 스키마
-# ────────────────────────────────────────────────────────────────────────────────
+# 요청 모델
 class QueryRequest(BaseModel):
     session_id: str
     query: str
 
-class AgentSelectionRequest(BaseModel):
+class SelectionRequest(BaseModel):
     session_id: str
+    agent: Optional[str] = None
+    selected_agent: Optional[str] = None
     query: str
-    selected_agent: str
 
-class NewChatRequest(BaseModel):
-    session_id: str
+# 세션 관리
+sessions = {}
 
-class ResetAgentRequest(BaseModel):
-    session_id: str
+# Router Agent 인스턴스 (싱글톤)
+try:
+    router_agent = RouterAgent()
+    logger.info("RouterAgent 초기화 성공")
+except Exception as e:
+    logger.error(f"RouterAgent 초기화 실패: {e}")
+    router_agent = None
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 메인 라우터: 통합 LangGraph 사용
-# ────────────────────────────────────────────────────────────────────────────────
-@router.post("/router")
-async def route_with_unified_graph(req: QueryRequest):
-    """통합 LangGraph를 사용한 쿼리 처리"""
+# 에이전트 표시 이름
+AGENT_DISPLAY_NAMES = {
+    "employee_agent": "직원 실적 분석",
+    "client_agent": "고객/거래처 분석", 
+    "search_agent": "정보 검색",
+    "create_document_agent": "문서 생성"
+}
+
+# 에이전트별 예시 질문
+AGENT_EXAMPLE_QUESTIONS = {
+    "employee_agent": [
+        "김철수 사원의 이번 달 실적을 보여주세요",
+        "영업1팀의 평균 매출액은 얼마인가요?",
+        "작년 우수 사원 명단을 조회해주세요",
+        "영업본부 조직도를 보여주세요"
+    ],
+    "client_agent": [
+        "A병원의 월별 구매 추이를 분석해주세요",
+        "서울 지역 약국 거래처 목록을 보여주세요",
+        "이번 달 신규 거래처는 몇 개인가요?",
+        "VIP 등급 병원들의 주요 구매 품목은?"
+    ],
+    "search_agent": [
+        "항생제 제품 카탈로그를 검색해주세요",
+        "영업 매뉴얼에서 계약 절차를 찾아주세요",
+        "사내 휴가 규정을 검색해주세요",
+        "신제품 교육 자료를 찾아주세요"
+    ],
+    "create_document_agent": [
+        "이번 달 영업 실적 보고서를 작성해주세요",
+        "거래처 방문 보고서 템플릿을 만들어주세요",
+        "분기별 매출 분석 문서를 생성해주세요",
+        "신규 거래처 제안서를 작성해주세요"
+    ]
+}
+
+async def run_agent(agent_id: str, query: str, session_id: str) -> Dict[str, Any]:
+    """각 에이전트의 run.py 실행"""
     try:
-        # 1) 세션 보장 & 사용자 질문 저장
-        add_session(req.session_id)
-        add_message(req.session_id, "user", req.query)
-
-        print(f"🚀 통합 그래프 처리 시작: {req.session_id}")
-        
-        # 2) 통합 그래프로 쿼리 처리
-        result = await unified_graph.process_query(req.query, req.session_id)
-
-        if not result.get("success"):
-            # 실패한 경우
-            add_message(
-                req.session_id,
-                "assistant",
-                result.get("response", "처리 실패"),
-                metadata={"error": result.get("error"), "stage": result.get("stage")}
-            )
+        if agent_id == "employee_agent":
+            from app.services.employee_agent.run import run
+            result = await run(query, session_id)
+            return result
             
-            return {
-                "success": False,
-                "response": result.get("response", "처리 중 오류가 발생했습니다."),
-                "error": result.get("error"),
-                "stage": result.get("stage"),
-                "session_id": req.session_id
-            }
-        
-        # 3) 성공한 경우 응답 저장
-        response_text = result.get("response", "")
-        agent_name = result.get("agent")
-        stage = result.get("stage")
-        
-        # 에이전트가 결정된 경우 세션에 저장 (기존 로직 유지)
-        if agent_name and agent_name in ["employee_agent", "client_agent", "create_document_agent", "search_agent"]:
-            set_session_selected_agent(req.session_id, agent_name)
-            print(f"✅ 세션 에이전트 저장: {agent_name}")
-        
-        # assistant 응답 저장
-        add_message(
-            req.session_id,
-            "assistant",
-            response_text,
-            metadata={
-                "agent": agent_name,
-                "stage": stage,
-                "unified_graph": True,
-                "requires_followup": result.get("requires_followup", False),
-                "user_selection_needed": result.get("user_selection_needed", False)
-            }
-        )
-
-        # 4) 프론트엔드 응답 구성
-        response_data = {
-            "success": True,
-            "response": response_text,
-            "agent": agent_name,
-            "stage": stage,
-            "session_id": req.session_id,
-            "unified_graph": True  # 통합 그래프 사용 표시
-        }
-        
-        # 사용자 선택이 필요한 경우
-        if result.get("user_selection_needed"):
-            response_data.update({
-                "needs_user_selection": True,
-                "available_agents": result.get("available_agents", []),
-                "message": "에이전트 선택이 필요합니다."
-            })
-        
-        # 후속 입력이 필요한 경우 (문서 작성 등)
-        if result.get("requires_followup"):
-            response_data.update({
-                "requires_followup": True,
-                "message": "추가 입력이 필요합니다."
-            })
-        
-        # 메모리 정보 (디버깅용)
-        if result.get("memory"):
-            response_data["memory_count"] = len(result["memory"])
-        
-        print(f"✅ 통합 그래프 처리 완료: {agent_name} ({stage})")
-        return response_data
-
+        elif agent_id == "client_agent":
+            from app.services.client_agent.run import run
+            result = await run(query, session_id)
+            return result
+            
+        elif agent_id == "search_agent":
+            from app.services.search_agent.run import run
+            result = await run(query, session_id)
+            return result
+            
+        elif agent_id == "create_document_agent":
+            from app.services.create_document_agent.run import run
+            result = await run(query, session_id)
+            return result
+            
+        else:
+            raise ValueError(f"알 수 없는 에이전트: {agent_id}")
+            
     except Exception as e:
-        error_msg = f"통합 그래프 처리 중 오류: {str(e)}"
-        print(f"❌ {error_msg}")
-        
-        # 오류 메시지 저장
-        add_message(
-            req.session_id,
-            "assistant",
-            "시스템 처리 중 오류가 발생했습니다.",
-            metadata={"error": str(e), "unified_graph_error": True}
-        )
-        
+        logger.error(f"에이전트 실행 오류 ({agent_id}): {e}")
         return {
             "success": False,
-            "error": error_msg,
-            "response": "시스템 처리 중 오류가 발생했습니다. 다시 시도해주세요.",
-            "session_id": req.session_id,
-            "stage": "system_error"
+            "error": str(e),
+            "agent": agent_id
         }
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 기존 사용자 선택 엔드포인트 (통합 그래프 사용)
-# ────────────────────────────────────────────────────────────────────────────────
-@router.post("/select-agent")
-async def process_agent_selection(req: AgentSelectionRequest):
-    """사용자가 에이전트를 직접 선택한 경우 처리"""
+@router.post("/chat")
+async def chat(req: QueryRequest):
+    """메인 채팅 엔드포인트 - RouterAgent를 통한 자동 라우팅"""
     try:
-        add_session(req.session_id)
-        
-        # 사용자 선택 정보 저장
-        add_message(
-            req.session_id,
-            "user",
-            f"[에이전트 선택] {req.selected_agent}: {req.query}",
-            metadata={"manual_select": True, "selected_agent": req.selected_agent}
-        )
-
-        print(f"👤 사용자 직접 선택: {req.selected_agent}")
-        
-        # 선택된 에이전트를 명시적으로 포함한 쿼리로 재처리
-        enhanced_query = f"[{req.selected_agent}] {req.query}"
-        
-        # 통합 그래프로 처리
-        result = await unified_graph.process_query(enhanced_query, req.session_id)
-        
-        if result.get("success"):
-            # 에이전트 세션에 저장
-            set_session_selected_agent(req.session_id, req.selected_agent)
-            
-            response_text = result.get("response", "")
-            
-            # 선택 안내 메시지 추가  
-            agent_display_names = {
-                "employee_agent": "직원 실적 분석",
-                "client_agent": "고객/거래처 분석", 
-                "create_document_agent": "문서 초안 작성",
-                "search_agent": "내부 데이터 검색"
+        # 세션 초기화
+        if req.session_id not in sessions:
+            sessions[req.session_id] = {
+                "messages": [],
+                "routing_attempts": 0
             }
-            
-            agent_name = agent_display_names.get(req.selected_agent, req.selected_agent)
-            enhanced_response = f"🎯 '{agent_name}'가 선택되었습니다.\n\n{response_text}"
-            
-            # 응답 저장
-            add_message(
-                req.session_id,
-                "assistant",
-                enhanced_response,
-                metadata={
-                    "agent": req.selected_agent,
-                    "manual_select": True,
-                    "unified_graph": True,
-                    "stage": result.get("stage")
-                }
-            )
+        
+        session = sessions[req.session_id]
+        session["messages"].append({"role": "user", "content": req.query})
+        
+        # RouterAgent를 통한 분류 시도 (최대 3회)
+        classified_agent = None
+        max_attempts = 3
+        
+        if router_agent:
+            for attempt in range(max_attempts):
+                session["routing_attempts"] = attempt + 1
+                # 대화 이력을 포함하여 분류
+                classified_agent = await router_agent.classify(req.query, session["messages"])
+                
+                if classified_agent and classified_agent in AVAILABLE_AGENT_IDS:
+                    logger.info(f"분류 성공 (시도 {attempt + 1}): {classified_agent}")
+                    break
+                    
+                logger.warning(f"분류 실패 (시도 {attempt + 1})")
+                await asyncio.sleep(0.5)  # 재시도 전 대기
+        
+        # 분류 실패 시 수동 선택 필요
+        if not classified_agent:
+            fallback_message = f"""죄송합니다. '{req.query}' 질문이 저희 시스템의 기능과 관련이 없거나 분류가 어렵습니다.
+
+저희 시스템은 다음 기능을 제공합니다:
+- 직원 실적/평가 조회
+- 고객/거래처(병원,약국) 정보 관리  
+- 영업 데이터 검색
+- 보고서/문서 자동 생성
+
+해당하는 기능이 있다면 아래에서 선택해주세요:"""
             
             return {
                 "success": True,
-                "agent": req.selected_agent,
-                "response": enhanced_response,
-                "stage": result.get("stage"),
-                "agent_fixed": True,
-                "unified_graph": True
+                "needs_user_selection": True,
+                "message": fallback_message,
+                "available_agents": AVAILABLE_AGENT_IDS,
+                "agent_descriptions": AGENT_DESCS,
+                "agent_display_names": AGENT_DISPLAY_NAMES,
+                "routing_attempts": session["routing_attempts"]
             }
-        else:
+        
+        # 에이전트 실행
+        result = await run_agent(classified_agent, req.query, req.session_id)
+        result["routing_attempts"] = session["routing_attempts"]
+        result["classification_result"] = f"자동 분류: {classified_agent}"
+        
+        # 응답 저장
+        session["messages"].append({
+            "role": "assistant",
+            "content": result.get("response", ""),
+            "agent": classified_agent
+        })
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Chat error: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "response": "처리 중 오류가 발생했습니다."
+        }
+
+@router.post("/select-agent")
+async def select_agent(req: SelectionRequest):
+    """사용자가 직접 에이전트 선택"""
+    try:
+        agent_id = req.selected_agent or req.agent
+        
+        if not agent_id or agent_id not in AVAILABLE_AGENT_IDS:
             return {
                 "success": False,
-                "error": result.get("error", "선택된 에이전트 처리 실패"),
-                "response": result.get("response", "처리 중 오류가 발생했습니다.")
+                "error": "유효하지 않은 에이전트입니다."
             }
+        
+        # 세션 초기화
+        if req.session_id not in sessions:
+            sessions[req.session_id] = {
+                "messages": [],
+                "routing_attempts": 0
+            }
+        
+        # 사용자가 새 질문을 입력하지 않았다면 예시 질문 제공
+        if not req.query or req.query == "" or req.query == req.selected_agent:
+            agent_name = AGENT_DISPLAY_NAMES.get(agent_id, agent_id)
+            example_questions = AGENT_EXAMPLE_QUESTIONS.get(agent_id, [])
             
-    except Exception as e:
-        return {
-            "success": False, 
-            "error": str(e), 
-            "message": "에이전트 선택 처리 중 오류"
-        }
+            guide_message = f"""{agent_name}을(를) 선택하셨습니다.
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 기존 세션 관리 API들 (그대로 유지)
-# ────────────────────────────────────────────────────────────────────────────────
-
-@router.post("/new-chat")
-def start_new_chat(req: NewChatRequest):
-    """새로운 채팅 시작 (에이전트 초기화)"""
-    try:
-        add_session(req.session_id)
-        clear_session_selected_agent(req.session_id)
-        
-        # 초기 시스템 메시지 추가
-        add_message(
-            req.session_id,
-            "system", 
-            "안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?",
-            metadata={"new_chat": True, "unified_graph": True}
-        )
-        
-        return {
-            "success": True,
-            "message": "새로운 채팅이 시작되었습니다. 질문해주시면 통합 AI가 적절히 처리해드립니다.",
-            "session_id": req.session_id,
-            "unified_graph": True
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.get("/current-agent/{session_id}")
-def get_current_agent(session_id: str):
-    """현재 세션의 선택된 에이전트 확인"""
-    try:
-        selected_agent = get_session_selected_agent(session_id)
-        
-        agent_display_names = {
-            "employee_agent": "직원 실적 분석",
-            "client_agent": "고객/거래처 분석", 
-            "create_document_agent": "문서 초안 작성",
-            "search_agent": "내부 데이터 검색"
-        }
-        
-        agent_descriptions = {
-            "employee_agent": "사내 직원의 실적 분석, 성과 평가, 인사 정보 조회",
-            "client_agent": "고객 분석, 거래처 매출 분석, 영업 성과 분석",
-            "create_document_agent": "문서 초안 작성, 양식 생성, 컴플라이언스 검토",
-            "search_agent": "내부 데이터베이스 검색, 정보 조회, 문서 검색"
-        }
-        
-        if selected_agent:
-            agent_info = {
-                "agent_key": selected_agent,
-                "agent_name": agent_display_names.get(selected_agent, selected_agent),
-                "agent_description": agent_descriptions.get(selected_agent, ""),
-            }
+이 에이전트는 다음과 같은 질문에 답변할 수 있습니다:
+"""
+            for i, example in enumerate(example_questions, 1):
+                guide_message += f"\n{i}. {example}"
+            
+            guide_message += "\n\n위 예시를 참고하여 질문을 입력해주세요."
+            
             return {
                 "success": True,
-                "has_selected_agent": True,
-                "agent_info": agent_info,
-                "message": f"현재 '{agent_info['agent_name']}'가 활성화되어 있습니다.",
-                "unified_graph": True
+                "agent_selected": True,
+                "needs_new_question": True,
+                "selected_agent": agent_id,
+                "message": guide_message,
+                "example_questions": example_questions
             }
-        else:
-            return {
-                "success": True,
-                "has_selected_agent": False,
-                "message": "통합 AI가 질문에 따라 적절한 에이전트를 자동 선택합니다.",
-                "unified_graph": True
-            }
+        
+        # 질문이 있으면 에이전트 실행
+        result = await run_agent(agent_id, req.query, req.session_id)
+        result["agent_selected"] = True
+        result["classification_result"] = f"사용자 선택: {agent_id}"
+        
+        # 세션에 메시지 저장
+        sessions[req.session_id]["messages"].append({
+            "role": "user",
+            "content": req.query
+        })
+        sessions[req.session_id]["messages"].append({
+            "role": "assistant",
+            "content": result.get("response", ""),
+            "agent": agent_id
+        })
+        
+        return result
+        
     except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.post("/reset-agent")
-def reset_session_agent(req: ResetAgentRequest):
-    """현재 세션의 에이전트 초기화"""
-    try:
-        # 기존 에이전트 확인
-        current_agent = get_session_selected_agent(req.session_id)
-        
-        # 에이전트 초기화
-        clear_session_selected_agent(req.session_id)
-        
-        agent_display_names = {
-            "employee_agent": "직원 실적 분석",
-            "client_agent": "고객/거래처 분석", 
-            "create_document_agent": "문서 초안 작성",
-            "search_agent": "내부 데이터 검색"
-        }
-        
-        # 초기화 메시지 추가
-        reset_message = (
-            f"🔄 **에이전트가 초기화되었습니다.**\n"
-            f"{'이전: ' + agent_display_names.get(current_agent, current_agent) if current_agent else ''}\n\n"
-            f"이제 통합 AI가 새로운 질문에 맞는 에이전트를 자동으로 선택합니다."
-        )
-        
-        add_message(
-            req.session_id,
-            "system",
-            reset_message,
-            metadata={
-                "agent_reset": True, 
-                "previous_agent": current_agent,
-                "unified_graph": True
-            }
-        )
-        
+        logger.error(f"Select agent error: {str(e)}")
         return {
-            "success": True,
-            "message": reset_message,
-            "previous_agent": current_agent,
-            "unified_graph": True
+            "success": False,
+            "error": str(e)
         }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
 
-# ────────────────────────────────────────────────────────────────────────────────
-# 시스템 정보 API들
-# ────────────────────────────────────────────────────────────────────────────────
-
-@router.get("/agents")
-def get_available_agents():
-    """사용 가능한 에이전트 목록"""
-    try:
-        available_agents = ["employee_agent", "client_agent", "create_document_agent", "search_agent"]
-        
-        agent_descriptions = {
-            "employee_agent": "사내 직원의 실적 분석, 성과 평가, 인사 정보 조회",
-            "client_agent": "고객 분석, 거래처 매출 분석, 영업 성과 분석", 
-            "create_document_agent": "문서 초안 작성, 양식 생성, 컴플라이언스 검토",
-            "search_agent": "내부 데이터베이스 검색, 정보 조회, 문서 검색"
-        }
-        
-        agent_display_names = {
-            "employee_agent": "직원 실적 분석",
-            "client_agent": "고객/거래처 분석",
-            "create_document_agent": "문서 초안 작성", 
-            "search_agent": "내부 데이터 검색"
-        }
-        
-        return {
-            "success": True,
-            "available_agents": available_agents,
-            "agent_descriptions": agent_descriptions,
-            "agent_display_names": agent_display_names,
-            "unified_graph": True,
-            "message": "통합 LangGraph 기반 다중 에이전트 시스템"
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.get("/system-info")
-def get_system_info():
-    """시스템 정보"""
-    return {
-        "success": True,
-        "system": "NaruTalk AI - Unified Agent System",
-        "version": "2.0.0",
-        "architecture": "LangGraph + FastAPI",
-        "agents": {
-            "employee_agent": "직원 실적 분석",
-            "client_agent": "고객/거래처 분석",
-            "create_document_agent": "문서 초안 작성",
-            "search_agent": "내부 데이터 검색"
-        },
-        "features": [
-            "통합 LangGraph 워크플로우",
-            "자동 에이전트 분류",
-            "상태 기반 대화 관리",
-            "실시간 메모리 관리",
-            "폴백 및 오류 처리"
-        ],
-        "unified_graph": True
-    }
-
-# ────────────────────────────────────────────────────────────────────────────────
-# 채팅 내역 조회 API (기존 유지)
-# ────────────────────────────────────────────────────────────────────────────────
-
-@router.get("/sessions")
-def get_chat_sessions():
-    """모든 채팅 세션 목록 조회"""
-    try:
-        sessions = get_all_sessions()
-        return {
-            "success": True,
-            "sessions": sessions,
-            "count": len(sessions),
-            "message": f"{len(sessions)}개의 채팅 세션을 찾았습니다.",
-            "unified_graph": True
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@router.get("/sessions/{session_id}/messages")
-def get_session_messages_api(session_id: str):
-    """특정 세션의 모든 메시지 조회"""
-    try:
-        messages = get_session_messages(session_id)
-        return {
-            "success": True,
-            "session_id": session_id,
-            "messages": messages,
-            "count": len(messages),
-            "message": f"{len(messages)}개의 메시지를 찾았습니다.",
-            "unified_graph": True
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+@router.get("/test")
+async def test():
+    """테스트 엔드포인트"""
+    return {"message": "API is working!", "status": "ok"}
 
 @router.get("/chat-history")
-def get_full_chat_history():
-    """전체 채팅 내역 (세션 + 메시지) 조회"""
-    try:
-        sessions = get_all_sessions()
-        full_history = []
-        
-        for session in sessions:
-            messages = get_session_messages(session["id"])
-            full_history.append({
-                "id": session["id"],
-                "sessionId": session["id"],  # 프론트엔드 호환
-                "title": session["title"],
-                "messages": messages,
-                "createdAt": session["created_at"],
-                "updatedAt": session["updated_at"]
-            })
-        
+async def get_chat_history():
+    """채팅 기록"""
+    history = []
+    for session_id, data in sessions.items():
+        history.append({
+            "session_id": session_id,
+            "message_count": len(data.get("messages", [])),
+            "selected_agent": data.get("selected_agent"),
+            "created_at": data.get("created_at", "")
+        })
+    
+    return {
+        "success": True,
+        "chatHistory": history,
+        "count": len(history)
+    }
+
+@router.get("/sessions/{session_id}/messages")
+async def get_session_messages(session_id: str):
+    """세션별 메시지"""
+    if session_id in sessions:
+        messages = sessions[session_id].get("messages", [])
         return {
             "success": True,
-            "chatHistory": full_history,
-            "count": len(full_history),
-            "message": f"{len(full_history)}개의 채팅 내역을 불러왔습니다.",
-            "unified_graph": True
+            "messages": messages,
+            "count": len(messages)
         }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    
+    return {
+        "success": True,
+        "messages": [],
+        "count": 0
+    }
+
+@router.get("/current-agent/{session_id}")
+async def get_current_agent(session_id: str):
+    """현재 세션의 마지막 사용 에이전트 확인"""
+    if session_id in sessions:
+        messages = sessions[session_id].get("messages", [])
+        # 마지막 assistant 메시지에서 에이전트 정보 찾기
+        for msg in reversed(messages):
+            if msg.get("role") == "assistant" and msg.get("agent"):
+                agent = msg["agent"]
+                return {
+                    "success": True,
+                    "has_selected_agent": False,  # 고정되지 않음
+                    "last_agent": {
+                        "agent_name": AGENT_DISPLAY_NAMES.get(agent, agent),
+                        "agent_key": agent
+                    }
+                }
+    
+    return {
+        "success": True,
+        "has_selected_agent": False,
+        "agent": None
+    }
+
+@router.post("/reset-agent")
+async def reset_agent(req: Dict[str, Any]):
+    """대화 이력 리셋"""
+    session_id = req.get("session_id")
+    if session_id and session_id in sessions:
+        sessions[session_id]["messages"] = []
+        sessions[session_id]["routing_attempts"] = 0
+    
+    return {
+        "success": True,
+        "message": "대화 이력이 초기화되었습니다."
+    }
