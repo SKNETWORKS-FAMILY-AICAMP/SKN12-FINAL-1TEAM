@@ -90,7 +90,7 @@ async def run_agent(agent_id: str, query: str, session_id: str) -> Dict[str, Any
     """각 에이전트의 run.py 실행"""
     try:
         if agent_id == "employee_agent":
-            from app.services.employee_agent.run import run
+            from app.services.employee_agent.employee_agent import run
             result = await run(query, session_id)
             return result
             
