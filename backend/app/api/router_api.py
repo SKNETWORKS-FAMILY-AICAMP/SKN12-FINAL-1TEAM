@@ -125,7 +125,7 @@ AGENT_DISPLAY_NAMES = {
     "employee_agent": "직원 실적 분석",
     "client_agent": "고객/거래처 분석", 
     "search_agent": "정보 검색",
-    "create_document_agent": "문서 생성"
+    "docs_agent": "문서 생성"
 }
 
 # 에이전트별 예시 질문
@@ -148,7 +148,7 @@ AGENT_EXAMPLE_QUESTIONS = {
         "사내 휴가 규정을 검색해주세요",
         "신제품 교육 자료를 찾아주세요"
     ],
-    "create_document_agent": [
+    "docs_agent": [
         "이번 달 영업 실적 보고서를 작성해주세요",
         "거래처 방문 보고서 템플릿을 만들어주세요",
         "분기별 매출 분석 문서를 생성해주세요",
@@ -174,8 +174,8 @@ async def run_agent(agent_id: str, query: str, session_id: str) -> Dict[str, Any
             result = await run(query, session_id)
             return result
             
-        elif agent_id == "create_document_agent":
-            from app.services.create_document_agent.run import run
+        elif agent_id == "docs_agent":
+            from app.services.docs_agent import run
             result = await run(query, session_id)
             return result
             

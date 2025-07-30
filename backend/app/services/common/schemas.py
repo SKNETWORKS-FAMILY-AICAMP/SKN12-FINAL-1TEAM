@@ -22,7 +22,7 @@ class RouterState(BaseState, total=False):
     available_agents: Optional[List[str]]
 
 # [EMOJI]
-# 3) [EMOJI] [EMOJI] [EMOJI](create_document_agent) [EMOJI] [EMOJI]
+# 3) [EMOJI] [EMOJI] [EMOJI](docs_agent) [EMOJI] [EMOJI]
 class DocState(BaseState, total=False):
     # [EMOJI] [EMOJI]
     messages: List[HumanMessage]
