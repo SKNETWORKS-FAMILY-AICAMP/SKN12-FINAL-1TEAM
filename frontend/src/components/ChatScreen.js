@@ -17,31 +17,57 @@ const ChatScreen = () => {
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   };
 
+  // 백엔드 에이전트 ID를 프론트엔드 키로 매핑
+  const agentKeyMapping = {
+    'employee_agent': 'employee',
+    'client_agent': 'client',
+    'search_agent': 'search',
+    'create_document_agent': 'docs'
+  };
+
+  // 에이전트 표시 이름
+  const AGENT_DISPLAY_NAMES = {
+    'employee_agent': '직원 실적 분석',
+    'client_agent': '고객/거래처 분석',
+    'search_agent': '정보 검색',
+    'create_document_agent': '문서 생성'
+  };
+
   // 4개 에이전트 정보
   const agents = {
     router: {
       name: 'Router Agent',
-      endpoint: '/api/router/router',
+      endpoint: '/api/chat',  // 원래 API 경로
       description: '쿼리를 분석하고 적절한 에이전트로 자동 라우팅',
       color: '#3b82f6'
     },
     employee: {
       name: 'Employee Agent',
-      endpoint: '/api/employee/analyze',
+      endpoint: '/api/select-agent',  // 백엔드 실제 경로로 수정
       description: '직원 실적 분석 및 평가',
-      color: '#10b981'
+      color: '#10b981',
+      agentType: 'employee_agent'
     },
     client: {
       name: 'Client Agent',
-      endpoint: '/api/client/analyze',
+      endpoint: '/api/select-agent',  // 백엔드 실제 경로로 수정
       description: '고객/거래처 분석 및 영업 전략',
-      color: '#f59e0b'
+      color: '#f59e0b',
+      agentType: 'client_agent'
+    },
+    search: {
+      name: 'Search Agent',
+      endpoint: '/api/select-agent',
+      description: '정보 검색',
+      color: '#06b6d4',
+      agentType: 'search_agent'
     },
     docs: {
       name: 'Docs Agent',
-      endpoint: '/api/docs/classify',
+      endpoint: '/api/select-agent',  // 백엔드 실제 경로로 수정
       description: '문서 분류 및 생성',
-      color: '#8b5cf6'
+      color: '#8b5cf6',
+      agentType: 'create_document_agent'
     }
   };
 
@@ -57,7 +83,7 @@ const ChatScreen = () => {
   const loadChatHistoryFromBackend = async () => {
     try {
       console.log('🔄 백엔드에서 채팅 내역 불러오는 중...');
-      const response = await fetch('http://localhost:8000/api/router/chat-history');
+      const response = await fetch('http://localhost:8000/api/chat-history');
       
       if (response.ok) {
         const data = await response.json();
@@ -100,12 +126,42 @@ const ChatScreen = () => {
   // 초기 안내 메시지
   useEffect(() => {
     const initializeChat = async () => {
-      const initialMessage = {
+      // 시스템 안내 메시지
+      const systemMessage = {
         type: 'system',
         content: '안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?',
         timestamp: new Date().toLocaleTimeString()
       };
-      setMessages([initialMessage]);
+      
+      // 에이전트 선택 메시지 (H2H와 동일한 형태)
+      const agentSelectionMessage = {
+        type: 'agent_selection',
+        content: `저희 시스템은 다음 기능을 제공합니다:
+- 직원 실적/평가 조회
+- 고객/거래처(병원,약국) 정보 관리
+- 영업 데이터 검색
+- 보고서/문서 자동 생성
+
+원하시는 기능을 선택하시거나, 바로 질문을 입력하셔도 됩니다.`,
+        timestamp: new Date().toLocaleTimeString(),
+        agent: 'System',
+        query: '',  // 초기 선택이므로 query 없음
+        available_agents: ['employee_agent', 'client_agent', 'search_agent', 'create_document_agent'],
+        agent_descriptions: {
+          "employee_agent": "사내 직원에 대한 정보 제공을 담당합니다. 예: 개인 실적 조회, 인사 이력, 직책, 소속 부서, 조직도 확인, 성과 평가 등 직원 관련 질의 응답을 처리합니다.",
+          "client_agent": "고객 및 거래처에 대한 정보를 제공합니다. 반드시 병원, 제약영업과 관련이 있는 질문에만 답변합니다.예: 특정 고객의 매출 추이, 거래 이력, 등급 분류, 잠재 고객 분석, 영업 성과 분석 등 외부 고객 관련 질문에 대응합니다.",
+          "search_agent": "내부 데이터베이스에서 정보 검색을 수행합니다. 예: 문서 검색, 사내 규정, 업무 매뉴얼, 제품 정보, 교육 자료 등 특정 정보를 정제된 DB 또는 벡터DB 기반으로 검색합니다.",
+          "create_document_agent": "문서 자동 생성 및 규정 검토를 담당합니다. 예: 보고서 초안 자동 생성, 전표/계획서 생성, 컴플라이언스 위반 여부 판단, 서식 분석 및 문서 오류 검토 등의 기능을 수행합니다."
+        },
+        agent_display_names: {
+          "employee_agent": "직원 실적 분석",
+          "client_agent": "고객/거래처 분석",
+          "search_agent": "정보 검색",
+          "create_document_agent": "문서 생성"
+        }
+      };
+      
+      setMessages([systemMessage, agentSelectionMessage]);
       
       // 백엔드에서 채팅 내역 불러오기
       const history = await loadChatHistoryFromBackend();
@@ -124,13 +180,43 @@ const ChatScreen = () => {
   const startNewChat = () => {
     const chatId = Date.now().toString();
     const newSessionId = generateSessionId();
-    const initialMessage = {
+    
+    // 시스템 메시지
+    const systemMessage = {
       type: 'system',
       content: '안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?',
       timestamp: new Date().toLocaleTimeString()
     };
     
-    setMessages([initialMessage]);
+    // 에이전트 선택 메시지
+    const agentSelectionMessage = {
+      type: 'agent_selection',
+      content: `저희 시스템은 다음 기능을 제공합니다:
+- 직원 실적/평가 조회
+- 고객/거래처(병원,약국) 정보 관리
+- 영업 데이터 검색
+- 보고서/문서 자동 생성
+
+원하시는 기능을 선택하시거나, 바로 질문을 입력하셔도 됩니다.`,
+      timestamp: new Date().toLocaleTimeString(),
+      agent: 'System',
+      query: '',
+      available_agents: ['employee_agent', 'client_agent', 'search_agent', 'create_document_agent'],
+      agent_descriptions: {
+        "employee_agent": "사내 직원에 대한 정보 제공을 담당합니다. 예: 개인 실적 조회, 인사 이력, 직책, 소속 부서, 조직도 확인, 성과 평가 등 직원 관련 질의 응답을 처리합니다.",
+        "client_agent": "고객 및 거래처에 대한 정보를 제공합니다. 반드시 병원, 제약영업과 관련이 있는 질문에만 답변합니다.예: 특정 고객의 매출 추이, 거래 이력, 등급 분류, 잠재 고객 분석, 영업 성과 분석 등 외부 고객 관련 질문에 대응합니다.",
+        "search_agent": "내부 데이터베이스에서 정보 검색을 수행합니다. 예: 문서 검색, 사내 규정, 업무 매뉴얼, 제품 정보, 교육 자료 등 특정 정보를 정제된 DB 또는 벡터DB 기반으로 검색합니다.",
+        "create_document_agent": "문서 자동 생성 및 규정 검토를 담당합니다. 예: 보고서 초안 자동 생성, 전표/계획서 생성, 컴플라이언스 위반 여부 판단, 서식 분석 및 문서 오류 검토 등의 기능을 수행합니다."
+      },
+      agent_display_names: {
+        "employee_agent": "직원 실적 분석",
+        "client_agent": "고객/거래처 분석",
+        "search_agent": "정보 검색",
+        "create_document_agent": "문서 생성"
+      }
+    };
+    
+    setMessages([systemMessage, agentSelectionMessage]);
     setCurrentChatId(chatId);
     setSessionId(newSessionId);
     
@@ -139,7 +225,7 @@ const ChatScreen = () => {
       id: chatId,
       sessionId: newSessionId,
       title: `채팅 ${new Date().toLocaleString()}`,
-      messages: [initialMessage],
+      messages: [systemMessage, agentSelectionMessage],
       createdAt: new Date().toISOString()
     };
     
@@ -162,7 +248,7 @@ const ChatScreen = () => {
         // 백엔드에서 메시지 불러오기
         try {
           console.log(`🔄 세션 ${selectedChat.sessionId}의 메시지 불러오는 중...`);
-          const response = await fetch(`http://localhost:8000/api/router/sessions/${selectedChat.sessionId}/messages`);
+          const response = await fetch(`http://localhost:8000/api/sessions/${selectedChat.sessionId}/messages`);
           
           if (response.ok) {
             const data = await response.json();
@@ -236,46 +322,13 @@ const ChatScreen = () => {
     setInputValue('');
 
     try {
-      const agent = agents[selectedAgent];
-      let requestBody = {};
-      
-      // 에이전트별 요청 데이터 구성
-      switch (selectedAgent) {
-        case 'router':
-          requestBody = { 
-            session_id: sessionId,
-            query: currentQuery 
-          };
-          break;
-        case 'employee':
-          requestBody = {
-            session_id: sessionId,
-            employee_name: "최수아",
-            period: "202312~202403",
-            save_report: false
-          };
-          break;
-        case 'client':
-          requestBody = {
-            session_id: sessionId,
-            client_name: "서울의료센터",
-            analysis_type: "종합분석",
-            save_report: false
-          };
-          break;
-        case 'docs':
-          requestBody = {
-            user_input: currentQuery  // text -> user_input으로 변경
-          };
-          break;
-        default:
-          requestBody = { 
-            session_id: sessionId,
-            query: currentQuery 
-          };
-      }
+      // 항상 Router를 통해 전송하여 동적 라우팅 활성화
+      const requestBody = { 
+        session_id: sessionId,
+        query: currentQuery 
+      };
 
-      const response = await fetch(`http://localhost:8000${agent.endpoint}`, {
+      const response = await fetch('http://localhost:8000/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -290,10 +343,11 @@ const ChatScreen = () => {
       const data = await response.json();
       
       let botResponseContent = '';
+      let responseAgent = 'Router Agent';
       
       if (data.success) {
         // Router 에이전트에서 사용자 선택이 필요한 경우
-        if (selectedAgent === 'router' && data.needs_user_selection) {
+        if (data.needs_user_selection) {
           const selectionMessage = {
             type: 'agent_selection',
             content: data.message,
@@ -311,21 +365,18 @@ const ChatScreen = () => {
           return;
         }
         
-        switch (selectedAgent) {
-          case 'router':
-            botResponseContent = `🎯 라우팅 결과: ${data.agent}\n\n${data.response}\n\n분류 상세:\n• 선택된 에이전트: ${data.agent}\n• 라우팅 시도 횟수: ${data.routing_attempts}\n• 분류 결과: ${data.classification_result}`;
-            break;
-          case 'employee':
-            botResponseContent = `📊 직원 실적 분석 완료!\n\n${data.report}`;
-            break;
-          case 'client':
-            botResponseContent = `🏥 고객 분석 완료!\n\n${data.report}`;
-            break;
-          case 'docs':
-            botResponseContent = `📄 문서 분류 완료!\n\n• 문서 타입: ${data.state?.doc_type}\n• 상태: 분류 성공\n• 템플릿: ${data.state?.template_content ? '준비됨' : '준비 중'}`;
-            break;
-          default:
-            botResponseContent = data.message || '처리가 완료되었습니다.';
+        // 응답에서 실제 사용된 에이전트 정보 추출
+        const usedAgent = data.agent || data.classification_result?.split(': ')[1];
+        if (usedAgent) {
+          responseAgent = AGENT_DISPLAY_NAMES[usedAgent] || usedAgent;
+        }
+        
+        // 기본 응답 내용
+        botResponseContent = data.response || data.message || '처리가 완료되었습니다.';
+        
+        // 라우팅 정보가 있으면 추가
+        if (data.classification_result) {
+          botResponseContent += `\n\n[${data.classification_result}]`;
         }
       } else {
         botResponseContent = `❌ 오류 발생: ${data.error || data.message}`;
@@ -335,7 +386,7 @@ const ChatScreen = () => {
         type: 'bot',
         content: botResponseContent,
         timestamp: new Date().toLocaleTimeString(),
-        agent: agent.name
+        agent: responseAgent
       };
 
       const finalMessages = [...newMessages, botMessage];
@@ -368,7 +419,10 @@ const ChatScreen = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/api/router/select-agent', {
+      // 초기 화면에서 선택하는 경우 (query가 비어있음)
+      const endpoint = query === '' ? '/api/initial-agent-select' : '/api/select-agent';
+      
+      const response = await fetch(`http://localhost:8000${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -386,27 +440,50 @@ const ChatScreen = () => {
 
       const data = await response.json();
       
-      let botResponseContent = '';
       if (data.success) {
-        botResponseContent = `🎯 선택된 에이전트: ${data.agent}\n\n${data.response}\n\n처리 결과:\n• 에이전트: ${data.agent}\n• 상태: 사용자 직접 선택\n• 분류 결과: ${data.classification_result}`;
+        if (data.needs_new_question) {
+          // 예시 질문을 보여주는 특별한 메시지 타입
+          const guideMessage = {
+            type: 'agent_guide',
+            content: data.message,
+            timestamp: new Date().toLocaleTimeString(),
+            agent: 'System',
+            selected_agent: data.selected_agent,
+            example_questions: data.example_questions
+          };
+          
+          const updatedMessages = [...messages, guideMessage];
+          setMessages(updatedMessages);
+          saveMessageToHistory(updatedMessages);
+          
+          // 선택된 에이전트는 표시용으로만 사용하고 고정하지 않음
+          // 모든 메시지는 Router를 통해 동적으로 라우팅됨
+        } else {
+          // 실제 에이전트 응답
+          const botMessage = {
+            type: 'bot',
+            content: data.response || data.message,
+            timestamp: new Date().toLocaleTimeString(),
+            agent: data.agent
+          };
+          
+          const updatedMessages = [...messages, botMessage];
+          setMessages(updatedMessages);
+          saveMessageToHistory(updatedMessages);
+          
+          checkCurrentAgent(sessionId);
+        }
       } else {
-        botResponseContent = `❌ 에이전트 선택 처리 오류: ${data.error || data.message}`;
-      }
-
-      const botMessage = {
-        type: 'bot',
-        content: botResponseContent,
-        timestamp: new Date().toLocaleTimeString(),
-        agent: 'Router Agent'
-      };
-
-      const updatedMessages = [...messages, botMessage];
-      setMessages(updatedMessages);
-      saveMessageToHistory(updatedMessages);
-
-      // 에이전트가 선택된 경우 현재 에이전트 정보 갱신
-      if (data.success) {
-        checkCurrentAgent(sessionId);
+        const errorMessage = {
+          type: 'bot',
+          content: `❌ 에이전트 선택 처리 오류: ${data.error || data.message}`,
+          timestamp: new Date().toLocaleTimeString(),
+          agent: 'System'
+        };
+        
+        const updatedMessages = [...messages, errorMessage];
+        setMessages(updatedMessages);
+        saveMessageToHistory(updatedMessages);
       }
 
     } catch (error) {
@@ -444,7 +521,7 @@ const ChatScreen = () => {
     if (!sessionId) return;
     
     try {
-      const response = await fetch(`http://localhost:8000/api/router/current-agent/${sessionId}`);
+      const response = await fetch(`http://localhost:8000/api/current-agent/${sessionId}`);
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.has_selected_agent) {
@@ -473,7 +550,7 @@ const ChatScreen = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/router/reset-agent', {
+      const response = await fetch('http://localhost:8000/api/reset-agent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -510,10 +587,8 @@ const ChatScreen = () => {
 
   return (
     <div className="chat-screen">
-      {/* Main Content */}
-      <div className="chat-container">
-        {/* Chat Management Panel */}
-        <aside className="chat-panel">
+      {/* Chat Management Panel */}
+      <aside className="chat-panel">
           <div className="chat-management">
             <h3>Chat</h3>
             <button className="new-chat-btn" onClick={startNewChat}>
@@ -552,7 +627,9 @@ const ChatScreen = () => {
           </div>
         </aside>
 
-        {/* Main Chat Area */}
+        {/* Main Content */}
+        <div className="chat-container">
+          {/* Main Chat Area */}
         <main className="chat-main">
           <div className="chat-title">
             <h2>AI 채팅</h2>
@@ -601,7 +678,54 @@ const ChatScreen = () => {
                   <span className="message-time">{message.timestamp}</span>
                 </div>
                 <div className="message-content">
-                  {message.type === 'agent_selection' ? (
+                  {message.type === 'agent_guide' ? (
+                    <div>
+                      <div style={{marginBottom: '15px'}}>
+                        {message.content.split('\n').map((line, i) => (
+                          <div key={i} style={{marginBottom: '5px'}}>{line}</div>
+                        ))}
+                      </div>
+                      {message.example_questions && (
+                        <div style={{marginTop: '20px'}}>
+                          <div style={{fontWeight: 'bold', marginBottom: '10px', color: '#4a5568'}}>
+                            💡 예시 질문 클릭하여 사용:
+                          </div>
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                            {message.example_questions.map((example, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setInputValue(example);
+                                  const frontendKey = agentKeyMapping[message.selected_agent] || message.selected_agent;
+                                  setSelectedAgent(frontendKey);
+                                }}
+                                style={{
+                                  textAlign: 'left',
+                                  padding: '10px 15px',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: '8px',
+                                  backgroundColor: '#f7fafc',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  fontSize: '14px'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.backgroundColor = '#edf2f7';
+                                  e.target.style.borderColor = '#cbd5e0';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.backgroundColor = '#f7fafc';
+                                  e.target.style.borderColor = '#e2e8f0';
+                                }}
+                              >
+                                {example}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : message.type === 'agent_selection' ? (
                     <div>
                       <div style={{marginBottom: '15px'}}>
                         {message.content.split('\n').map((line, i) => (
@@ -656,11 +780,11 @@ const ChatScreen = () => {
 
           <div className="message-input-container">
             <div className="selected-agent-info">
-              <span style={{ color: agents[selectedAgent].color }}>
-                ● {agents[selectedAgent].name}
+              <span style={{ color: agents.router.color }}>
+                ● {agents.router.name}
               </span>
               <span className="agent-description">
-                {agents[selectedAgent].description}
+                질문에 따라 자동으로 적절한 에이전트가 선택됩니다
               </span>
             </div>
             <div className="input-area">
@@ -683,7 +807,7 @@ const ChatScreen = () => {
             </div>
           </div>
         </main>
-      </div>
+        </div>
     </div>
   );
 };

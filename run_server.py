@@ -25,21 +25,21 @@ def setup_environment():
     os.environ.setdefault('PYTHONPATH', str(backend_path))
     os.environ.setdefault('LOG_LEVEL', 'INFO')
     
-    print(f"📁 프로젝트 루트: {project_root}")
-    print(f"📁 백엔드 경로: {backend_path}")
-    print("✅ 환경 설정 완료")
+    print(f"[INFO] 프로젝트 루트: {project_root}")
+    print(f"[INFO] 백엔드 경로: {backend_path}")
+    print("[OK] 환경 설정 완료")
     
     return project_root, backend_path
 
 def check_virtual_environment():
     """가상환경 확인"""
     if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
-        print("✅ 가상환경에서 실행 중")
-        print(f"📍 Python 경로: {sys.executable}")
+        print("[OK] 가상환경에서 실행 중")
+        print(f"[INFO] Python 경로: {sys.executable}")
         return True
     else:
-        print("⚠️ 가상환경이 활성화되지 않았습니다.")
-        print("💡 다음 명령어로 가상환경을 활성화하세요:")
+        print("[WARNING] 가상환경이 활성화되지 않았습니다.")
+        print("[TIP] 다음 명령어로 가상환경을 활성화하세요:")
         print("   Windows: .\\venv\\Scripts\\activate")
         print("   Linux/Mac: source venv/bin/activate")
         return False
@@ -60,10 +60,10 @@ def check_requirements():
     for pip_name, import_name in required_packages:
         try:
             __import__(import_name)
-            print(f"✅ {pip_name}")
+            print(f"[OK] {pip_name}")
         except ImportError:
             missing_packages.append(pip_name)
-            print(f"❌ {pip_name}")
+            print(f"[FAIL] {pip_name}")
     
     if missing_packages:
         print(f"\n❌ 누락된 패키지: {', '.join(missing_packages)}")
@@ -108,16 +108,23 @@ def check_environment_variables():
 def test_import():
     """핵심 모듈 임포트 테스트"""
     try:
+        # .env 파일 먼저 로드
+        from dotenv import load_dotenv
+        env_path = Path(__file__).parent / "backend" / "app" / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+            print(f"[OK] .env 파일 로드: {env_path}")
+        
         from backend.app.main import app
-        print("✅ FastAPI 앱 임포트 성공")
+        print("[OK] FastAPI 앱 임포트 성공")
         return True
     except ImportError as e:
-        print(f"❌ FastAPI 앱 임포트 실패: {e}")
+        print(f"[ERROR] FastAPI 앱 임포트 실패: {e}")
         return False
 
 def main():
     """메인 함수 (개선된 버전)"""
-    print("🚀 NaruTalk AI 챗봇 시스템 시작")
+    print("[START] NaruTalk AI 챗봇 시스템 시작")
     print("=" * 60)
     
     # 1. 환경 설정

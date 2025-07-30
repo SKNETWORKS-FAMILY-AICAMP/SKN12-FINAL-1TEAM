@@ -2,137 +2,111 @@ import React, { useState } from 'react';
 import './ClientPage.css';
 
 const ClientPage = () => {
-  const [clients, setClients] = useState([
-    {
-      id: 1,
-      name: 'A병원',
-      type: '병원',
-      contact: '김의사',
-      phone: '02-1234-5678',
-      address: '서울시 강남구',
-      status: '활성',
-      lastVisit: '2024-07-15',
-    },
-    {
-      id: 2,
-      name: 'B약국',
-      type: '약국',
-      contact: '이약사',
-      phone: '02-2345-6789',
-      address: '서울시 서초구',
-      status: '활성',
-      lastVisit: '2024-07-14',
-    },
-    {
-      id: 3,
-      name: 'C의원',
-      type: '의원',
-      contact: '박원장',
-      phone: '02-3456-7890',
-      address: '서울시 마포구',
-      status: '비활성',
-      lastVisit: '2024-07-10',
-    },
-  ]);
+  const [selectedAnalysis, setSelectedAnalysis] = useState('ABC회사 분석 결과 보고서');
+  const [userMessage, setUserMessage] = useState('ABC회사에 등급을 데이터로 분석해 주세요, 관련 분석 보고서 중심해줘.');
+  const [aiResponse, setAiResponse] = useState('네, ABC 회사의 등급과 관련 분석을 고객의 등급 기준마다 분석하여 결과 보고서를 작성해 보겠습니다.');
+  const [inputMessage, setInputMessage] = useState('');
+  
+  const existingAnalyses = [
+    'ABC회사_분석결과보고서_20...',
+    'SSS회사_분석결과보고서_20...',
+    '000회사_분석결과보고서_20...'
+  ];
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
+  const handleSendMessage = () => {
+    if (inputMessage.trim()) {
+      // 실제로는 AI API 호출
+      setInputMessage('');
+    }
+  };
 
-  const filteredClients = clients.filter(client => {
-    const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         client.contact.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterType === 'all' || client.type === filterType;
-    return matchesSearch && matchesFilter;
-  });
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      handleSendMessage();
+    }
+  };
 
   return (
     <div className="client-page">
-      <div className="client-header">
-        <h1>👥 고객 관리</h1>
-        <p>고객 정보를 관리하고 방문 일정을 확인하세요</p>
-      </div>
-
-      <div className="client-controls">
-        <div className="search-control">
-          <input
-            type="text"
-            placeholder="고객명 또는 담당자로 검색..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="client-search"
-          />
-        </div>
+      {/* Left Sidebar */}
+      <div className="client-sidebar">
+        <h2>고객 분석</h2>
         
-        <div className="filter-control">
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="client-filter"
-          >
-            <option value="all">전체</option>
-            <option value="병원">병원</option>
-            <option value="약국">약국</option>
-            <option value="의원">의원</option>
-          </select>
-        </div>
+        <button className="new-analysis-btn">
+          <span className="plus-icon">+</span>
+          새로운 고객 분석
+        </button>
 
-        <button className="add-client-btn">+ 새 고객 추가</button>
-      </div>
-
-      <div className="client-stats">
-        <div className="stat-card">
-          <h3>총 고객 수</h3>
-          <div className="stat-value">{clients.length}</div>
-        </div>
-        <div className="stat-card">
-          <h3>활성 고객</h3>
-          <div className="stat-value">{clients.filter(c => c.status === '활성').length}</div>
-        </div>
-        <div className="stat-card">
-          <h3>이번 달 방문</h3>
-          <div className="stat-value">12</div>
+        <div className="existing-analyses">
+          <h3>기존 분석</h3>
+          {existingAnalyses.length > 0 ? (
+            existingAnalyses.map((analysis, index) => (
+              <div key={index} className="analysis-item">
+                <span className="analysis-icon">💬</span>
+                <span className="analysis-name">{analysis}</span>
+                <span className="analysis-arrow">›</span>
+              </div>
+            ))
+          ) : (
+            <div className="no-analyses">
+              <p>기존 분석이 없습니다.</p>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="client-list">
-        <div className="client-list-header">
-          <h3>고객 목록</h3>
-          <span className="client-count">총 {filteredClients.length}개</span>
-        </div>
-        
-        <div className="client-table">
-          <div className="table-header">
-            <div className="header-cell">고객명</div>
-            <div className="header-cell">유형</div>
-            <div className="header-cell">담당자</div>
-            <div className="header-cell">연락처</div>
-            <div className="header-cell">주소</div>
-            <div className="header-cell">상태</div>
-            <div className="header-cell">최근 방문</div>
-            <div className="header-cell">작업</div>
+      {/* Center Content Area */}
+      <div className="client-main">
+        <div className="analysis-content">
+          <h1>{selectedAnalysis}</h1>
+          <div className="analysis-body">
+            {/* 분석 내용이 여기에 표시됩니다 */}
           </div>
-          
-          {filteredClients.map(client => (
-            <div key={client.id} className="table-row">
-              <div className="table-cell client-name">{client.name}</div>
-              <div className="table-cell">
-                <span className={`client-type ${client.type}`}>{client.type}</span>
-              </div>
-              <div className="table-cell">{client.contact}</div>
-              <div className="table-cell">{client.phone}</div>
-              <div className="table-cell">{client.address}</div>
-              <div className="table-cell">
-                <span className={`status-badge ${client.status}`}>
-                  {client.status}
-                </span>
-              </div>
-              <div className="table-cell">{client.lastVisit}</div>
-              <div className="table-cell actions">
-                <button className="action-btn edit">수정</button>
-                <button className="action-btn visit">방문</button>
+        </div>
+      </div>
+
+      {/* Right Panel - AI Assistant */}
+      <div className="client-ai-panel">
+        <h2>고객 분석 요청</h2>
+        
+        <div className="chat-container">
+          {/* User Message */}
+          <div className="message user-message">
+            {userMessage}
+          </div>
+
+          {/* AI Response */}
+          <div className="message ai-message">
+            <div className="ai-avatar">👤</div>
+            <div className="message-content">
+              {aiResponse}
+              <div className="ai-prompts">
+                <p>제품설명회 세부 내역을 작성해주세요!</p>
+                <ul>
+                  <li>제품 설명회 주요 내용</li>
+                  <li>참석 인원</li>
+                </ul>
               </div>
             </div>
-          ))}
+          </div>
+        </div>
+
+        {/* Input Area */}
+        <div className="input-area">
+          <input
+            type="text"
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="메시지를 입력해주세요"
+            className="message-input"
+          />
+          <button 
+            onClick={handleSendMessage}
+            className="send-button"
+          >
+            전송
+          </button>
         </div>
       </div>
     </div>
