@@ -115,14 +115,24 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime),
     )
     
+    # chat_sessions
+    op.create_table(
+        'chat_sessions',
+        sa.Column('session_id', sa.String(255), primary_key=True),
+        sa.Column('employee_id', sa.Integer, sa.ForeignKey('employees.employee_id'), nullable=False),
+        sa.Column('session_title', sa.String(500)),
+        sa.Column('created_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
+        sa.Column('last_activity', sa.DateTime, nullable=False, server_default=sa.func.now()),
+    )
+    
     # chat_history
     op.create_table(
         'chat_history',
         sa.Column('message_id', sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column('session_id', sa.String, nullable=False),
+        sa.Column('session_id', sa.String(255), nullable=False),
         sa.Column('employee_id', sa.Integer, sa.ForeignKey('employees.employee_id'), nullable=False),
-        sa.Column('user_query', sa.Text, nullable=False),
-        sa.Column('system_response', sa.Text, nullable=False),
+        sa.Column('role', sa.String(20), nullable=False),
+        sa.Column('message_text', sa.Text, nullable=False),
         sa.Column('expires_at', sa.DateTime),
         sa.Column('created_at', sa.DateTime, nullable=False),
     )
@@ -137,7 +147,7 @@ def upgrade() -> None:
         sa.Column('latency_ms', sa.Integer),
         sa.Column('created_at', sa.DateTime, nullable=False),
     )
-    
+        
     # assignment_map
     op.create_table(
         'assignment_map',
@@ -193,6 +203,7 @@ def downgrade() -> None:
         'document_relations',
         'assignment_map',
         'system_trace_logs',
+        'chat_sessions',
         'chat_history',
         'sales_records',
         'interaction_logs',

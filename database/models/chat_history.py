@@ -1,6 +1,5 @@
 from . import Base
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func, BigInteger, Text, JSON
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func, BigInteger, Text
 from sqlalchemy.orm import relationship
 
 class ChatHistory(Base):
@@ -19,10 +18,7 @@ class ChatHistory(Base):
     # 메시지 역할 및 내용
     role = Column(String(20), nullable=False)  # 메시지 역할 ('user' 또는 'assistant')
     message_text = Column(Text, nullable=False)  # 메시지 내용 (긴 텍스트)
-    
-    # 메타데이터 (JSON 형태로 저장)
-    metadata = Column(JSONB)  # 추가 정보 (에이전트, 모델, 처리 시간 등)
-    
+        
     # TTL (Time To Live) 관련 필드
     expires_at = Column(DateTime)  # 자동 삭제 예정 일시 (예: 1년 후)
     

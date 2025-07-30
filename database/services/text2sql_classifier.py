@@ -15,6 +15,7 @@ from decimal import Decimal
 
 # 공통 OpenAI 서비스 import
 from services.openai_service import openai_service
+from services.customer_utils import extract_address_from_name, extract_address_and_clean_name
 
 # 모델 import
 from models.employees import Employee
@@ -581,70 +582,7 @@ JSON 형식으로 응답:
         
         return Customer(**customer_data)
     
-    def _extract_address_from_name(self, customer_name: str) -> Optional[str]:
-        """고객명에서 주소 정보 추출"""
-        if not customer_name:
-            return None
-        
-        # 괄호 안의 내용 추출 (주소일 가능성)
-        import re
-        bracket_match = re.search(r'[\(（]([^\)）]+)[\)）]', customer_name)
-        if bracket_match:
-            bracket_content = bracket_match.group(1).strip()
-            # 주소 관련 키워드가 포함되어 있는지 확인
-            address_keywords = ['시', '구', '동', '로', '길', '번지', '호', '층', '빌딩', '빌라', '아파트']
-            if any(keyword in bracket_content for keyword in address_keywords):
-                return bracket_content
-        
-        # 특정 패턴에서 주소 추출
-        # 예: "OO병원 (서울시 강남구)" -> "서울시 강남구"
-        address_patterns = [
-            r'[\(（]([^\)）]*[시구동로길번지호층빌딩빌라아파트][^\)）]*)[\)）]',
-            r'([가-힣]+시\s*[가-힣]+구\s*[가-힣]+동)',
-            r'([가-힣]+시\s*[가-힣]+구)',
-        ]
-        
-        for pattern in address_patterns:
-            match = re.search(pattern, customer_name)
-            if match:
-                return match.group(1).strip()
-        
-        return None
-    
-    def _extract_address_and_clean_name(self, customer_name: str) -> tuple[Optional[str], str]:
-        """고객명에서 주소 추출하고 깔끔한 이름 반환"""
-        if not customer_name:
-            return None, customer_name
-        
-        import re
-        
-        # 괄호 안의 내용 추출 (주소일 가능성)
-        bracket_match = re.search(r'[\(（]([^\)）]+)[\)）]', customer_name)
-        if bracket_match:
-            bracket_content = bracket_match.group(1).strip()
-            # 주소 관련 키워드가 포함되어 있는지 확인
-            address_keywords = ['시', '구', '동', '로', '길', '번지', '호', '층', '빌딩', '빌라', '아파트']
-            if any(keyword in bracket_content for keyword in address_keywords):
-                # 주소 추출 및 이름에서 주소 부분 제거
-                clean_name = re.sub(r'[\(（][^\)）]+[\)）]', '', customer_name).strip()
-                return clean_name, bracket_content  # (이름, 주소) 순서로 반환
-        
-        # 특정 패턴에서 주소 추출
-        address_patterns = [
-            r'[\(（]([^\)）]*[시구동로길번지호층빌딩빌라아파트][^\)）]*)[\)）]',
-            r'([가-힣]+시\s*[가-힣]+구\s*[가-힣]+동)',
-            r'([가-힣]+시\s*[가-힣]+구)',
-        ]
-        
-        for pattern in address_patterns:
-            match = re.search(pattern, customer_name)
-            if match:
-                address = match.group(1).strip()
-                # 주소 부분을 제거한 깔끔한 이름
-                clean_name = re.sub(pattern, '', customer_name).strip()
-                return clean_name, address  # (이름, 주소) 순서로 반환
-        
-        return customer_name, None  # 주소를 찾지 못한 경우 (이름, None) 반환
+
     
     def _update_customer(self, customer: Customer, row: Dict[str, Any], column_mapping: Dict[str, str]):
         """고객 정보 업데이트"""
@@ -665,7 +603,7 @@ JSON 형식으로 응답:
         if not customer.address:
             customer_name = customer.customer_name or ''
             if customer_name:
-                address, clean_name = self._extract_address_and_clean_name(customer_name)
+                clean_name, address = extract_address_and_clean_name(customer_name)
                 if address:
                     customer.address = address
                     customer.customer_name = clean_name  # 주소 부분 제거된 깔끔한 이름

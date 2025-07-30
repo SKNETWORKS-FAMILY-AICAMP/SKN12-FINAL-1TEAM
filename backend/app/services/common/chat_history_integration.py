@@ -3,7 +3,7 @@
 router_api.py와 각 에이전트에서 사용하기 위한 헬퍼 함수들
 """
 from typing import Dict, List, Optional
-from .chat_history_manager import chat_history_manager
+from .postgres_chat_manager import postgres_chat_history_manager
 from .context_manager import context_manager
 import logging
 
@@ -13,7 +13,7 @@ class ChatHistoryIntegration:
     """채팅 히스토리와 컨텍스트 관리를 통합하는 클래스"""
     
     def __init__(self):
-        self.history_manager = chat_history_manager
+        self.history_manager = postgres_chat_history_manager
         self.context_manager = context_manager
     
     async def process_user_message(

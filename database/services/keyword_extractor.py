@@ -11,6 +11,7 @@ from typing import List, Tuple, Union, Dict
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from config import settings
+from services.keyword_utils import extract_keywords_fallback, extract_keywords_with_scores
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +104,8 @@ class OpenAIKeywordExtractor:
             
         except Exception as e:
             logger.error(f"LangChain OpenAI 키워드 추출 실패: {e}")
-            # 실패 시 기본 키워드 추출 방법 사용
-            return self._extract_keywords_fallback(text, top_k)
+            # 실패 시 공통 fallback 방법 사용
+            return extract_keywords_with_scores(text, top_k)
 
     def _parse_keyword_response(self, response_content: str) -> List[str]:
         """
@@ -138,54 +139,7 @@ class OpenAIKeywordExtractor:
             logger.warning(f"키워드 응답 파싱 실패: {e}")
             return []
 
-    def _extract_keywords_fallback(self, text: str, top_k: int = 5) -> List[Tuple[str, float]]:
-        """
-        기본 키워드 추출 방법 (fallback)
-        
-        Args:
-            text: 입력 텍스트
-            top_k: 추출할 키워드 수
-            
-        Returns:
-            (키워드, 점수) 튜플 리스트
-        """
-        try:
-            # 한국어 조사, 어미, 불용어 제거
-            stop_words = {
-                '이', '가', '을', '를', '의', '에', '에서', '로', '으로', '와', '과', '도', '는', '은', '이', '가',
-                '어떻게', '무엇', '언제', '어디', '왜', '어떤', '몇', '얼마', '어떠한', '무슨', '어느', '어떤',
-                '있나요', '있습니까', '입니까', '인가요', '인지', '인지요', '인가', '인지', '인지요',
-                '알려주세요', '알려주시기', '알려주시면', '알려주시겠습니까', '알려주시겠어요',
-                '해주세요', '해주시기', '해주시면', '해주시겠습니까', '해주시겠어요',
-                '좋겠습니까', '좋겠어요', '좋을까요', '좋을지', '좋을지요',
-                '있을까요', '있을지', '있을지요', '될까요', '될지', '될지요'
-            }
-            
-            # 특수문자 제거 및 소문자 변환
-            cleaned_text = re.sub(r'[^\w\s가-힣]', ' ', text.lower())
-            
-            # 단어 분리
-            words = cleaned_text.split()
-            
-            # 불용어 제거 및 2글자 이상 단어만 유지
-            keywords = [word for word in words if word not in stop_words and len(word) >= 2]
-            
-            # 중복 제거
-            keywords = list(set(keywords))
-            
-            # 최대 top_k개 키워드로 제한
-            keywords = keywords[:top_k]
-            
-            # 점수 계산 (균등 분배)
-            score_per_keyword = 1.0 / len(keywords) if keywords else 0
-            keyword_scores = [(kw, score_per_keyword) for kw in keywords]
-            
-            logger.info(f"Fallback 키워드 추출 완료: {keywords}")
-            return keyword_scores
-            
-        except Exception as e:
-            logger.error(f"Fallback 키워드 추출 실패: {e}")
-            return []
+
 
     def extract_keywords_simple(self, text: str, top_k: int = 5) -> List[str]:
         """

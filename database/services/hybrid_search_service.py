@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Any, List, Optional
-from services.opensearch_service import search_document
+from services.opensearch_client import opensearch_client
 from services.query_analyzer import query_analyzer
 from services.text2sql_search import text2sql_search_service
 import time
@@ -93,7 +93,7 @@ class HybridSearchService:
         try:
             # OpenSearch 검색 수행
             from services.opensearch_service import DOCUMENT_INDEX_NAME
-            text_results = search_document(DOCUMENT_INDEX_NAME, {
+            text_results = opensearch_client.search_document(DOCUMENT_INDEX_NAME, {
                 "query": {
                     "multi_match": {
                         "query": query,

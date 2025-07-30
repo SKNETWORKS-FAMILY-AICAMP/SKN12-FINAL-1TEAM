@@ -5,15 +5,9 @@ from sqlalchemy.orm import Session
 from models.customers import Customer
 from services.db import get_db
 from sqlalchemy.exc import SQLAlchemyError
+from services.customer_utils import extract_name_and_address
 
 logger = logging.getLogger(__name__)
-
-def extract_name_and_address(raw_name: str):
-    # 예: '미라클신경과의원(강서구 화곡동)' -> ('미라클신경과의원', '강서구 화곡동')
-    match = re.match(r"(.+?)\((.+)\)", raw_name)
-    if match:
-        return match.group(1).strip(), match.group(2).strip()
-    return raw_name.strip(), None
 
 def process_customer_info(table_data: List[Dict[str, Any]], engine=None) -> int:
     """

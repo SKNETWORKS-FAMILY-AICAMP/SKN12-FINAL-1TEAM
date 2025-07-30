@@ -179,7 +179,6 @@ settings = Settings()
 try:
     settings.validate_all()
     print("✅ 모든 환경변수가 올바르게 설정되었습니다.")
-    print(settings.get_openai_config())
 except ValueError as e:
     print(f"❌ 환경변수 설정 오류: {e}")
     print("📝 .env 파일을 확인하고 모든 필수 환경변수를 설정하세요.")

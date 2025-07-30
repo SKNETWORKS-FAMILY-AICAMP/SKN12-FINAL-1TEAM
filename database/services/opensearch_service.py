@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 # 고급 키워드 추출 서비스 import
 from services.keyword_extractor import keyword_extractor
+from services.keyword_utils import extract_keywords_fallback
 
 # Search Pipeline 초기화 함수
 def initialize_search_pipeline():
@@ -51,33 +52,7 @@ def extract_keywords_from_question(question: str, top_k: int = 10) -> List[str]:
         # 실패 시 기본 방법 사용
         return extract_keywords_fallback(question, top_k)
 
-def extract_keywords_fallback(question: str, top_k: int = 10) -> List[str]:
-    """기본 키워드 추출 방법 (fallback)"""
-    # 한국어 조사, 어미, 불용어 제거
-    stop_words = {
-        '이', '가', '을', '를', '의', '에', '에서', '로', '으로', '와', '과', '도', '는', '은', '이', '가',
-        '어떻게', '무엇', '언제', '어디', '왜', '어떤', '몇', '얼마', '어떠한', '무슨', '어느', '어떤',
-        '있나요', '있습니까', '입니까', '인가요', '인지', '인지요', '인가', '인지', '인지요',
-        '알려주세요', '알려주시기', '알려주시면', '알려주시겠습니까', '알려주시겠어요',
-        '해주세요', '해주시기', '해주시면', '해주시겠습니까', '해주시겠어요',
-        '좋겠습니까', '좋겠어요', '좋을까요', '좋을지', '좋을지요',
-        '있을까요', '있을지', '있을지요', '될까요', '될지', '될지요'
-    }
-    
-    # 특수문자 제거 및 소문자 변환
-    cleaned_question = re.sub(r'[^\w\s가-힣]', ' ', question.lower())
-    
-    # 단어 분리
-    words = cleaned_question.split()
-    
-    # 불용어 제거 및 2글자 이상 단어만 유지
-    keywords = [word for word in words if word not in stop_words and len(word) >= 2]
-    
-    # 중복 제거
-    keywords = list(set(keywords))
-    
-    # 최대 top_k개 키워드로 제한
-    return keywords[:top_k]
+
 
 # 문서 내용 요약 함수
 def summarize_documents(documents: List[Dict[str, Any]], question: str) -> str:
@@ -155,84 +130,66 @@ def question_answering(question: str, top_k: int = 5, include_sources: bool = Tr
         include_sources: 소스 정보 포함 여부
         
     Returns:
-        답변 결과 딕셔너리
+        답변과 소스 정보를 포함한 딕셔너리
     """
     try:
         # 1. 키워드 추출
-        keywords = extract_keywords_from_question(question, top_k=5)
-        logger.info(f"추출된 키워드: {keywords}")
+        keywords = extract_keywords_from_question(question, top_k=10)
         
-        # 2. Search Pipeline 기반 하이브리드 검색 수행
-        search_results = []
-        try:
-            # Search Pipeline 기반 하이브리드 검색 수행 (재순위 무조건 적용)
-            search_results = opensearch_client.search_with_pipeline(
-                query_text=question,
-                keywords=keywords,
-                pipeline_id=SEARCH_PIPELINE_ID,
-                index_name=DOCUMENT_INDEX_NAME,
-                top_k=top_k,
-                use_rerank=True,  # 무조건 재순위 적용
-                rerank_top_k=3
-            )
-            
-            if not search_results:
-                logger.warning("OpenSearch 검색 결과가 없습니다.")
-                # 폴백 검색 결과
-                search_results = [{
-                    "content": f"'{question}'와 관련된 기본 문서입니다.",
-                    "metadata": {"type": "fallback", "query": question},
-                    "score": 0.5,
-                    "rank": 1,
-                    "source": "fallback_search"
-                }]
-                
-        except Exception as e:
-            logger.warning(f"OpenSearch 검색 실패: {e}")
-            # 폴백 검색 결과
-            search_results = [{
-                "content": f"'{question}'와 관련된 기본 문서입니다.",
-                "metadata": {"type": "fallback", "query": question},
-                "score": 0.5,
-                "rank": 1,
-                "source": "fallback_search"
-            }]
+        # 2. OpenSearch에서 검색
+        search_results = opensearch_client.search_with_pipeline(
+            query_text=question,
+            keywords=keywords,
+            pipeline_id=SEARCH_PIPELINE_ID,
+            index_name=DOCUMENT_INDEX_NAME,
+            top_k=top_k,
+            use_rerank=True,
+            rerank_top_k=3
+        )
         
+        # 3. 검색 결과가 없으면 기본 검색 시도
         if not search_results:
-            return {
-                "success": True,
-                "question": question,
-                "answer": "죄송합니다. 질문과 관련된 문서를 찾을 수 없습니다.",
-                "summary": None,
-                "sources": [],
-                "search_results": [],
-                "total_sources": 0,
-                "confidence_score": 0.0
-            }
+            logger.warning("파이프라인 검색 결과가 없어 기본 검색을 시도합니다.")
+            search_results = opensearch_client.search_document(
+                index_name=DOCUMENT_INDEX_NAME,
+                query={
+                    "query": {
+                        "multi_match": {
+                            "query": question,
+                            "fields": ["content", "doc_title"],
+                            "type": "best_fields",
+                            "fuzziness": "AUTO"
+                        }
+                    },
+                    "size": top_k
+                }
+            )
         
-        # 3. 문서 요약 생성
-        answer = summarize_documents(search_results, question)
+        # 4. 답변 생성
+        if search_results:
+            answer = summarize_documents(search_results, question)
+        else:
+            answer = "죄송합니다. 질문과 관련된 문서를 찾을 수 없습니다."
         
-        # 4. 원본 문서 정보 추출
+        # 5. 소스 정보 생성
         sources = []
-        if include_sources:
-            for i, result in enumerate(search_results, 1):
+        if include_sources and search_results:
+            for i, result in enumerate(search_results[:3], 1):
                 source = result.get("source", {})
                 source_info = {
                     "rank": i,
-                    "document_name": source.get("title", "N/A"),
-                    "chapter": source.get("chapter_title", "N/A"),
-                    "section": source.get("article_title", "N/A"),
-                    "file_name": source.get("file_name", "N/A"),
-                    "score": result.get("score", 0.0),
-                    "content_preview": source.get("content", "")[:200] + "..." if len(source.get("content", "")) > 200 else source.get("content", "")
+                    "doc_id": source.get("doc_id"),
+                    "doc_title": source.get("doc_title"),
+                    "file_name": source.get("file_name"),
+                    "content_preview": source.get("content", "")[:200] + "..." if len(source.get("content", "")) > 200 else source.get("content", ""),
+                    "score": result.get("score", 0.0)
                 }
                 sources.append(source_info)
         
-        # 5. 신뢰도 점수 계산
+        # 6. 신뢰도 점수 계산
         confidence_score = calculate_confidence_score(search_results)
         
-        # 6. 요약 생성 (선택적)
+        # 7. 요약 생성 (선택적)
         summary = None
         if len(search_results) > 1:
             summary = f"총 {len(search_results)}개의 관련 문서를 찾았습니다. 주요 내용은 다음과 같습니다: {answer[:300]}..."
@@ -263,26 +220,7 @@ def question_answering(question: str, top_k: int = 5, include_sources: bool = Tr
             "confidence_score": 0.0
         }
 
-# 필요한 경우, 아래와 같이 헬퍼 함수로 래핑해서 사용 가능
-
-def create_index_with_mapping(index_name, mapping):
-    return opensearch_client.create_index_with_mapping(index_name, mapping)
-
-def index_document(index_name, document, refresh=False):
-    return opensearch_client.index_document(index_name, document, refresh)
-
-def bulk_index_documents(index_name, documents, refresh=False):
-    return opensearch_client.bulk_index_documents(index_name, documents, refresh)
-
-def search_document(index_name, query):
-    return opensearch_client.search_document(index_name, query)
-
-def get_embedding_model():
-    return opensearch_client.model
-
-def create_index_if_not_exists(index_name):
-    return opensearch_client.create_index_if_not_exists(index_name)
-
+# 문서 청킹 인덱싱 함수 (추가 기능 포함)
 def index_document_chunks(doc_id, doc_title, file_name, text, document_type="report"):
     """문서 청킹을 OpenSearch에 인덱싱합니다."""
     try:

@@ -15,7 +15,7 @@ import asyncio
 # PostgreSQL 관련 import
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'database'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'database'))
 from database.services.db import SessionLocal
 from database.models import ChatHistory, ChatSession
 
@@ -37,8 +37,7 @@ class PostgresChatHistoryManager:
         self, 
         session_id: str, 
         role: str, 
-        message_text: str,
-        metadata: Optional[Dict] = None
+        message_text: str
     ) -> str:
         """
         메시지 저장
@@ -47,7 +46,6 @@ class PostgresChatHistoryManager:
             session_id: 세션 ID
             role: 'user' 또는 'assistant'
             message_text: 메시지 내용
-            metadata: 추가 메타데이터 (agent_name, model, etc.)
             
         Returns:
             message_id: 생성된 메시지 ID
@@ -56,15 +54,14 @@ class PostgresChatHistoryManager:
         return await loop.run_in_executor(
             self.executor, 
             self._save_message_sync, 
-            session_id, role, message_text, metadata
+            session_id, role, message_text
         )
     
     def _save_message_sync(
         self, 
         session_id: str, 
         role: str, 
-        message_text: str,
-        metadata: Optional[Dict] = None
+        message_text: str
     ) -> str:
         """동기 방식으로 메시지 저장"""
         db = self._get_db_session()
@@ -77,7 +74,6 @@ class PostgresChatHistoryManager:
                 session_id=session_id,
                 role=role,
                 message_text=message_text,
-                metadata=metadata or {},
                 created_at=datetime.utcnow()
             )
             
@@ -108,8 +104,7 @@ class PostgresChatHistoryManager:
                 session_id=session_id,
                 employee_id=1,  # TODO: 실제 employee_id로 변경 필요
                 created_at=datetime.utcnow(),
-                last_activity=datetime.utcnow(),
-                metadata={}
+                last_activity=datetime.utcnow()
             )
             db.add(new_session)
             db.commit()
@@ -160,8 +155,7 @@ class PostgresChatHistoryManager:
                     "message_id": str(msg.message_id),
                     "timestamp": msg.created_at.isoformat(),
                     "role": msg.role,
-                    "content": msg.message_text,
-                    "metadata": msg.metadata or {}
+                    "content": msg.message_text
                 })
             
             return messages
@@ -211,8 +205,7 @@ class PostgresChatHistoryManager:
                     "message_id": str(msg.message_id),
                     "timestamp": msg.created_at.isoformat(),
                     "role": msg.role,
-                    "content": msg.message_text,
-                    "metadata": msg.metadata or {}
+                    "content": msg.message_text
                 })
             
             return messages
@@ -241,8 +234,7 @@ class PostgresChatHistoryManager:
                 return {
                     "session_id": session.session_id,
                     "created_at": session.created_at.isoformat(),
-                    "last_activity": session.last_activity.isoformat(),
-                    "metadata": session.metadata or {}
+                    "last_activity": session.last_activity.isoformat()
                 }
             return None
             

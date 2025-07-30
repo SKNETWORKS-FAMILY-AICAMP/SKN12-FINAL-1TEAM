@@ -1,6 +1,5 @@
 from . import Base
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 class ChatSession(Base):
@@ -15,9 +14,6 @@ class ChatSession(Base):
     
     # 세션 정보 (선택적)
     session_title = Column(String(500))  # 세션 제목 (선택적)
-    
-    # 메타데이터 (필요시에만 사용)
-    metadata = Column(JSONB)  # 추가 세션 정보 (선택적)
     
     # 시간 정보
     created_at = Column(DateTime, nullable=False, default=func.now())  # 세션 생성 일시 (필수, 자동 설정)
