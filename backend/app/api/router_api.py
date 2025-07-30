@@ -5,6 +5,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from datetime import datetime
 
 # 경로 설정
 backend_dir = Path(__file__).parent.parent.parent
@@ -25,6 +26,16 @@ try:
 except Exception as e:
     logger.error(f"Failed to import context_manager: {e}")
     context_manager = None
+
+# Chat History Integration import
+chat_integration = None
+try:
+    from app.services.common.chat_history_integration import chat_integration as chi
+    chat_integration = chi
+    logger.info("Chat History Integration imported successfully")
+except Exception as e:
+    logger.error(f"Failed to import chat_history_integration: {e}")
+    chat_integration = None
 
 router = APIRouter()
 
@@ -133,6 +144,34 @@ async def chat(req: QueryRequest):
         
         session = sessions[req.session_id]
         
+        # 사용자 메시지를 히스토리에 저장
+        if chat_integration:
+            try:
+                await chat_integration.process_user_message(
+                    session_id=req.session_id,
+                    query=req.query,
+                    metadata={
+                        "timestamp": datetime.now().isoformat(),
+                        "source": "web_chat"
+                    }
+                )
+                logger.info(f"User message saved for session: {req.session_id}")
+            except Exception as e:
+                logger.error(f"Failed to save user message: {e}")
+                # 저장 실패해도 계속 진행
+        
+        # 이전 대화 컨텍스트 로드
+        conversation_context = None
+        if chat_integration:
+            try:
+                conversation_context = await chat_integration.get_conversation_context(
+                    session_id=req.session_id,
+                    max_messages=10
+                )
+                logger.info(f"Loaded {len(conversation_context.get('messages', []))} previous messages")
+            except Exception as e:
+                logger.error(f"Failed to load conversation context: {e}")
+        
         # 쿼리 처리 - enhanced_query를 안전하게 처리
         query_to_process = req.query
         
@@ -198,6 +237,25 @@ async def chat(req: QueryRequest):
             "content": result.get("response", ""),
             "agent": classified_agent
         })
+        
+        # AI 응답을 히스토리에 저장
+        if chat_integration:
+            try:
+                await chat_integration.process_assistant_response(
+                    session_id=req.session_id,
+                    response=result.get("response", ""),
+                    agent_name=classified_agent,
+                    metadata={
+                        "total_performance": result.get("total_performance"),
+                        "achievement_rate": result.get("achievement_rate"),
+                        "evaluation": result.get("evaluation"),
+                        "routing_attempts": session["routing_attempts"],
+                        "classification_result": result.get("classification_result")
+                    }
+                )
+                logger.info(f"Assistant response saved for session: {req.session_id}")
+            except Exception as e:
+                logger.error(f"Failed to save assistant response: {e}")
         
         # 컨텍스트 업데이트
         if context_manager:
@@ -427,3 +485,59 @@ async def reset_agent(req: Dict[str, Any]):
         "success": True,
         "message": "대화 이력이 초기화되었습니다."
     }
+
+@router.get("/chat-history/{session_id}")
+async def get_chat_history(
+    session_id: str,
+    limit: int = 50,
+    offset: int = 0
+):
+    """세션의 대화 기록 조회"""
+    if not chat_integration:
+        return {
+            "success": False,
+            "error": "Chat history system not available"
+        }
+    
+    try:
+        from app.services.common.chat_history_manager import chat_history_manager
+        messages = await chat_history_manager.get_conversation_history(
+            session_id, limit, offset
+        )
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "messages": messages,
+            "count": len(messages)
+        }
+    except Exception as e:
+        logger.error(f"Failed to get chat history: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@router.get("/session-info/{session_id}")
+async def get_session_info(session_id: str):
+    """세션 정보 조회"""
+    if not chat_integration:
+        return {
+            "success": False,
+            "error": "Chat history system not available"
+        }
+    
+    try:
+        from app.services.common.chat_history_manager import chat_history_manager
+        info = await chat_history_manager.get_session_info(session_id)
+        
+        if info:
+            return {"success": True, "session": info}
+        else:
+            return {"success": False, "error": "Session not found"}
+    except Exception as e:
+        logger.error(f"Failed to get session info: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
