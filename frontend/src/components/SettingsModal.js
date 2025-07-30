@@ -1,20 +1,14 @@
 import React, { useState } from 'react';
 import './SettingsModal.css';
 
-const SettingsModal = ({ isOpen, onClose }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+const SettingsModal = ({ isOpen, onClose, onLogout, currentUser }) => {
   const [notifications, setNotifications] = useState(true);
   const [theme, setTheme] = useState('light');
 
-  const handleLoginLogout = () => {
-    if (isLoggedIn) {
-      // 로그아웃 로직
-      setIsLoggedIn(false);
-      alert('로그아웃되었습니다.');
-    } else {
-      // 로그인 로직
-      setIsLoggedIn(true);
-      alert('로그인되었습니다.');
+  const handleLogout = () => {
+    if (window.confirm('로그아웃 하시겠습니까?')) {
+      onLogout();
+      onClose(); // 모달 닫기
     }
   };
 
@@ -50,16 +44,16 @@ const SettingsModal = ({ isOpen, onClose }) => {
             </div>
             <div className="setting-item">
               <div className="setting-info">
-                <span className="setting-label">로그인 상태</span>
+                <span className="setting-label">현재 사용자</span>
                 <span className="setting-value">
-                  {isLoggedIn ? '로그인됨' : '로그아웃됨'}
+                  {currentUser?.name || '사용자'} ({currentUser?.id || 'N/A'})
                 </span>
               </div>
               <button 
-                className={`action-button ${isLoggedIn ? 'logout' : 'login'}`}
-                onClick={handleLoginLogout}
+                className="action-button logout"
+                onClick={handleLogout}
               >
-                {isLoggedIn ? '로그아웃' : '로그인'}
+                로그아웃
               </button>
             </div>
           </div>

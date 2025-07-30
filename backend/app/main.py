@@ -121,6 +121,23 @@ def health_check():
         "version": "2.0.0"
     }
 
+# 프론트엔드에서 필요한 추가 API 엔드포인트들
+@app.get("/api/chat-history")
+def get_chat_history():
+    return {"history": [], "message": "채팅 히스토리가 비어있습니다."}
+
+@app.get("/api/current-agent/{session_id}")
+def get_current_agent(session_id: str):
+    return {"current_agent": "router", "session_id": session_id}
+
+@app.post("/api/initial-agent-select")
+def initial_agent_select(data: dict = None):
+    return {"status": "success", "selected_agent": "router"}
+
+@app.post("/api/chat")
+def chat_endpoint(data: dict = None):
+    return {"response": "라우터 에이전트가 응답합니다.", "agent": "router"}
+
 if __name__ == "__main__":
     print("\n" + "="*50)
     print("🚀 NaruTalk AI 챗봇 백엔드 서버 시작")

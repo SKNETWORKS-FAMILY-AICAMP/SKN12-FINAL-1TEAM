@@ -1,26 +1,28 @@
 /* Chat Screen - 고정 레이아웃 */
 .chat-screen {
-  height: calc(100vh - 50px);
+  height: calc(100vh - 100px);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background-color: #f8f9fa;
   overflow: hidden;
 }
 
-/* Main Container */
-.chat-container {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-/* Chat Management Panel */
+/* Chat Management Panel - 전체 높이 */
 .chat-panel {
   width: 280px;
   background-color: white;
   border-right: 1px solid #e9ecef;
   flex-shrink: 0;
   overflow-y: auto;
+  height: 100%;
+}
+
+/* Main Container */
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .chat-management {
