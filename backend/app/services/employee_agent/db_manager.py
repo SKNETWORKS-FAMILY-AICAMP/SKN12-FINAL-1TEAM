@@ -15,7 +15,7 @@ class EmployeeDBManager:
         self.performance_db_path = base_dir / "database" / "relationdb" / "performance_swest_sua.sqlite"
         self.target_db_path = base_dir / "database" / "relationdb" / "joonpharma_target.sqlite"
         
-        print(f"📍 DB 경로 확인:")
+        print(f"[DB] 경로 확인:")
         print(f"   기준 디렉토리: {base_dir}")
         print(f"   실적 DB 경로: {self.performance_db_path}")
         print(f"   실적 DB 존재: {self.performance_db_path.exists()}")
@@ -24,7 +24,7 @@ class EmployeeDBManager:
         
         # 경로 문제 해결을 위한 대안 경로 체크
         if not self.performance_db_path.exists():
-            print("⚠️ 기본 경로에서 실적 DB를 찾을 수 없습니다. 대안 경로를 시도합니다.")
+            print("[WARNING] 기본 경로에서 실적 DB를 찾을 수 없습니다. 대안 경로를 시도합니다.")
             # 현재 작업 디렉토리 기준으로 다시 시도
             cwd_base = Path.cwd()
             alt_performance_path = cwd_base / "database" / "relationdb" / "performance_swest_sua.sqlite"
@@ -35,7 +35,7 @@ class EmployeeDBManager:
             print(f"   대안 실적 DB 존재: {alt_performance_path.exists()}")
             
             if alt_performance_path.exists():
-                print("✅ 대안 경로에서 데이터베이스를 찾았습니다.")
+                print("[OK] 대안 경로에서 데이터베이스를 찾았습니다.")
                 self.performance_db_path = alt_performance_path
                 self.target_db_path = alt_target_path
     
@@ -83,7 +83,7 @@ class EmployeeDBManager:
                 base_query += " ORDER BY 담당자, 품목"
                 
                 df = pd.read_sql_query(base_query, conn, params=params)
-                print(f"📊 실적 데이터 로드: {len(df)}개 레코드")
+                print(f"[DATA] 실적 데이터 로드: {len(df)}개 레코드")
                 return df
                 
         except Exception as e:
@@ -117,7 +117,7 @@ class EmployeeDBManager:
                 base_query += " ORDER BY 담당자, 년월"
                 
                 df = pd.read_sql_query(base_query, conn, params=params)
-                print(f"📊 목표 데이터 로드: {len(df)}개 레코드")
+                print(f"[DATA] 목표 데이터 로드: {len(df)}개 레코드")
                 return df
                 
         except Exception as e:
@@ -152,7 +152,7 @@ class EmployeeDBManager:
             else:
                 analysis_months = month_columns
             
-            print(f"📅 분석 대상 월: {analysis_months}")
+            print(f"[DATE] 분석 대상 월: {analysis_months}")
             
             # 총 실적 계산
             total_performance = 0
@@ -288,7 +288,7 @@ class EmployeeDBManager:
                 # 목표 칼럼의 합계 계산
                 numeric_targets = pd.to_numeric(target_df['목표'], errors='coerce')
                 total_target = float(numeric_targets.sum())  # numpy 타입 방지
-                print(f"🎯 목표 데이터: {employee_name}의 목표 {total_target:,.0f}원")
+                print(f"[TARGET] 목표 데이터: {employee_name}의 목표 {total_target:,.0f}원")
                 
             except Exception as e:
                 print(f"목표 데이터 계산 오류: {e}")
@@ -296,10 +296,10 @@ class EmployeeDBManager:
         
         # 목표가 0이면 실적 기반으로 가상 목표 설정
         if float(total_target) <= 0:  # Python float로 비교
-            print(f"⚠️ '{employee_name}'의 목표 데이터가 없거나 0입니다.")
+            print(f"[WARNING] '{employee_name}'의 목표 데이터가 없거나 0입니다.")
             # 실적의 80%를 목표로 가정 (실제 환경에서는 별도 설정 필요)
             total_target = float(total_performance) * 0.8
-            print(f"💡 실적의 80%({total_target:,.0f}원)를 가상 목표로 설정합니다.")
+            print(f"[INFO] 실적의 80%({total_target:,.0f}원)를 가상 목표로 설정합니다.")
         
         # 달성률 계산 (Python float로 연산)
         achievement_rate = (float(total_performance) / float(total_target) * 100) if float(total_target) > 0 else 0.0
