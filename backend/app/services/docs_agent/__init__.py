@@ -3,17 +3,7 @@ Docs Agent Module
 문서 생성 에이전트 모듈
 """
 from typing import Dict, Any
-from .create_document_agent import CreateDocumentAgent
-
-# 에이전트 인스턴스 생성 (싱글톤)
-_agent_instance = None
-
-def get_agent_instance():
-    """에이전트 인스턴스 반환 (싱글톤 패턴)"""
-    global _agent_instance
-    if _agent_instance is None:
-        _agent_instance = CreateDocumentAgent()
-    return _agent_instance
+from .web_interface import web_agent
 
 async def run(query: str, session_id: str) -> Dict[str, Any]:
     """
@@ -28,31 +18,49 @@ async def run(query: str, session_id: str) -> Dict[str, Any]:
         Dict[str, Any]: 실행 결과
     """
     try:
-        # 에이전트 인스턴스 가져오기
-        agent = get_agent_instance()
+        # 세션 상태 확인
+        status = web_agent.get_session_status(session_id)
         
-        # 에이전트 실행 (동기 메서드이므로 직접 호출)
-        result = agent.run(user_input=query)
-        
+        if not status.get("success"):
+            # 새 세션 생성
+            result = web_agent.create_session(session_id, query)
+        else:
+            # 기존 세션에 사용자 입력 처리
+            result = web_agent.process_user_input(session_id, query)
+            
         # 결과 포맷 변환
         if result.get("success"):
-            return {
+            response_data = {
                 "success": True,
-                "response": result.get("result", "문서 생성이 완료되었습니다."),
-                "report": f"[Docs Agent]\n{result.get('result', '')}",
                 "agent": "docs_agent",
                 "session_id": session_id,
-                "thread_id": result.get("thread_id"),
-                "state": {
-                    "doc_type": result.get("doc_type"),
-                    "final_doc": result.get("final_doc"),
-                    "template_content": result.get("template_content")
-                }
+                "step": result.get("step"),
+                "waiting_for_input": result.get("waiting_for_input", False),
+                "input_type": result.get("input_type")
             }
+            
+            # 단계별 응답 처리
+            if result.get("step") == "completed":
+                response_data["response"] = result.get("message")
+                response_data["document"] = result.get("document")
+                response_data["doc_type"] = result.get("doc_type")
+                response_data["file_path"] = result.get("file_path")
+            else:
+                response_data["response"] = result.get("message")
+                
+                # 옵션이 있는 경우 추가
+                if result.get("options"):
+                    response_data["options"] = result.get("options")
+                    
+                # 템플릿 정보가 있는 경우 추가
+                if result.get("template"):
+                    response_data["template"] = result.get("template")
+                    
+            return response_data
         else:
             return {
                 "success": False,
-                "response": f"문서 생성 중 오류가 발생했습니다: {result.get('error', 'Unknown error')}",
+                "response": result.get("error", "알 수 없는 오류"),
                 "error": result.get("error"),
                 "agent": "docs_agent",
                 "session_id": session_id
