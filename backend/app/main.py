@@ -43,6 +43,14 @@ else:
 from app.api.router_api import router
 print("[OK] router_api imported successfully")
 
+# 간단한 테스트 라우터 추가
+try:
+    from app.api.router_api_simple import router as simple_router
+    print("[OK] router_api_simple imported successfully")
+except Exception as e:
+    print(f"[WARNING] Failed to import router_api_simple: {e}")
+    simple_router = None
+
 app = FastAPI(title="Multi-Agent Router API")
 
 # CORS 설정
@@ -57,6 +65,11 @@ app.add_middleware(
 # 라우터 등록 - /api prefix로 통일
 app.include_router(router, prefix="/api")
 print("[OK] Router registered at /api")
+
+# 간단한 테스트 라우터 등록
+if simple_router:
+    app.include_router(simple_router, prefix="/api")
+    print("[OK] Simple router registered at /api")
 
 # 헬스 체크
 @app.get("/health")

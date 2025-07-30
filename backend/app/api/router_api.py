@@ -6,6 +6,9 @@ import logging
 import sys
 from pathlib import Path
 from datetime import datetime
+import sqlite3
+import json
+import uuid
 
 # 경로 설정
 backend_dir = Path(__file__).parent.parent.parent
@@ -27,6 +30,8 @@ except Exception as e:
     logger.error(f"Failed to import context_manager: {e}")
     context_manager = None
 
+router = APIRouter()
+
 # Chat History Integration import
 chat_integration = None
 try:
@@ -37,7 +42,61 @@ except Exception as e:
     logger.error(f"Failed to import chat_history_integration: {e}")
     chat_integration = None
 
-router = APIRouter()
+# SQLite DB 경로
+DB_PATH = backend_dir / "chat_history.db"
+
+def init_db():
+    """데이터베이스 초기화"""
+    try:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    message_id TEXT UNIQUE NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    message_text TEXT NOT NULL,
+                    metadata TEXT
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_session ON chat_history(session_id)")
+            conn.commit()
+        logger.info(f"Database initialized at: {DB_PATH}")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+
+# DB 초기화
+try:
+    init_db()
+except Exception as e:
+    logger.error(f"DB initialization error: {e}")
+
+def save_message(session_id: str, role: str, message_text: str, metadata: Dict = None):
+    """메시지를 DB에 저장"""
+    message_id = str(uuid.uuid4())
+    timestamp = datetime.now().isoformat()
+    
+    try:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            conn.execute("""
+                INSERT INTO chat_history 
+                (session_id, message_id, timestamp, role, message_text, metadata)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                session_id,
+                message_id,
+                timestamp,
+                role,
+                message_text,
+                json.dumps(metadata or {}, ensure_ascii=False)
+            ))
+            conn.commit()
+        logger.info(f"[SAVED] {role} message for session {session_id}")
+        return message_id
+    except Exception as e:
+        logger.error(f"Failed to save message: {e}")
+        return None
 
 # 요청 모델
 class QueryRequest(BaseModel):
@@ -144,21 +203,19 @@ async def chat(req: QueryRequest):
         
         session = sessions[req.session_id]
         
-        # 사용자 메시지를 히스토리에 저장
-        if chat_integration:
-            try:
-                await chat_integration.process_user_message(
-                    session_id=req.session_id,
-                    query=req.query,
-                    metadata={
-                        "timestamp": datetime.now().isoformat(),
-                        "source": "web_chat"
-                    }
-                )
-                logger.info(f"User message saved for session: {req.session_id}")
-            except Exception as e:
-                logger.error(f"Failed to save user message: {e}")
-                # 저장 실패해도 계속 진행
+        # 사용자 메시지를 DB에 저장
+        try:
+            save_message(
+                session_id=req.session_id,
+                role="user",
+                message_text=req.query,
+                metadata={
+                    "source": "web_chat",
+                    "request_type": "chat"
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to save user message: {e}")
         
         # 이전 대화 컨텍스트 로드
         conversation_context = None
@@ -238,24 +295,23 @@ async def chat(req: QueryRequest):
             "agent": classified_agent
         })
         
-        # AI 응답을 히스토리에 저장
-        if chat_integration:
-            try:
-                await chat_integration.process_assistant_response(
-                    session_id=req.session_id,
-                    response=result.get("response", ""),
-                    agent_name=classified_agent,
-                    metadata={
-                        "total_performance": result.get("total_performance"),
-                        "achievement_rate": result.get("achievement_rate"),
-                        "evaluation": result.get("evaluation"),
-                        "routing_attempts": session["routing_attempts"],
-                        "classification_result": result.get("classification_result")
-                    }
-                )
-                logger.info(f"Assistant response saved for session: {req.session_id}")
-            except Exception as e:
-                logger.error(f"Failed to save assistant response: {e}")
+        # AI 응답을 DB에 저장
+        try:
+            save_message(
+                session_id=req.session_id,
+                role="assistant",
+                message_text=result.get("response", ""),
+                metadata={
+                    "agent": classified_agent,
+                    "total_performance": result.get("total_performance"),
+                    "achievement_rate": result.get("achievement_rate"),
+                    "evaluation": result.get("evaluation"),
+                    "routing_attempts": session["routing_attempts"],
+                    "classification_result": result.get("classification_result")
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to save assistant response: {e}")
         
         # 컨텍스트 업데이트
         if context_manager:
@@ -329,12 +385,38 @@ async def select_agent(req: SelectionRequest):
         else:
             logger.warning("Context manager not available, using original query")
         
+        # 사용자 메시지를 DB에 저장
+        save_message(
+            session_id=req.session_id,
+            role="user",
+            message_text=req.query,
+            metadata={
+                "source": "web_chat",
+                "request_type": "select-agent",
+                "selected_agent": agent_id
+            }
+        )
+        
         # 질문이 있으면 에이전트 실행
         result = await run_agent(agent_id, query_to_process, req.session_id)
         result["agent_selected"] = True
         result["classification_result"] = f"사용자 선택: {agent_id}"
         
-        # 세션에 메시지 저장
+        # AI 응답을 DB에 저장
+        save_message(
+            session_id=req.session_id,
+            role="assistant",
+            message_text=result.get("response", ""),
+            metadata={
+                "agent": agent_id,
+                "total_performance": result.get("total_performance"),
+                "achievement_rate": result.get("achievement_rate"),
+                "evaluation": result.get("evaluation"),
+                "classification_result": result.get("classification_result")
+            }
+        )
+        
+        # 세션에 메시지 저장 (메모리)
         sessions[req.session_id]["messages"].append({
             "role": "user",
             "content": req.query
@@ -493,23 +575,35 @@ async def get_chat_history(
     offset: int = 0
 ):
     """세션의 대화 기록 조회"""
-    if not chat_integration:
-        return {
-            "success": False,
-            "error": "Chat history system not available"
-        }
-    
     try:
-        from app.services.common.chat_history_manager import chat_history_manager
-        messages = await chat_history_manager.get_conversation_history(
-            session_id, limit, offset
-        )
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            cursor = conn.execute("""
+                SELECT message_id, timestamp, role, message_text, metadata
+                FROM chat_history
+                WHERE session_id = ?
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+            """, (session_id, limit, offset))
+            
+            messages = []
+            for row in cursor:
+                messages.append({
+                    "message_id": row[0],
+                    "timestamp": row[1],
+                    "role": row[2],
+                    "content": row[3],
+                    "metadata": json.loads(row[4]) if row[4] else {}
+                })
+        
+        # 시간순으로 정렬 (오래된 것부터)
+        messages.reverse()
         
         return {
             "success": True,
             "session_id": session_id,
             "messages": messages,
-            "count": len(messages)
+            "count": len(messages),
+            "db_path": str(DB_PATH)
         }
     except Exception as e:
         logger.error(f"Failed to get chat history: {e}")
@@ -521,22 +615,78 @@ async def get_chat_history(
 @router.get("/session-info/{session_id}")
 async def get_session_info(session_id: str):
     """세션 정보 조회"""
-    if not chat_integration:
-        return {
-            "success": False,
-            "error": "Chat history system not available"
-        }
-    
     try:
-        from app.services.common.chat_history_manager import chat_history_manager
-        info = await chat_history_manager.get_session_info(session_id)
-        
-        if info:
-            return {"success": True, "session": info}
-        else:
-            return {"success": False, "error": "Session not found"}
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            # 첫 메시지와 마지막 메시지 시간 조회
+            cursor = conn.execute("""
+                SELECT 
+                    MIN(timestamp) as first_message,
+                    MAX(timestamp) as last_message,
+                    COUNT(*) as message_count
+                FROM chat_history
+                WHERE session_id = ?
+            """, (session_id,))
+            
+            row = cursor.fetchone()
+            if row and row[2] > 0:
+                return {
+                    "success": True,
+                    "session": {
+                        "session_id": session_id,
+                        "first_message": row[0],
+                        "last_message": row[1],
+                        "message_count": row[2]
+                    }
+                }
+            else:
+                return {"success": False, "error": "Session not found"}
     except Exception as e:
         logger.error(f"Failed to get session info: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@router.get("/all-sessions")
+async def get_all_sessions():
+    """모든 세션 목록 조회"""
+    try:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            cursor = conn.execute("""
+                SELECT 
+                    session_id,
+                    MIN(timestamp) as first_message,
+                    MAX(timestamp) as last_message,
+                    COUNT(*) as message_count,
+                    MAX(CASE WHEN role = 'user' THEN message_text END) as last_user_message
+                FROM chat_history
+                GROUP BY session_id
+                ORDER BY MAX(timestamp) DESC
+                LIMIT 50
+            """)
+            
+            sessions = []
+            for row in cursor:
+                # 첫 번째 사용자 메시지로 제목 생성
+                title = row[4][:30] + "..." if row[4] and len(row[4]) > 30 else (row[4] or "대화")
+                
+                sessions.append({
+                    "id": row[0],
+                    "sessionId": row[0],
+                    "title": title,
+                    "firstMessage": row[1],
+                    "lastMessage": row[2],
+                    "messageCount": row[3],
+                    "createdAt": row[1]
+                })
+            
+            return {
+                "success": True,
+                "sessions": sessions,
+                "count": len(sessions)
+            }
+    except Exception as e:
+        logger.error(f"Failed to get all sessions: {e}")
         return {
             "success": False,
             "error": str(e)
