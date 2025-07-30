@@ -11,6 +11,7 @@ from .sales_records import SalesRecord
 from .customer_monthly_performance_mv import get_customer_monthly_performance_mv_table
 from .documents import Document
 from .chat_history import ChatHistory
+from .chat_sessions import ChatSession
 from .system_trace_logs import SystemTraceLog
 from .assignment_map import AssignmentMap
 from .document_relations import DocumentRelation
