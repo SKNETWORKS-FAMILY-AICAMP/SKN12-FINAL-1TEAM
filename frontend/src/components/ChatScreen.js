@@ -12,9 +12,12 @@ const ChatScreen = () => {
   const [currentSessionAgent, setCurrentSessionAgent] = useState(null); // 현재 세션의 고정 에이전트
   const messagesEndRef = useRef(null);
 
-  // session_id 생성 함수
+  // session_id 생성 함수 - 각 채팅방마다 고유 ID
   const generateSessionId = () => {
-    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // 새로운 세션 ID 생성 (각 채팅방마다 고유)
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log('새 세션 ID 생성:', newSessionId);
+    return newSessionId;
   };
 
   // 백엔드 에이전트 ID를 프론트엔드 키로 매핑
@@ -82,23 +85,47 @@ const ChatScreen = () => {
   // 백엔드에서 채팅 내역 불러오기
   const loadChatHistoryFromBackend = async () => {
     try {
-      console.log('🔄 백엔드에서 채팅 내역 불러오는 중...');
-      const response = await fetch('http://localhost:8000/api/chat-history');
+      console.log('🔄 백엔드에서 모든 세션 불러오는 중...');
+      const response = await fetch('http://localhost:8000/api/all-sessions');
       
       if (response.ok) {
         const data = await response.json();
-        if (data.success && data.chatHistory) {
-          console.log(`✅ 백엔드에서 ${data.count}개 채팅 불러옴`);
-          setChatHistory(data.chatHistory);
+        if (data.success && data.sessions) {
+          console.log(`✅ 백엔드에서 ${data.count}개 세션 불러옴`);
           
-          // localStorage와 동기화
-          localStorage.setItem('chatHistory', JSON.stringify(data.chatHistory));
+          // 세션 데이터를 채팅 히스토리 형식으로 변환
+          const chatHistoryFromDB = data.sessions.map(session => ({
+            id: session.id,
+            sessionId: session.sessionId,
+            title: session.title,
+            messages: [], // 메시지는 선택할 때 로드
+            createdAt: session.createdAt,
+            messageCount: session.messageCount
+          }));
           
-          return data.chatHistory;
+          // localStorage의 기존 데이터와 병합 (중복 제거)
+          const savedHistory = localStorage.getItem('chatHistory');
+          let localHistory = [];
+          if (savedHistory) {
+            localHistory = JSON.parse(savedHistory);
+          }
+          
+          // sessionId를 기준으로 중복 제거
+          const mergedHistory = [...chatHistoryFromDB];
+          localHistory.forEach(localChat => {
+            if (!mergedHistory.find(dbChat => dbChat.sessionId === localChat.sessionId)) {
+              mergedHistory.push(localChat);
+            }
+          });
+          
+          setChatHistory(mergedHistory);
+          localStorage.setItem('chatHistory', JSON.stringify(mergedHistory));
+          
+          return mergedHistory;
         }
       }
       
-      console.log('⚠️ 백엔드에서 채팅 내역 없음, localStorage 사용');
+      console.log('⚠️ 백엔드에서 세션 목록 없음, localStorage 사용');
       // 백엔드에 데이터가 없으면 localStorage 사용
       const savedHistory = localStorage.getItem('chatHistory');
       if (savedHistory) {
@@ -109,7 +136,7 @@ const ChatScreen = () => {
       
       return [];
     } catch (error) {
-      console.error('❌ 채팅 내역 불러오기 실패:', error);
+      console.error('❌ 세션 목록 불러오기 실패:', error);
       
       // 오류 시 localStorage 폴백
       const savedHistory = localStorage.getItem('chatHistory');
@@ -161,14 +188,25 @@ const ChatScreen = () => {
         }
       };
       
-      setMessages([systemMessage, agentSelectionMessage]);
-      
-      // 백엔드에서 채팅 내역 불러오기
+      // 백엔드에서 모든 세션 목록 불러오기
       const history = await loadChatHistoryFromBackend();
       
-      // 채팅 내역이 없으면 새 채팅 시작
-      if (history.length === 0) {
-        console.log('📝 새 채팅 시작');
+      // 세션이 있으면 첫 번째 세션 선택, 없으면 새 채팅 시작
+      if (history.length > 0) {
+        console.log(`📚 ${history.length}개의 세션 발견`);
+        // 가장 최근 세션 선택
+        const mostRecentSession = history[0];
+        if (mostRecentSession.sessionId) {
+          await selectChat(mostRecentSession.id);
+        } else {
+          // 기본 메시지 표시하고 새 채팅 시작
+          setMessages([systemMessage, agentSelectionMessage]);
+          startNewChat();
+        }
+      } else {
+        console.log('📝 세션이 없음, 새 채팅 시작');
+        // 기본 메시지 표시
+        setMessages([systemMessage, agentSelectionMessage]);
         startNewChat();
       }
     };
@@ -245,28 +283,47 @@ const ChatScreen = () => {
       if (selectedChat.messages && selectedChat.messages.length > 0) {
         setMessages(selectedChat.messages);
       } else {
-        // 백엔드에서 메시지 불러오기
+        // 백엔드에서 메시지 불러오기 - DB에서 직접 조회
         try {
+          // sessionId가 있는지 확인
+          if (!selectedChat.sessionId) {
+            console.error('세션 ID가 없습니다:', selectedChat);
+            setMessages(selectedChat.messages || []);
+            return;
+          }
+          
           console.log(`🔄 세션 ${selectedChat.sessionId}의 메시지 불러오는 중...`);
-          const response = await fetch(`http://localhost:8000/api/sessions/${selectedChat.sessionId}/messages`);
+          const response = await fetch(`http://localhost:8000/api/chat-history/${selectedChat.sessionId}`);
           
           if (response.ok) {
             const data = await response.json();
-            if (data.success && data.messages) {
+            if (data.success && data.messages && data.messages.length > 0) {
               console.log(`✅ ${data.count}개 메시지 불러옴`);
-              setMessages(data.messages);
+              
+              // DB에서 가져온 메시지 형식을 프론트엔드 형식으로 변환
+              const formattedMessages = data.messages.map(msg => ({
+                type: msg.role === 'user' ? 'user' : msg.role === 'assistant' ? 'bot' : 'system',
+                content: msg.content,
+                timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString(),
+                agent: msg.metadata?.agent || 'System'
+              }));
+              
+              setMessages(formattedMessages);
               
               // 채팅 히스토리 업데이트
               const updatedHistory = chatHistory.map(chat => 
                 chat.id === chatId 
-                  ? { ...chat, messages: data.messages }
+                  ? { ...chat, messages: formattedMessages }
                   : chat
               );
               setChatHistory(updatedHistory);
               localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+            } else {
+              console.log('해당 세션에 메시지가 없습니다.');
+              setMessages(selectedChat.messages || []);
             }
           } else {
-            console.error('메시지 불러오기 실패');
+            console.error('메시지 불러오기 실패:', response.status);
             setMessages(selectedChat.messages || []);
           }
         } catch (error) {
@@ -294,6 +351,7 @@ const ChatScreen = () => {
           return {
             ...chat,
             messages: newMessages,
+            sessionId: sessionId || chat.sessionId, // sessionId 유지
             title: newMessages.length > 1 ? 
               newMessages[1].content.substring(0, 30) + '...' : 
               chat.title
@@ -616,6 +674,11 @@ const ChatScreen = () => {
                   <div className="chat-info">
                     <div className="chat-title-text">
                       {chat.title}
+                      {chat.messageCount && (
+                        <span style={{fontSize: '12px', color: '#999', marginLeft: '5px'}}>
+                          ({chat.messageCount}개 메시지)
+                        </span>
+                      )}
                     </div>
                     <div className="chat-date">
                       {new Date(chat.createdAt).toLocaleDateString()}
