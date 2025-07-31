@@ -5,7 +5,7 @@ import os
 from langgraph.graph import StateGraph, END
 from .db_manager import EmployeeDBManager
 from .query_analyzer import EmployeeQueryAnalyzer
-from .calculation_tools import PerformanceCalculationTools
+from ..tools.calculation_tools import PerformanceCalculationTools
 
 # 상태 정의
 class AnalysisState(TypedDict):
@@ -68,11 +68,11 @@ class EnhancedEmployeeAgent:
             end_period = query_analysis.get("end_period")
             
             if not employee_name:
-                print("⚠️ 직원명이 추출되지 않아 기본값(최수아)을 사용합니다.")
+                print("[WARNING] 직원명이 추출되지 않아 기본값(최수아)을 사용합니다.")
                 employee_name = "최수아"
             
             if not start_period or not end_period:
-                print("⚠️ 기간이 추출되지 않아 기본값(202312~202403)을 사용합니다.")
+                print("[WARNING] 기간이 추출되지 않아 기본값(202312~202403)을 사용합니다.")
                 start_period = "202312"
                 end_period = "202403"
             
@@ -82,14 +82,14 @@ class EnhancedEmployeeAgent:
             state["end_period"] = end_period
             state["analysis_type"] = query_analysis.get("analysis_type", "종합분석")
             
-            print(f"✅ 쿼리 분석 완료: 직원={employee_name}, 기간={start_period}~{end_period}")
+            print(f"[OK] 쿼리 분석 완료: 직원={employee_name}, 기간={start_period}~{end_period}")
             
         except Exception as e:
             state["error"] = f"쿼리 분석 오류: {str(e)}"
-            print(f"❌ 쿼리 분석 오류: {e}")
+            print(f"[ERROR] 쿼리 분석 오류: {e}")
             
             # 오류 발생시 기본값으로 설정
-            print("🔄 기본값으로 분석을 계속 진행합니다.")
+            print("[RETRY] 기본값으로 분석을 계속 진행합니다.")
             state["employee_name"] = "최수아"
             state["start_period"] = "202312" 
             state["end_period"] = "202403"
@@ -108,7 +108,7 @@ class EnhancedEmployeeAgent:
             start_period = state["start_period"]
             end_period = state["end_period"]
             
-            print(f"📊 데이터 로드 시작: {employee_name}, {start_period}~{end_period}")
+            print(f"[DATA] 데이터 로드 시작: {employee_name}, {start_period}~{end_period}")
             
             # 실적 데이터 로드
             performance_summary = self.db_manager.get_performance_summary(
@@ -117,14 +117,14 @@ class EnhancedEmployeeAgent:
             
             # 실적 데이터가 없는 경우 확인
             if performance_summary["total_performance"] <= 0:
-                print(f"⚠️ '{employee_name}' 직원의 {start_period}~{end_period} 기간 실적 데이터가 없습니다.")
+                print(f"[WARNING] '{employee_name}' 직원의 {start_period}~{end_period} 기간 실적 데이터가 없습니다.")
                 # 사용 가능한 직원 목록 확인
                 available_employees = self.db_manager.get_available_employees()
                 if available_employees:
-                    print(f"💡 사용 가능한 직원: {', '.join(available_employees)}")
+                    print(f"[INFO] 사용 가능한 직원: {', '.join(available_employees)}")
                     # 첫 번째 사용 가능한 직원으로 재시도
                     alternative_employee = available_employees[0]
-                    print(f"🔄 '{alternative_employee}' 직원 데이터로 분석을 진행합니다.")
+                    print(f"[RETRY] '{alternative_employee}' 직원 데이터로 분석을 진행합니다.")
                     
                     performance_summary = self.db_manager.get_performance_summary(
                         alternative_employee, start_period, end_period
@@ -149,11 +149,11 @@ class EnhancedEmployeeAgent:
                 "trend_analysis": trend_analysis
             }
             
-            print(f"✅ 데이터 로드 완료: 실적 {performance_summary['total_performance']:,.0f}원")
+            print(f"[OK] 데이터 로드 완료: 실적 {performance_summary['total_performance']:,.0f}원")
             
         except Exception as e:
             state["error"] = f"데이터 로드 오류: {str(e)}"
-            print(f"❌ 데이터 로드 오류: {e}")
+            print(f"[ERROR] 데이터 로드 오류: {e}")
             
             # 오류 발생시 더미 데이터로 설정하여 분석 계속 진행
             print("🔄 기본 데이터로 분석을 계속 진행합니다.")
@@ -228,11 +228,11 @@ class EnhancedEmployeeAgent:
             
             state["analysis_results"] = analysis_results
             
-            print("✅ 실적 분석 완료")
+            print("[OK] 실적 분석 완료")
             
         except Exception as e:
             state["error"] = f"분석 수행 오류: {str(e)}"
-            print(f"❌ 분석 수행 오류: {e}")
+            print(f"[ERROR] 분석 수행 오류: {e}")
         
         return state
     
@@ -362,11 +362,11 @@ class EnhancedEmployeeAgent:
             
             state["report"] = report
             
-            print("✅ 보고서 생성 완료")
+            print("[OK] 보고서 생성 완료")
             
         except Exception as e:
             state["error"] = f"보고서 생성 오류: {str(e)}"
-            print(f"❌ 보고서 생성 오류: {e}")
+            print(f"[ERROR] 보고서 생성 오류: {e}")
         
         return state
     
@@ -414,7 +414,7 @@ class EnhancedEmployeeAgent:
 
 다음 형식으로 작성해주세요:
 
-📊 직원 실적 분석 보고서
+[직원 실적 분석 보고서]
 
 1. 실행 요약
 [전체적인 성과를 3-4줄로 요약]
@@ -465,7 +465,7 @@ class EnhancedEmployeeAgent:
         achievement_analysis = analysis_results.get("achievement_analysis", {})
         trend_analysis = analysis_results.get("detailed_trend", {})
         
-        report = f"""📊 직원 실적 분석 보고서
+        report = f"""[직원 실적 분석 보고서]
 
 1. 실행 요약
 
@@ -550,5 +550,50 @@ enhanced_agent = EnhancedEmployeeAgent()
 
 async def analyze_employee_query(query: str) -> Dict[str, Any]:
     """비동기 쿼리 분석 함수 (API에서 호출)"""
-    return enhanced_agent.analyze_employee_performance(query) 
+    return enhanced_agent.analyze_employee_performance(query)
+
+async def run(query: str, session_id: str) -> Dict[str, Any]:
+    """router_api.py에서 호출하는 표준 인터페이스"""
+    try:
+        # EnhancedEmployeeAgent를 사용하여 쿼리 분석
+        result = enhanced_agent.analyze_employee_performance(query)
+        
+        # 결과가 성공적으로 반환된 경우
+        if result.get("success", False):
+            return {
+                "success": True,
+                "response": result.get("report", "분석 결과를 생성할 수 없습니다."),
+                "report": result.get("report", ""),
+                "agent": "employee_agent",
+                "session_id": session_id,
+                "employee_name": result.get("employee_name"),
+                "period": result.get("period"),
+                "total_performance": result.get("total_performance"),
+                "achievement_rate": result.get("achievement_rate"),
+                "evaluation": result.get("evaluation"),
+                "analysis_details": result.get("analysis_details", {})
+            }
+        else:
+            # 오류가 발생한 경우
+            error_message = result.get("error", "알 수 없는 오류")
+            return {
+                "success": False,
+                "response": f"분석 중 오류가 발생했습니다: {error_message}",
+                "error": error_message,
+                "agent": "employee_agent",
+                "session_id": session_id
+            }
+            
+    except Exception as e:
+        # 예외 처리
+        error_message = str(e)
+        print(f"[ERROR] Employee Agent 실행 오류: {error_message}")
+        
+        return {
+            "success": False,
+            "response": f"직원 실적 분석 중 오류가 발생했습니다: {error_message}",
+            "error": error_message,
+            "agent": "employee_agent",
+            "session_id": session_id
+        } 
                   

@@ -1,0 +1,11 @@
+from ..employee_agent.run import run as employee_run
+from ..client_agent.run import run as client_run
+from ..search_agent.run import run as search_run
+from ..create_document_agent.run import run as doc_run
+
+HANDLERS = {
+    "employee_agent": employee_run,
+    "client_agent": client_run,
+    "search_agent": search_run,
+    "create_document_agent": doc_run,
+}
