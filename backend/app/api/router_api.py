@@ -160,7 +160,7 @@ async def run_agent(agent_id: str, query: str, session_id: str) -> Dict[str, Any
     """각 에이전트의 run.py 실행"""
     try:
         if agent_id == "employee_agent":
-            from app.services.employee_agent.employee_agent import run
+            from app.services.employee_agent import run
             result = await run(query, session_id)
             return result
             
@@ -198,7 +198,9 @@ async def chat(req: QueryRequest):
         if req.session_id not in sessions:
             sessions[req.session_id] = {
                 "messages": [],
-                "routing_attempts": 0
+                "routing_attempts": 0,
+                "fixed_agent": None,  # 고정된 에이전트
+                "agent_fixed_at": None  # 고정 시간
             }
         
         session = sessions[req.session_id]

@@ -1,9 +1,17 @@
 import os, logging, json
 from typing import Optional, List, Dict, Any
 from openai import AsyncOpenAI
+from pathlib import Path
+from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# .env 파일 로드
+env_path = Path(__file__).parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+    logger.info(f"Loaded .env from: {env_path}")
 
 AVAILABLE_AGENT_IDS: List[str] = [
     "employee_agent",

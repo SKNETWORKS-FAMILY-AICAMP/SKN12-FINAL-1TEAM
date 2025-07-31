@@ -31,9 +31,9 @@ class ClientAgent:
             self.df = pd.read_excel(self.data_path)
             # 월 컬럼을 datetime으로 변환
             self.df['월'] = pd.to_datetime(self.df['월'].astype(str), format='%Y%m', errors='coerce')
-            print(f"✅ 데이터 로드 완료: {len(self.df)}건")
+            print(f"[OK] 데이터 로드 완료: {len(self.df)}건")
         except Exception as e:
-            print(f"❌ 데이터 로드 실패: {e}")
+            print(f"[ERROR] 데이터 로드 실패: {e}")
             self.df = pd.DataFrame()
     
     async def analyze_company(self, query: str) -> Dict[str, Any]:
@@ -60,7 +60,7 @@ class ClientAgent:
                 # 유사한 거래처가 1개만 있으면 자동 선택
                 if len(similar) == 1:
                     company_name = similar[0]
-                    print(f"✅ 자동 선택: {company_name}")
+                    print(f"[OK] 자동 선택: {company_name}")
                 else:
                     return {
                         "success": False,
@@ -172,7 +172,7 @@ async def run(query: str, session_id: str) -> Dict[str, Any]:
             
             # 추천 거래처가 있으면 추가
             if result.get("suggestions"):
-                error_msg += "\n\n💡 혹시 이 거래처를 찾으셨나요?"
+                error_msg += "\n\n[TIP] 혹시 이 거래처를 찾으셨나요?"
                 for i, suggestion in enumerate(result["suggestions"][:5], 1):
                     error_msg += f"\n{i}. {suggestion}"
             
