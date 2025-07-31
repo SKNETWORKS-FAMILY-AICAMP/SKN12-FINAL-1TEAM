@@ -5,11 +5,24 @@ function EmployeePerformance({ currentUser }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedPeriod, setSelectedPeriod] = useState('최근 3개월');
   const [selectedDates, setSelectedDates] = useState([]); // 수동 선택된 날짜들
+  const [selectedEmployee, setSelectedEmployee] = useState(null); // 선택된 직원
+
+  const isAdmin = currentUser?.role === 'admin';
+
+  // 관리자용 직원 목록
+  const employees = [
+    { id: 'E001', name: '김민지', team: '영업 1팀', performance: 85 },
+    { id: 'E002', name: '최수아', team: '영업 1팀', performance: 92 },
+    { id: 'E003', name: '정다은', team: '영업 1팀', performance: 78 },
+    { id: 'E004', name: '박준호', team: '영업 2팀', performance: 88 },
+    { id: 'E005', name: '이현우', team: '영업 2팀', performance: 95 },
+    { id: 'E006', name: '강지훈', team: '영업 2팀', performance: 82 },
+  ];
 
   // 실적 분석 히스토리
-  const analysisHistory = [
-    `${currentUser?.name || '사용자'}_23.03~23.06...`
-  ];
+  const analysisHistory = isAdmin 
+    ? [`${selectedEmployee?.name || '전체'}_23.03~23.06...`]
+    : [`${currentUser?.name || '사용자'}_23.03~23.06...`];
 
   // 기간 설정 옵션
   const periodOptions = ['최근 3개월', '올해', '1분기', '2분기', '3분기', '4분기', '수동 선택'];
@@ -169,212 +182,300 @@ function EmployeePerformance({ currentUser }) {
 
   return (
     <div className="employee-performance">
-      {/* 왼쪽 사이드바 */}
-      <div className="performance-sidebar">
-        <h2>실적 분석</h2>
-        
-        <button className="new-analysis-btn">
-          <span className="plus-icon">+</span>
-          새로운 분석 생성
-        </button>
+      {/* 왼쪽 사이드바 - 일반 사용자만 표시 */}
+      {!isAdmin && (
+        <div className="performance-sidebar">
+          <h2>실적 분석</h2>
+          
+          <button className="new-analysis-btn">
+            <span className="plus-icon">+</span>
+            새로운 분석 생성
+          </button>
 
-        <div className="analysis-history">
-          {analysisHistory.map((analysis, index) => (
-            <div key={index} className="history-item">
-              <span className="history-icon">💬</span>
-              <span className="history-text">{analysis}</span>
-              <span className="history-arrow">›</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 가운데 메인 영역 */}
-      <div className="performance-main">
-        {/* 조회 기간 설정 */}
-        <div className="period-selection">
-          <h3>조회 기간 설정</h3>
-          <div className="period-tabs">
-            {periodOptions.map((period) => (
-              <button 
-                key={period}
-                className={`period-tab ${selectedPeriod === period ? 'active' : ''}`}
-                onClick={() => handlePeriodSelect(period)}
-              >
-                {period}
-              </button>
+          <div className="analysis-history">
+            {analysisHistory.map((analysis, index) => (
+              <div key={index} className="history-item">
+                <span className="history-icon">💬</span>
+                <span className="history-text">{analysis}</span>
+                <span className="history-arrow">›</span>
+              </div>
             ))}
           </div>
         </div>
+      )}
 
-        {/* 달력 영역 */}
-        <div className="calendar-section">
-          {isManualSelection ? (
-            // 수동 선택일 때 - 제목 옆 네비게이션
-            <div className="calendar-container">
-              {/* 첫 번째 달력 */}
-              <div className="calendar">
-                <div className="calendar-header">
-                  <button className="month-nav" onClick={() => changeMonth(-1)}>
-                    &#8249;
-                  </button>
-                  <div className="calendar-title">{firstMonth.year}년 {firstMonth.month + 1}월</div>
-                  <div className="nav-spacer"></div>
-                </div>
-                <div className="calendar-grid">
-                  <div className="weekdays">
-                    {weekDays.map((day) => (
-                      <div key={day} className="weekday">{day}</div>
-                    ))}
-                  </div>
-                  <div className="days">
-                    {getCalendarDays(firstMonth.year, firstMonth.month).map((day, index) => (
-                      <div 
-                        key={index} 
-                        className={`day ${isSelectedDate(firstMonth.year, firstMonth.month, day) ? 'selected' : ''} ${day ? 'clickable' : ''}`}
-                        onClick={() => handleDateClick(firstMonth.year, firstMonth.month, day)}
-                      >
-                        {day}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+      {/* 가운데 메인 영역 */}
+      <div className="performance-main">
+                 {/* 관리자용 직원 선택 */}
+         {isAdmin && (
+           <div className="employee-selection">
+             <h3>직원 선택</h3>
+             <div className="employee-search">
+               <input 
+                 type="text" 
+                 placeholder="분석할 직원의 이름 또는 사번을 입력하세요."
+                 className="employee-search-input"
+               />
+             </div>
+             <div className="employee-list">
+               <h4>나의 팀원</h4>
+               <div className="employee-grid">
+                 {employees.map((employee) => (
+                   <button 
+                     key={employee.id}
+                     className={`employee-card ${selectedEmployee?.id === employee.id ? 'selected' : ''}`}
+                     onClick={() => setSelectedEmployee(employee)}
+                   >
+                     <div className="employee-info">
+                       <div className="employee-name">{employee.name}</div>
+                       <div className="employee-team">{employee.team}</div>
+                     </div>
+                   </button>
+                 ))}
+               </div>
+             </div>
+           </div>
+         )}
 
-              {/* 두 번째 달력 */}
-              <div className="calendar">
-                <div className="calendar-header">
-                  <div className="nav-spacer"></div>
-                  <div className="calendar-title">{secondMonth.year}년 {secondMonth.month + 1}월</div>
-                  <button className="month-nav" onClick={() => changeMonth(1)}>
-                    &#8250;
-                  </button>
-                </div>
-                <div className="calendar-grid">
-                  <div className="weekdays">
-                    {weekDays.map((day) => (
-                      <div key={day} className="weekday">{day}</div>
-                    ))}
-                  </div>
-                  <div className="days">
-                    {getCalendarDays(secondMonth.year, secondMonth.month).map((day, index) => (
-                      <div 
-                        key={index} 
-                        className={`day ${isSelectedDate(secondMonth.year, secondMonth.month, day) ? 'selected' : ''} ${day ? 'clickable' : ''}`}
-                        onClick={() => handleDateClick(secondMonth.year, secondMonth.month, day)}
-                      >
-                        {day}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+         {/* 선택된 직원의 상세 성과 보고서 */}
+         {isAdmin && selectedEmployee && (
+           <div className="employee-performance-report">
+             <div className="report-header">
+               <h2>직원 성과 보고서</h2>
+               <p>직원 개발을 위한 상세한 성과 분석 및 전략 인사이트.</p>
+             </div>
+             
+             <div className="employee-profile">
+               <div className="profile-image">
+                 <div className="profile-avatar">👤</div>
+               </div>
+               <div className="profile-info">
+                 <h3>{selectedEmployee.team} {selectedEmployee.name} 과장</h3>
+                 <p>{selectedEmployee.team}</p>
+               </div>
+             </div>
+
+             <div className="performance-overview">
+               <h3>성과 개요</h3>
+               <div className="overview-cards">
+                 <div className="overview-card">
+                   <div className="card-label">할당 업무 완수율</div>
+                   <div className="card-value">95%</div>
+                 </div>
+                 <div className="overview-card">
+                   <div className="card-label">분기 매출 증감</div>
+                   <div className="card-value">+12%</div>
+                 </div>
+               </div>
+             </div>
+
+             <div className="performance-trend">
+               <h3>성과 추이</h3>
+               <div className="trend-summary">
+                 <div className="trend-value">+8%</div>
+                 <div className="trend-period">This Quarter +8%</div>
+               </div>
+               <div className="trend-chart">
+                 <div className="chart-placeholder">
+                   📈 성과 추이 그래프 (1월~6월)
+                 </div>
+               </div>
+             </div>
+           </div>
+         )}
+
+        {/* 조회 기간 설정 - 일반 사용자만 표시 */}
+        {!isAdmin && (
+          <div className="period-selection">
+            <h3>조회 기간 설정</h3>
+            <div className="period-tabs">
+              {periodOptions.map((period) => (
+                <button 
+                  key={period}
+                  className={`period-tab ${selectedPeriod === period ? 'active' : ''}`}
+                  onClick={() => handlePeriodSelect(period)}
+                >
+                  {period}
+                </button>
+              ))}
             </div>
-          ) : (
-            // 정해진 기간일 때 - 기존 방식
-            <div className="calendar-container">
-              {/* 첫 번째 달력 */}
-              <div className="calendar">
-                <div className="calendar-header">
-                  <div className="nav-spacer"></div>
-                  <div className="calendar-title">{firstMonth.year}년 {firstMonth.month + 1}월</div>
-                  <div className="nav-spacer"></div>
-                </div>
-                <div className="calendar-grid">
-                  <div className="weekdays">
-                    {weekDays.map((day) => (
-                      <div key={day} className="weekday">{day}</div>
-                    ))}
-                  </div>
-                  <div className="days">
-                    {getCalendarDays(firstMonth.year, firstMonth.month).map((day, index) => (
-                      <div 
-                        key={index} 
-                        className={`day ${isSelectedDate(firstMonth.year, firstMonth.month, day) ? 'selected' : ''}`}
-                      >
-                        {day}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+          </div>
+        )}
 
-              {/* 두 번째 달력 */}
-              <div className="calendar">
-                <div className="calendar-header">
-                  <div className="nav-spacer"></div>
-                  <div className="calendar-title">{secondMonth.year}년 {secondMonth.month + 1}월</div>
-                  <div className="nav-spacer"></div>
-                </div>
-                <div className="calendar-grid">
-                  <div className="weekdays">
-                    {weekDays.map((day) => (
-                      <div key={day} className="weekday">{day}</div>
-                    ))}
+        {/* 달력 영역 - 일반 사용자만 표시 */}
+        {!isAdmin && (
+          <div className="calendar-section">
+            {isManualSelection ? (
+              // 수동 선택일 때 - 제목 옆 네비게이션
+              <div className="calendar-container">
+                {/* 첫 번째 달력 */}
+                <div className="calendar">
+                  <div className="calendar-header">
+                    <button className="month-nav" onClick={() => changeMonth(-1)}>
+                      &#8249;
+                    </button>
+                    <div className="calendar-title">{firstMonth.year}년 {firstMonth.month + 1}월</div>
+                    <div className="nav-spacer"></div>
                   </div>
-                  <div className="days">
-                    {getCalendarDays(secondMonth.year, secondMonth.month).map((day, index) => (
-                      <div 
-                        key={index} 
-                        className={`day ${isSelectedDate(secondMonth.year, secondMonth.month, day) ? 'selected' : ''}`}
-                      >
-                        {day}
-                      </div>
-                    ))}
+                  <div className="calendar-grid">
+                    <div className="weekdays">
+                      {weekDays.map((day) => (
+                        <div key={day} className="weekday">{day}</div>
+                      ))}
+                    </div>
+                    <div className="days">
+                      {getCalendarDays(firstMonth.year, firstMonth.month).map((day, index) => (
+                        <div 
+                          key={index} 
+                          className={`day ${isSelectedDate(firstMonth.year, firstMonth.month, day) ? 'selected' : ''} ${day ? 'clickable' : ''}`}
+                          onClick={() => handleDateClick(firstMonth.year, firstMonth.month, day)}
+                        >
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 두 번째 달력 */}
+                <div className="calendar">
+                  <div className="calendar-header">
+                    <div className="nav-spacer"></div>
+                    <div className="calendar-title">{secondMonth.year}년 {secondMonth.month + 1}월</div>
+                    <button className="month-nav" onClick={() => changeMonth(1)}>
+                      &#8250;
+                    </button>
+                  </div>
+                  <div className="calendar-grid">
+                    <div className="weekdays">
+                      {weekDays.map((day) => (
+                        <div key={day} className="weekday">{day}</div>
+                      ))}
+                    </div>
+                    <div className="days">
+                      {getCalendarDays(secondMonth.year, secondMonth.month).map((day, index) => (
+                        <div 
+                          key={index} 
+                          className={`day ${isSelectedDate(secondMonth.year, secondMonth.month, day) ? 'selected' : ''} ${day ? 'clickable' : ''}`}
+                          onClick={() => handleDateClick(secondMonth.year, secondMonth.month, day)}
+                        >
+                          {day}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
+            ) : (
+              // 정해진 기간일 때 - 기존 방식
+              <div className="calendar-container">
+                {/* 첫 번째 달력 */}
+                <div className="calendar">
+                  <div className="calendar-header">
+                    <div className="nav-spacer"></div>
+                    <div className="calendar-title">{firstMonth.year}년 {firstMonth.month + 1}월</div>
+                    <div className="nav-spacer"></div>
+                  </div>
+                  <div className="calendar-grid">
+                    <div className="weekdays">
+                      {weekDays.map((day) => (
+                        <div key={day} className="weekday">{day}</div>
+                      ))}
+                    </div>
+                    <div className="days">
+                      {getCalendarDays(firstMonth.year, firstMonth.month).map((day, index) => (
+                        <div 
+                          key={index} 
+                          className={`day ${isSelectedDate(firstMonth.year, firstMonth.month, day) ? 'selected' : ''}`}
+                        >
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 두 번째 달력 */}
+                <div className="calendar">
+                  <div className="calendar-header">
+                    <div className="nav-spacer"></div>
+                    <div className="calendar-title">{secondMonth.year}년 {secondMonth.month + 1}월</div>
+                    <div className="nav-spacer"></div>
+                  </div>
+                  <div className="calendar-grid">
+                    <div className="weekdays">
+                      {weekDays.map((day) => (
+                        <div key={day} className="weekday">{day}</div>
+                      ))}
+                    </div>
+                    <div className="days">
+                      {getCalendarDays(secondMonth.year, secondMonth.month).map((day, index) => (
+                        <div 
+                          key={index} 
+                          className={`day ${isSelectedDate(secondMonth.year, secondMonth.month, day) ? 'selected' : ''}`}
+                        >
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 달력 하단 버튼들 */}
+            <div className="calendar-actions">
+              <button className="action-btn secondary">취소</button>
+              <button className="action-btn primary">적용하기</button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* 달력 하단 버튼들 */}
-          <div className="calendar-actions">
-            <button className="action-btn secondary">취소</button>
-            <button className="action-btn primary">적용하기</button>
+        {/* 통계 카드 섹션 - 일반 사용자만 표시 */}
+        {!isAdmin && (
+          <div className="stats-section">
+            <div className="stat-card">
+              <div className="stat-label">달성 업무 완료율</div>
+              <div className="stat-value">92%</div>
+              <div className="stat-change positive">+2%</div>
+            </div>
+            
+            <div className="stat-card">
+              <div className="stat-label">매출 증감률</div>
+              <div className="stat-value">+15%</div>
+              <div className="stat-change positive">+15%</div>
+            </div>
+            
+            <div className="stat-card">
+              <div className="stat-label">총 방문 횟수</div>
+              <div className="stat-value">128</div>
+              <div className="stat-change negative">-5%</div>
+            </div>
           </div>
-        </div>
-
-        {/* 통계 카드 섹션 */}
-        <div className="stats-section">
-          <div className="stat-card">
-            <div className="stat-label">달성 업무 완료율</div>
-            <div className="stat-value">92%</div>
-            <div className="stat-change positive">+2%</div>
-          </div>
-          
-          <div className="stat-card">
-            <div className="stat-label">매출 증감률</div>
-            <div className="stat-value">+15%</div>
-            <div className="stat-change positive">+15%</div>
-          </div>
-          
-          <div className="stat-card">
-            <div className="stat-label">총 방문 횟수</div>
-            <div className="stat-value">128</div>
-            <div className="stat-change negative">-5%</div>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* 오른쪽 패널 */}
-      <div className="performance-right-panel">
-        <h2>실적 분석 보고서 생성</h2>
-        
-        <div className="report-input">
-          <input 
-            type="text" 
-            placeholder="생성중..."
-            className="report-input-field"
-            readOnly
-          />
-        </div>
+      {/* 오른쪽 패널 - 일반 사용자만 표시 */}
+      {!isAdmin && (
+        <div className="performance-right-panel">
+          <h2>실적 분석 보고서 생성</h2>
+          
+          <div className="report-input">
+            <input 
+              type="text" 
+              placeholder="생성중..."
+              className="report-input-field"
+              readOnly
+            />
+          </div>
 
-        <div className="generate-actions">
-          <button className="generate-btn">
-            보고서 다운로드
-          </button>
+          <div className="generate-actions">
+            <button className="generate-btn">
+              보고서 다운로드
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

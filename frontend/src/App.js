@@ -13,6 +13,7 @@ import ClientPage from './components/ClientPage';
 import EmployeePerformance from './components/EmployeePerformance';
 import SchedulePage from './components/SchedulePage';
 import LoginPage from './components/LoginPage';
+import AdminPage from './components/AdminPage';
 
 function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
@@ -102,6 +103,7 @@ function App() {
             <Route path="/client" element={<ClientPage />} />
             <Route path="/employee" element={<EmployeePerformance currentUser={currentUser} />} />
             <Route path="/schedule" element={<SchedulePage />} />
+            <Route path="/admin" element={<AdminPage currentUser={currentUser} />} />
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

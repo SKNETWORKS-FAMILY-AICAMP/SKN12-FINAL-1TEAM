@@ -7,6 +7,7 @@ from routers.admin_router import router as admin_router
 from routers.qa_router import router as qa_router
 from routers.hybrid_search_router import router as hybrid_search_router
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from services.opensearch_service import initialize_search_pipeline
 
 # 로깅 설정 - 터미널에서 모든 로그 보이도록
@@ -79,6 +80,15 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 FastAPI 앱 종료 중...")
 
 app = FastAPI(lifespan=lifespan)
+
+# CORS 설정 추가
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(document_router, prefix="", tags=["Documents"])
 app.include_router(user_router, prefix="/user", tags=["User"])

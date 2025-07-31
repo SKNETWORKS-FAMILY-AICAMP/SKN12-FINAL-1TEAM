@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loginUser } from '../services/api';
+import { loginUser, verifyToken } from '../services/api';
 import './LoginPage.css';
 
 const LoginPage = ({ onLogin }) => {
@@ -51,14 +51,18 @@ const LoginPage = ({ onLogin }) => {
       localStorage.setItem('narutalk_token', access_token);
       localStorage.setItem('narutalk_token_type', token_type);
 
-      // 사용자 정보 생성 (실제 환경에서는 토큰으로 사용자 정보를 가져와야 함)
+      // 토큰으로 실제 사용자 정보 가져오기
+      const userInfo = await verifyToken();
+
+      // 백엔드에서 받은 사용자 정보 사용
       const userData = {
-        email: loginData.email,
-        name: `관리자 ${loginData.email.split('@')[0]}`,
-        role: 'admin',
+        email: userInfo.email,
+        name: userInfo.name,
+        role: userInfo.role,
+        username: userInfo.username,
         company: '좋은제약',
-        department: '시스템 관리부',
-        position: '시스템 관리자',
+        department: userInfo.role === 'admin' ? '시스템 관리부' : '영업부',
+        position: userInfo.role === 'admin' ? '시스템 관리자' : '영업사원',
         phone: '010-1234-5678'
       };
 

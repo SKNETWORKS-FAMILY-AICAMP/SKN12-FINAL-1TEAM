@@ -48,7 +48,8 @@ const Sidebar = ({ sidebarVisible, setSidebarVisible, currentUser, onLogout }) =
     { path: '/chat', icon: '💬', label: '채팅' },
     { path: '/docs', icon: '📄', label: '문서 생성' },
     { path: '/client', icon: '👥', label: '사용자 관리' },
-    { path: '/employee', icon: '📊', label: '시스템 현황' },
+    { path: '/employee', icon: '📊', label: '직원 실적 분석' },
+    { path: '/admin', icon: '⚙️', label: '시스템 관리' },
   ];
 
   // 일반 사용자용 메뉴

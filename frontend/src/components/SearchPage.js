@@ -1,74 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { getDocuments } from '../services/api';
 import './SearchPage.css';
 
 const SearchPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([
-    {
-      id: 1,
-      documentName: '윤리 강령',
-      classification: '내부',
-      author: '김지수',
-      creationDate: '2023-11-15',
-      aiSummary: ''
-    },
-    {
-      id: 2,
-      documentName: '인사도',
-      classification: '내부',
-      author: '박민준',
-      creationDate: '2023-11-20',
-      aiSummary: ''
-    },
-    {
-      id: 3,
-      documentName: '의약품 관련 법률',
-      classification: '외부',
-      author: '자동',
-      creationDate: '2023-11-22',
-      aiSummary: ''
-    },
-    {
-      id: 4,
-      documentName: 'A_제품 설명서',
-      classification: '외부',
-      author: '자동',
-      creationDate: '2023-11-10',
-      aiSummary: ''
-    },
-    {
-      id: 5,
-      documentName: '공시 정보 관리 규정',
-      classification: '내부',
-      author: '박민준',
-      creationDate: '2023-11-18',
-      aiSummary: ''
-    },
-    {
-      id: 6,
-      documentName: '지출 보고서 가이드 라인',
-      classification: '외부',
-      author: '자동',
-      creationDate: '2023-11-25',
-      aiSummary: ''
-    },
-    {
-      id: 7,
-      documentName: 'B_제품 설명서',
-      classification: '외부',
-      author: '자동',
-      creationDate: '2023-11-05',
-      aiSummary: ''
-    },
-    {
-      id: 8,
-      documentName: '주간 영업 보고서',
-      classification: '내부',
-      author: '박민준',
-      creationDate: '2023-11-12',
-      aiSummary: ''
+  const [searchResults, setSearchResults] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // 컴포넌트 마운트 시 문서 목록 가져오기
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  const fetchDocuments = async () => {
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const documents = await getDocuments();
+      
+      // 백엔드 응답을 프론트엔드 형식으로 변환
+      const formattedDocuments = documents.map(doc => ({
+        id: doc.doc_id,
+        documentName: doc.doc_title,
+        classification: '내부', // 기본값
+        author: `직원 ID: ${doc.uploader_id}`,
+        creationDate: new Date(doc.created_at).toLocaleDateString('ko-KR'),
+        aiSummary: doc.doc_type || '문서',
+        docType: doc.doc_type,
+        filePath: doc.file_path
+      }));
+      
+      setSearchResults(formattedDocuments);
+    } catch (error) {
+      console.error('문서 목록 조회 실패:', error);
+      setError('문서 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoading(false);
     }
-  ]);
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -107,6 +78,19 @@ const SearchPage = () => {
           <button className="filter-button">작성자</button>
         </div>
 
+        {/* 로딩 및 오류 메시지 */}
+        {isLoading && (
+          <div className="loading-message">
+            문서 목록을 불러오는 중...
+          </div>
+        )}
+        
+        {error && (
+          <div className="error-message">
+            {error}
+          </div>
+        )}
+
         <div className="search-results">
           <div className="results-table">
             <table>
@@ -120,19 +104,27 @@ const SearchPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {searchResults.map((result) => (
-                  <tr key={result.id}>
-                    <td>{result.documentName}</td>
-                    <td>
-                      <span className={`classification-tag ${result.classification === '내부' ? 'internal' : 'external'}`}>
-                        {result.classification}
-                      </span>
+                {searchResults.length === 0 && !isLoading && !error ? (
+                  <tr>
+                    <td colSpan="5" className="no-results">
+                      업로드된 문서가 없습니다.
                     </td>
-                    <td>{result.author}</td>
-                    <td>{result.creationDate}</td>
-                    <td>{result.aiSummary}</td>
                   </tr>
-                ))}
+                ) : (
+                  searchResults.map((result) => (
+                    <tr key={result.id}>
+                      <td>{result.documentName}</td>
+                      <td>
+                        <span className={`classification-tag ${result.classification === '내부' ? 'internal' : 'external'}`}>
+                          {result.classification}
+                        </span>
+                      </td>
+                      <td>{result.author}</td>
+                      <td>{result.creationDate}</td>
+                      <td>{result.aiSummary}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
