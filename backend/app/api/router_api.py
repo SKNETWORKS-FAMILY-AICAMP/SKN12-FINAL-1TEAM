@@ -165,7 +165,7 @@ async def run_agent(agent_id: str, query: str, session_id: str) -> Dict[str, Any
             return result
             
         elif agent_id == "client_agent":
-            from app.services.client_agent.run import run
+            from app.services.client_agent import run
             result = await run(query, session_id)
             return result
             

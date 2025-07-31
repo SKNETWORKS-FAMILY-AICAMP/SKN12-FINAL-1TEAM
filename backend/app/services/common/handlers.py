@@ -1,5 +1,5 @@
 from ..employee_agent.run import run as employee_run
-from ..client_agent.run import run as client_run
+from ..client_agent import run as client_run
 from ..search_agent.run import run as search_run
 from ..docs_agent import run as doc_run
 
