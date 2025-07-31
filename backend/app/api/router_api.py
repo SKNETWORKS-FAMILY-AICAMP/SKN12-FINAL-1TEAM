@@ -22,9 +22,11 @@ logger = logging.getLogger(__name__)
 
 # Context Manager import with error handling
 context_manager = None
+sync_context_manager = None
 try:
-    from app.services.common.context_manager import context_manager as cm
+    from app.services.common.context_manager import context_manager as cm, sync_context_manager as scm
     context_manager = cm
+    sync_context_manager = scm
     logger.info("Context Manager imported successfully")
 except Exception as e:
     logger.error(f"Failed to import context_manager: {e}")
@@ -234,9 +236,10 @@ async def chat(req: QueryRequest):
         # 쿼리 처리 - enhanced_query를 안전하게 처리
         query_to_process = req.query
         
-        if context_manager:
+        if sync_context_manager:
             try:
-                query_to_process = context_manager.process_query(req.session_id, req.query)
+                # 동기 래퍼 사용
+                query_to_process = sync_context_manager.process_query(req.session_id, req.query)
                 logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{query_to_process}'")
             except Exception as e:
                 logger.error(f"Context processing error: {e}")
@@ -377,9 +380,10 @@ async def select_agent(req: SelectionRequest):
         # 쿼리 처리
         query_to_process = req.query
         
-        if context_manager:
+        if sync_context_manager:
             try:
-                query_to_process = context_manager.process_query(req.session_id, req.query)
+                # 동기 래퍼 사용
+                query_to_process = sync_context_manager.process_query(req.session_id, req.query)
                 logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{query_to_process}'")
             except Exception as e:
                 logger.error(f"Context processing error: {e}")

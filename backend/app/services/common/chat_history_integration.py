@@ -101,8 +101,8 @@ class ChatHistoryIntegration:
             session_id, max_messages
         )
         
-        # 2. 현재 컨텍스트 (동기 -> 비동기 래핑 필요시 수정)
-        current_context = self.context_manager.get_context(session_id)
+        # 2. 현재 컨텍스트 (비동기 호출)
+        current_context = await self.context_manager.get_or_create_context(session_id)
         
         return {
             "messages": recent_messages,
