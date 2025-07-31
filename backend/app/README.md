@@ -49,7 +49,11 @@ python main.py
 
 ### 3. 문서 API (`/api/docs`)
 
+<<<<<<< HEAD
 **POST /api/docs/classify** (레거시)
+=======
+**POST /api/docs/classify**
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 - **설명**: 문서 분류
 - **입력**:
   ```json
@@ -62,22 +66,37 @@ python main.py
   {
     "success": true,
     "state": {
+<<<<<<< HEAD
       "doc_type": "영업방문 결과보고서",
       "template_content": "템플릿 내용..."
+=======
+      "document_type": "contract",
+      "category": "legal"
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
     },
     "error": null
   }
   ```
 
+<<<<<<< HEAD
 **POST /api/docs/write** (레거시)
+=======
+**POST /api/docs/write**
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 - **설명**: 문서 초안 작성
 - **입력**:
   ```json
   {
     "state": {
+<<<<<<< HEAD
       "doc_type": "영업방문 결과보고서"
     },
     "user_input": "방문일시: 2024-01-15, 고객사: ABC회사..."
+=======
+      "document_type": "contract"
+    },
+    "user_input": "소프트웨어 개발 계약서 초안 작성"
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
   }
   ```
 - **출력**:
@@ -85,13 +104,19 @@ python main.py
   {
     "success": true,
     "filled_data": {
+<<<<<<< HEAD
       "title": "영업방문 결과보고서",
       "content": "문서 내용..."
+=======
+      "title": "소프트웨어 개발 계약서",
+      "content": "계약서 내용..."
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
     },
     "error": null
   }
   ```
 
+<<<<<<< HEAD
 **POST /api/docs/interactive** ⭐ (새로운 상호작용 방식)
 - **설명**: 사용자와 상호작용하는 문서 작성 처리
 - **초기 요청 (분류)**:
@@ -169,10 +194,17 @@ python main.py
 
 **GET /api/employee/health**
 - **설명**: Employee Agent 헬스 체크 및 시스템 상태 확인
+=======
+### 4. 직원 분석 API (`/api/employee`)
+
+**GET /api/employee/health**
+- **설명**: Employee Agent 헬스 체크
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 - **출력**:
   ```json
   {
     "status": "healthy",
+<<<<<<< HEAD
     "agent": "Enhanced Employee Performance Agent",
     "database_status": "connected",
     "available_employees": ["최수아", "조시현"],
@@ -189,10 +221,23 @@ python main.py
 
 **GET /api/employee/employees**
 - **설명**: 사용 가능한 직원 목록 조회
+=======
+    "agent": "Employee Performance Agent",
+    "data_status": {
+      "performance_data": "loaded",
+      "target_data": "loaded"
+    }
+  }
+  ```
+
+**GET /api/employee/performance/summary**
+- **설명**: 직원 실적 요약 조회
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 - **출력**:
   ```json
   {
     "success": true,
+<<<<<<< HEAD
     "employees": ["최수아", "조시현"],
     "count": 2,
     "message": "2명의 직원 데이터가 있습니다."
@@ -206,12 +251,35 @@ python main.py
   {
     "session_id": "session_123",
     "query": "최수아의 2023년 12월부터 2024년 3월까지 실적 분석해주세요"
+=======
+    "summary": {
+      "employee_name": "최수아",
+      "period": "2023년 12월 ~ 2024년 3월",
+      "total_performance": 15000000,
+      "total_target": 12000000,
+      "achievement_rate": 125.0,
+      "status": "급증"
+    }
+  }
+  ```
+
+**POST /api/employee/analyze**
+- **설명**: 직원 실적 분석
+- **입력**:
+  ```json
+  {
+    "employee_name": "최수아",
+    "period": "2024년",
+    "save_report": true,
+    "filename": "실적분석보고서.docx"
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
   }
   ```
 - **출력**:
   ```json
   {
     "success": true,
+<<<<<<< HEAD
     "employee_name": "최수아",
     "period": "202312~202403",
     "total_performance": 15000000,
@@ -332,6 +400,31 @@ CREATE TABLE monthly_target (
 );
 ```
 
+=======
+    "analysis_result": {
+      "performance_metrics": {},
+      "trends": {},
+      "recommendations": []
+    },
+    "report": "상세 분석 보고서 텍스트...",
+    "message": "분석 완료. 보고서가 저장되었습니다."
+  }
+  ```
+
+**POST /api/employee/report/generate**
+- **설명**: 실적 보고서 생성 및 다운로드
+- **입력**: analyze 엔드포인트와 동일
+- **출력**:
+  ```json
+  {
+    "success": true,
+    "message": "보고서가 성공적으로 저장되었습니다.",
+    "filename": "최수아_실적분석보고서.docx",
+    "report_preview": "보고서 미리보기 텍스트..."
+  }
+  ```
+
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 ### 5. 거래처 분석 API (`/api/client`)
 
 **GET /api/client/health**
@@ -383,7 +476,11 @@ main.py - 모든 FastAPI 실행파일 (통합 서버)
 ├── /api/docs_api.py - 문서초안작성 FastAPI 실행파일  
 ├── /api/employee_api.py - 실적분석 FastAPI 실행파일
 ├── /api/router_api.py - 라우터 FastAPI 실행파일
+<<<<<<< HEAD
 └── /services/ # 라우터 및 3개의 에이전트 소스파일 ( API 연결 )
+=======
+└── /services/
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
     ├── /client_agent/client_analysis_agent.py - 거래처분석 소스코드
     ├── /docs_agent/
     │   ├── classify_docs.py - 문서 분류 소스코드

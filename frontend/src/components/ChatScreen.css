@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /* Chat Screen - 고정 레이아웃 */
 .chat-screen {
   height: calc(100vh - 100px);
@@ -34,10 +35,124 @@
   color: #333;
   font-size: 1.1rem;
   font-weight: 600;
+=======
+.chat-screen {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f8f9fa;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 30px;
+  background-color: white;
+  border-bottom: 1px solid #e9ecef;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.header-left h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.header-center .logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo-icon {
+  font-size: 1.5rem;
+}
+
+.logo-text {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.header-nav {
+  display: flex;
+  gap: 15px;
+}
+
+.nav-link {
+  text-decoration: none;
+  color: #666;
+  font-size: 0.9rem;
+  padding: 5px 10px;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
+
+.nav-link:hover {
+  background-color: #f8f9fa;
+}
+
+.nav-link.active {
+  color: #007bff;
+  background-color: #e3f2fd;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.notification-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 4px;
+}
+
+.notification-btn:hover {
+  background-color: #f8f9fa;
+}
+
+.user-profile img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.chat-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.chat-sidebar {
+  width: 250px;
+  background-color: white;
+  border-right: 1px solid #e9ecef;
+  padding: 20px;
+}
+
+.chat-history h3 {
+  margin: 0 0 15px 0;
+  color: #333;
+  font-size: 1.1rem;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 }
 
 .new-chat-btn {
   width: 100%;
+<<<<<<< HEAD
   padding: 12px;
   background-color: #007bff;
   color: white;
@@ -48,12 +163,23 @@
   margin-bottom: 15px;
   transition: background-color 0.3s;
   font-weight: 500;
+=======
+  padding: 10px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 }
 
 .new-chat-btn:hover {
   background-color: #0056b3;
 }
 
+<<<<<<< HEAD
 .chat-controls {
   margin-bottom: 20px;
 }
@@ -78,10 +204,17 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+=======
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 }
 
 .chat-item {
   display: flex;
+<<<<<<< HEAD
   align-items: flex-start;
   gap: 12px;
   padding: 12px;
@@ -89,12 +222,21 @@
   cursor: pointer;
   transition: all 0.3s;
   border: 1px solid transparent;
+=======
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 }
 
 .chat-item:hover {
   background-color: #f8f9fa;
 }
 
+<<<<<<< HEAD
 .chat-item.active {
   background-color: #e3f2fd;
   border-color: #2196f3;
@@ -127,11 +269,29 @@
 }
 
 /* Main Chat Area */
+=======
+.chat-icon {
+  font-size: 1rem;
+}
+
+.chat-date {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.chat-arrow {
+  font-size: 0.8rem;
+  color: #999;
+}
+
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 .chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   background-color: white;
+<<<<<<< HEAD
   overflow: hidden;
 }
 
@@ -143,11 +303,19 @@
   border-bottom: 1px solid #e9ecef;
   flex-shrink: 0;
   background-color: white;
+=======
+}
+
+.chat-title {
+  padding: 20px 30px;
+  border-bottom: 1px solid #e9ecef;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 }
 
 .chat-title h2 {
   margin: 0;
   color: #333;
+<<<<<<< HEAD
   font-size: 1.3rem;
   font-weight: 600;
 }
@@ -207,12 +375,19 @@
 }
 
 /* Messages Container - 스크롤 가능 */
+=======
+  font-size: 1.8rem;
+  text-align: center;
+}
+
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 .messages-container {
   flex: 1;
   padding: 20px 30px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+<<<<<<< HEAD
   gap: 16px;
   min-height: 0;
 }
@@ -223,31 +398,104 @@
   border-radius: 18px;
   word-wrap: break-word;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+=======
+  gap: 20px;
+}
+
+.message {
+  max-width: 70%;
+  padding: 12px 16px;
+  border-radius: 20px;
+  position: relative;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  word-wrap: break-word;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 }
 
 .ai-message {
   align-self: flex-start;
   background-color: #f1f3f4;
   color: #202124;
+<<<<<<< HEAD
   border-bottom-left-radius: 6px;
+=======
+  border-bottom-left-radius: 4px;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 }
 
 .user-message {
   align-self: flex-end;
   background-color: #1a73e8;
   color: white;
+<<<<<<< HEAD
   border-bottom-right-radius: 6px;
+=======
+  border-bottom-right-radius: 4px;
+}
+
+.message.streaming {
+  background-color: #e8f0fe;
+  border: 1px solid #4285f4;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.8; }
+  100% { opacity: 1; }
+}
+
+.typing-indicator {
+  display: inline-block;
+  animation: typing 1.4s infinite;
+  color: #666;
+}
+
+@keyframes typing {
+  0%, 20% { opacity: 0; }
+  50% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.agent-badge {
+  position: absolute;
+  top: -8px;
+  left: 10px;
+  background-color: #007bff;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 }
 
 .message-header {
   display: flex;
   align-items: center;
+<<<<<<< HEAD
   justify-content: space-between;
   margin-bottom: 6px;
 }
 
 .message-sender {
   font-size: 0.8rem;
+=======
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.message-avatar img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+.message-sender {
+  font-size: 0.9rem;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
   font-weight: 500;
   color: #666;
 }
@@ -256,6 +504,7 @@
   color: rgba(255, 255, 255, 0.8);
 }
 
+<<<<<<< HEAD
 .message-time {
   font-size: 0.75rem;
   color: #999;
@@ -265,10 +514,13 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
+=======
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 .message-content {
   line-height: 1.5;
   word-wrap: break-word;
   white-space: pre-wrap;
+<<<<<<< HEAD
   font-size: 0.95rem;
 }
 
@@ -319,12 +571,23 @@
   display: flex;
   gap: 12px;
   align-items: flex-end;
+=======
+}
+
+.message-input-container {
+  padding: 20px 30px;
+  border-top: 1px solid #e9ecef;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 }
 
 .message-input {
   flex: 1;
   padding: 12px 15px;
   border: 1px solid #ddd;
+<<<<<<< HEAD
   border-radius: 12px;
   font-size: 0.95rem;
   outline: none;
@@ -332,10 +595,16 @@
   max-height: 120px;
   min-height: 44px;
   font-family: inherit;
+=======
+  border-radius: 6px;
+  font-size: 0.9rem;
+  outline: none;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 }
 
 .message-input:focus {
   border-color: #007bff;
+<<<<<<< HEAD
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
 }
 
@@ -493,4 +762,39 @@
 
 .agent-selection-buttons .agent-selection-btn:nth-child(4) {
   animation-delay: 0.3s;
+=======
+}
+
+.send-button {
+  padding: 12px 25px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.send-button:hover {
+  background-color: #0056b3;
+}
+
+/* 다운로드 링크 스타일 */
+.download-link {
+  color: #007bff !important;
+  text-decoration: underline !important;
+  cursor: pointer !important;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.download-link:hover {
+  color: #0056b3 !important;
+  text-decoration: none !important;
+}
+
+.download-link:active {
+  color: #004085 !important;
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
 } 

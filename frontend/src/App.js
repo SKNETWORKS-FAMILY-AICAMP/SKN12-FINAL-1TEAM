@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { verifyToken, logoutUser } from './services/api';
@@ -110,6 +111,26 @@ function App() {
         </div>
       </div>
     </Router>
+=======
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import './App.css';
+import MainDashboard from './components/MainDashboard';
+import ChatScreen from './components/ChatScreen';
+import EmployeePerformance from './components/EmployeePerformance';
+
+function App() {
+  return (
+    <div className="App">
+      <Router>
+        <Routes>
+          <Route path="/" element={<MainDashboard />} />
+          <Route path="/chat" element={<ChatScreen />} />
+          <Route path="/performance" element={<EmployeePerformance />} />
+        </Routes>
+      </Router>
+    </div>
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
   );
 }
 

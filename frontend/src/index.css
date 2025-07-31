@@ -11,6 +11,7 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+<<<<<<< HEAD
 
 /* 다크 테마 스타일 */
 body.dark-theme {
@@ -110,3 +111,5 @@ body.dark-theme .setting-label {
 body.dark-theme .setting-value {
   color: #cccccc;
 }
+=======
+>>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
