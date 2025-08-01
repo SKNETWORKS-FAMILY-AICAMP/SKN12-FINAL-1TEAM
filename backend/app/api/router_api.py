@@ -207,17 +207,16 @@ async def chat(req: QueryRequest):
         
         session = sessions[req.session_id]
         
-        # 사용자 메시지를 DB에 저장
+        # 사용자 메시지를 PostgreSQL에 저장
         try:
-            save_message(
-                session_id=req.session_id,
-                role="user",
-                message_text=req.query,
-                metadata={
-                    "source": "web_chat",
-                    "request_type": "chat"
-                }
-            )
+            if chat_integration:
+                await chat_integration.process_user_message(
+                    session_id=req.session_id,
+                    query=req.query,
+                    employee_id=1  # TODO: 실제 사용자 인증에서 가져와야 함
+                )
+            else:
+                logger.error("사용자 메시지를 PostgreSQL에 저장 실패")
         except Exception as e:
             logger.error(f"Failed to save user message: {e}")
         
@@ -300,21 +299,17 @@ async def chat(req: QueryRequest):
             "agent": classified_agent
         })
         
-        # AI 응답을 DB에 저장
+        # AI 응답을 PostgreSQL에 저장
         try:
-            save_message(
-                session_id=req.session_id,
-                role="assistant",
-                message_text=result.get("response", ""),
-                metadata={
-                    "agent": classified_agent,
-                    "total_performance": result.get("total_performance"),
-                    "achievement_rate": result.get("achievement_rate"),
-                    "evaluation": result.get("evaluation"),
-                    "routing_attempts": session["routing_attempts"],
-                    "classification_result": result.get("classification_result")
-                }
-            )
+            if chat_integration:
+                await chat_integration.process_assistant_response(
+                    session_id=req.session_id,
+                    response=result.get("response", ""),
+                    agent_name=classified_agent,
+                    employee_id=1  # TODO: 실제 사용자 인증에서 가져와야 함
+                )
+            else:
+                logger.error("AI 응답을 PostgreSQL에 저장 실패")
         except Exception as e:
             logger.error(f"Failed to save assistant response: {e}")
         
@@ -391,36 +386,37 @@ async def select_agent(req: SelectionRequest):
         else:
             logger.warning("Context manager not available, using original query")
         
-        # 사용자 메시지를 DB에 저장
-        save_message(
-            session_id=req.session_id,
-            role="user",
-            message_text=req.query,
-            metadata={
-                "source": "web_chat",
-                "request_type": "select-agent",
-                "selected_agent": agent_id
-            }
-        )
+        # 사용자 메시지를 PostgreSQL에 저장
+        try:
+            if chat_integration:
+                await chat_integration.process_user_message(
+                    session_id=req.session_id,
+                    query=req.query,
+                    employee_id=1  # TODO: 실제 사용자 인증에서 가져와야 함
+                )
+            else:
+                logger.error("사용자 메시지를 PostgreSQL에 저장 실패")
+        except Exception as e:
+            logger.error(f"Failed to save user message: {e}")
         
         # 질문이 있으면 에이전트 실행
         result = await run_agent(agent_id, query_to_process, req.session_id)
         result["agent_selected"] = True
         result["classification_result"] = f"사용자 선택: {agent_id}"
         
-        # AI 응답을 DB에 저장
-        save_message(
-            session_id=req.session_id,
-            role="assistant",
-            message_text=result.get("response", ""),
-            metadata={
-                "agent": agent_id,
-                "total_performance": result.get("total_performance"),
-                "achievement_rate": result.get("achievement_rate"),
-                "evaluation": result.get("evaluation"),
-                "classification_result": result.get("classification_result")
-            }
-        )
+        # AI 응답을 PostgreSQL에 저장
+        try:
+            if chat_integration:
+                await chat_integration.process_assistant_response(
+                    session_id=req.session_id,
+                    response=result.get("response", ""),
+                    agent_name=agent_id,
+                    employee_id=1  # TODO: 실제 사용자 인증에서 가져와야 함
+                )
+            else:
+                logger.error("AI 응답을 PostgreSQL에 저장 실패")
+        except Exception as e:
+            logger.error(f"Failed to save assistant response: {e}")
         
         # 세션에 메시지 저장 (메모리)
         sessions[req.session_id]["messages"].append({
@@ -582,35 +578,27 @@ async def get_chat_history(
 ):
     """세션의 대화 기록 조회"""
     try:
-        with sqlite3.connect(str(DB_PATH)) as conn:
-            cursor = conn.execute("""
-                SELECT message_id, timestamp, role, message_text, metadata
-                FROM chat_history
-                WHERE session_id = ?
-                ORDER BY timestamp DESC
-                LIMIT ? OFFSET ?
-            """, (session_id, limit, offset))
+        if chat_integration:
+            # PostgreSQL에서 조회
+            messages = await chat_integration.history_manager.get_conversation_history(
+                session_id=session_id,
+                limit=limit,
+                offset=offset
+            )
             
-            messages = []
-            for row in cursor:
-                messages.append({
-                    "message_id": row[0],
-                    "timestamp": row[1],
-                    "role": row[2],
-                    "content": row[3],
-                    "metadata": json.loads(row[4]) if row[4] else {}
-                })
-        
-        # 시간순으로 정렬 (오래된 것부터)
-        messages.reverse()
-        
-        return {
-            "success": True,
-            "session_id": session_id,
-            "messages": messages,
-            "count": len(messages),
-            "db_path": str(DB_PATH)
-        }
+            return {
+                "success": True,
+                "session_id": session_id,
+                "messages": messages,
+                "count": len(messages),
+                "db_type": "postgresql"
+            }
+        else:
+            logger.error("PostgreSql에서 세션의 대화 기록 조회 실패")
+            return {
+                "success": False,
+                "error": "Chat integration not available"
+            }
     except Exception as e:
         logger.error(f"Failed to get chat history: {e}")
         return {
@@ -622,30 +610,29 @@ async def get_chat_history(
 async def get_session_info(session_id: str):
     """세션 정보 조회"""
     try:
-        with sqlite3.connect(str(DB_PATH)) as conn:
-            # 첫 메시지와 마지막 메시지 시간 조회
-            cursor = conn.execute("""
-                SELECT 
-                    MIN(timestamp) as first_message,
-                    MAX(timestamp) as last_message,
-                    COUNT(*) as message_count
-                FROM chat_history
-                WHERE session_id = ?
-            """, (session_id,))
+        if chat_integration:
+            # PostgreSQL에서 조회
+            session_info = await chat_integration.history_manager.get_session_info(session_id)
             
-            row = cursor.fetchone()
-            if row and row[2] > 0:
+            if session_info:
                 return {
                     "success": True,
                     "session": {
                         "session_id": session_id,
-                        "first_message": row[0],
-                        "last_message": row[1],
-                        "message_count": row[2]
-                    }
+                        "first_message": session_info["created_at"],
+                        "last_message": session_info["last_activity"],
+                        "message_count": session_info["message_count"]
+                    },
+                    "db_type": "postgresql"
                 }
             else:
                 return {"success": False, "error": "Session not found"}
+        else:
+            logger.error("PostgreSql에서 세션 기록 조회 실패")
+            return {
+                "success": False,
+                "error": "Chat integration not available"
+            }
     except Exception as e:
         logger.error(f"Failed to get session info: {e}")
         return {
@@ -657,39 +644,21 @@ async def get_session_info(session_id: str):
 async def get_all_sessions():
     """모든 세션 목록 조회"""
     try:
-        with sqlite3.connect(str(DB_PATH)) as conn:
-            cursor = conn.execute("""
-                SELECT 
-                    session_id,
-                    MIN(timestamp) as first_message,
-                    MAX(timestamp) as last_message,
-                    COUNT(*) as message_count,
-                    MAX(CASE WHEN role = 'user' THEN message_text END) as last_user_message
-                FROM chat_history
-                GROUP BY session_id
-                ORDER BY MAX(timestamp) DESC
-                LIMIT 50
-            """)
-            
-            sessions = []
-            for row in cursor:
-                # 첫 번째 사용자 메시지로 제목 생성
-                title = row[4][:30] + "..." if row[4] and len(row[4]) > 30 else (row[4] or "대화")
-                
-                sessions.append({
-                    "id": row[0],
-                    "sessionId": row[0],
-                    "title": title,
-                    "firstMessage": row[1],
-                    "lastMessage": row[2],
-                    "messageCount": row[3],
-                    "createdAt": row[1]
-                })
+        if chat_integration:
+            # PostgreSQL에서 세션 목록 조회
+            sessions = await chat_integration.history_manager.get_all_sessions(limit=50)
             
             return {
                 "success": True,
                 "sessions": sessions,
-                "count": len(sessions)
+                "count": len(sessions),
+                "db_type": "postgresql"
+            }
+        else:
+            logger.error("PostgreSql에서 세션 목록 조회 실패")
+            return {
+                "success": False,
+                "error": "Chat integration not available"
             }
     except Exception as e:
         logger.error(f"Failed to get all sessions: {e}")
