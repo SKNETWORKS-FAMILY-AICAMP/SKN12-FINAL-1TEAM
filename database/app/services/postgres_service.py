@@ -15,17 +15,46 @@ def save_document(doc_meta: DocumentBase) -> Document:
     finally:
         db.close()
 
-def get_documents() -> List[Document]:
+def get_documents() -> List[dict]:
     db = SessionLocal()
     try:
-        return db.query(Document).all()
+        # relationship을 사용해서 직원 정보와 함께 가져오기
+        documents = db.query(Document).all()
+        
+        # 딕셔너리 형태로 변환
+        return [
+            {
+                'doc_id': doc.doc_id,
+                'doc_title': doc.doc_title,
+                'doc_type': doc.doc_type,
+                'file_path': doc.file_path,
+                'version': doc.version,
+                'created_at': doc.created_at,
+                'uploader_id': doc.uploader_id,
+                'uploader_name': doc.uploader.name if doc.uploader else None
+            }
+            for doc in documents
+        ]
     finally:
         db.close()
 
-def get_document_by_id(doc_id: int) -> Optional[Document]:
+def get_document_by_id(doc_id: int) -> Optional[dict]:
     db = SessionLocal()
     try:
-        return db.query(Document).filter(Document.doc_id == doc_id).first()
+        doc = db.query(Document).filter(Document.doc_id == doc_id).first()
+        
+        if doc:
+            return {
+                'doc_id': doc.doc_id,
+                'doc_title': doc.doc_title,
+                'doc_type': doc.doc_type,
+                'file_path': doc.file_path,
+                'version': doc.version,
+                'created_at': doc.created_at,
+                'uploader_id': doc.uploader_id,
+                'uploader_name': doc.uploader.name if doc.uploader else None
+            }
+        return None
     finally:
         db.close()
 

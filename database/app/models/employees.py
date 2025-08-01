@@ -27,3 +27,4 @@ class Employee(Base):
     
     # 관계 설정
     employee_info = relationship("EmployeeInfo", back_populates="employee", uselist=False)
+    documents = relationship("Document", back_populates="uploader")

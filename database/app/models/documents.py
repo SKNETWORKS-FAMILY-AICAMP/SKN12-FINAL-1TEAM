@@ -21,4 +21,5 @@ class Document(Base):
     # 시스템 정보
     created_at = Column(DateTime, default=func.now())  # 문서 업로드 일시 (자동 설정)
     
- 
+    # 관계 설정
+    uploader = relationship("Employee", back_populates="documents")

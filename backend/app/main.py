@@ -51,6 +51,19 @@ except Exception as e:
     print(f"[WARNING] Failed to import router_api_simple: {e}")
     simple_router = None
 
+# database 폴더의 라우터들 추가
+try:
+    import sys
+    sys.path.append(str(Path(__file__).parent.parent.parent / "database" / "app"))
+    
+    from routers.user_router import router as user_router
+    from routers.admin_router import router as admin_router
+    print("[OK] user_router and admin_router imported successfully")
+except Exception as e:
+    print(f"[WARNING] Failed to import user/admin routers: {e}")
+    user_router = None
+    admin_router = None
+
 app = FastAPI(title="Multi-Agent Router API")
 
 # CORS 설정
@@ -70,6 +83,15 @@ print("[OK] Router registered at /api")
 if simple_router:
     app.include_router(simple_router, prefix="/api")
     print("[OK] Simple router registered at /api")
+
+# user와 admin 라우터 등록
+if user_router:
+    app.include_router(user_router, prefix="/user")
+    print("[OK] User router registered at /user")
+
+if admin_router:
+    app.include_router(admin_router, prefix="/admin")
+    print("[OK] Admin router registered at /admin")
 
 # 헬스 체크
 @app.get("/health")
@@ -93,10 +115,10 @@ if __name__ == "__main__":
     import uvicorn
     print("\n" + "="*60)
     print("[FastAPI Server]")
-    print("Running at: http://localhost:8000")
-    print("API Docs: http://localhost:8000/docs")
-    print("API Routes: http://localhost:8000/api-routes")
-    print("Health Check: http://localhost:8000/health")
+    print("Running at: http://localhost:8010")
+    print("API Docs: http://localhost:8010/docs")
+    print("API Routes: http://localhost:8010/api-routes")
+    print("Health Check: http://localhost:8010/health")
     print("Stop: Ctrl+C")
     print("="*60 + "\n")
     
@@ -105,7 +127,7 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
+        port=8010,
         reload=False,  # reload 비활성화
         log_level="info"
     )

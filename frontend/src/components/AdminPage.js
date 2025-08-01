@@ -188,7 +188,7 @@ const AdminPage = ({ currentUser }) => {
           />
           <input
             type="text"
-            placeholder="사용자명"
+            placeholder="아이디"
             value={newEmployee.username}
             onChange={(e) => setNewEmployee({...newEmployee, username: e.target.value})}
           />
@@ -234,7 +234,7 @@ const AdminPage = ({ currentUser }) => {
               <tr>
                 <th>이름</th>
                 <th>이메일</th>
-                <th>사용자명</th>
+                <th>아이디</th>
                 <th>부서</th>
               </tr>
             </thead>

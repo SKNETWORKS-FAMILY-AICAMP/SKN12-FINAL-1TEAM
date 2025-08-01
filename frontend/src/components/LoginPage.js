@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loginUser, verifyToken } from '../services/api';
 import './LoginPage.css';
@@ -41,10 +41,14 @@ const LoginPage = ({ onLogin }) => {
     setError('');
 
     try {
+      console.log('로그인 시도:', { username: loginData.email, password: loginData.password });
+      
       const response = await loginUser({
         username: loginData.email,
         password: loginData.password
       });
+
+      console.log('로그인 응답:', response);
 
       // 로그인 성공 - 토큰 저장
       const { access_token, token_type } = response;
@@ -53,6 +57,7 @@ const LoginPage = ({ onLogin }) => {
 
       // 토큰으로 실제 사용자 정보 가져오기
       const userInfo = await verifyToken();
+      console.log('사용자 정보:', userInfo);
 
       // 백엔드에서 받은 사용자 정보 사용
       const userData = {
@@ -79,13 +84,12 @@ const LoginPage = ({ onLogin }) => {
       navigate('/');
 
     } catch (error) {
+      console.error('로그인 오류:', error);
       setError(error.message || '로그인에 실패했습니다. 사용자명과 비밀번호를 확인해주세요.');
     } finally {
       setIsLoading(false);
     }
   };
-
-
 
   return (
     <div className="login-page">

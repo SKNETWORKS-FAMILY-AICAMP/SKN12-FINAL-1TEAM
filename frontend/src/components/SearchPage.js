@@ -25,7 +25,7 @@ const SearchPage = () => {
         id: doc.doc_id,
         documentName: doc.doc_title,
         classification: '내부', // 기본값
-        author: `직원 ID: ${doc.uploader_id}`,
+        author: doc.uploader_name || `직원 ID: ${doc.uploader_id}`, // 이름이 있으면 이름, 없으면 ID
         creationDate: new Date(doc.created_at).toLocaleDateString('ko-KR'),
         aiSummary: doc.doc_type || '문서',
         docType: doc.doc_type,

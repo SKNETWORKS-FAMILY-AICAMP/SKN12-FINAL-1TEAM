@@ -1,9 +1,16 @@
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:8010';
 
 // API 요청을 위한 기본 설정
 const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
   const token = localStorage.getItem('narutalk_token');
+  
+  console.log('🌐 API 요청:', {
+    url: url,
+    method: options.method || 'GET',
+    headers: options.headers,
+    body: options.body
+  });
   
   // FormData인지 확인
   const isFormData = options.body instanceof FormData;
@@ -27,8 +34,12 @@ const apiRequest = async (endpoint, options = {}) => {
   };
 
   try {
+    console.log('📤 실제 요청 설정:', config);
     const response = await fetch(url, config);
+    console.log('📥 응답 상태:', response.status, response.statusText);
+    
     const data = await response.json();
+    console.log('📥 응답 데이터:', data);
 
     if (!response.ok) {
       // 오류 메시지를 문자열로 변환
@@ -61,7 +72,13 @@ const apiRequest = async (endpoint, options = {}) => {
 
     return data;
   } catch (error) {
-    console.error('API request failed:', error);
+    console.error('❌ API request failed:', error);
+    
+    // 네트워크 오류인 경우 폴백 로직
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.log('API 서버 연결 실패, 폴백 모드로 전환');
+      throw new Error('API 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+    }
     
     // 이미 Error 객체인 경우 그대로 던지기
     if (error instanceof Error) {
