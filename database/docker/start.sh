@@ -3,6 +3,16 @@ set -e
 
 echo "🚀 애플리케이션 시작 중..."
 
+# ML 라이브러리 설치 (첫 실행 시에만)
+if [ ! -f /app/.ml_installed ]; then
+    echo "📦 ML 라이브러리 설치 중..."
+    pip install --no-cache-dir -r /app/requirements-ml.txt
+    touch /app/.ml_installed
+    echo "✅ ML 라이브러리 설치 완료"
+else
+    echo "✅ ML 라이브러리 이미 설치됨"
+fi
+
 # PostgreSQL 연결 대기
 echo "⏳ PostgreSQL 연결 대기 중..."
 echo "🔍 Docker 환경 확인:"

@@ -3,9 +3,7 @@ version: '3.8'
 services:
   # FastAPI 애플리케이션
   fastapi-app:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    image: ansirh/database-fastapi-app:latest
     container_name: fastapi-app
     ports:
       - "8010:8000"
@@ -38,13 +36,11 @@ services:
       # OpenAI 설정
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      - model_cache:/app/.cache/huggingface
+      - model_cache:/root/.cache/huggingface
       # 개발 중에는 로컬 파일을 마운트 (빌드 없이 즉시 반영)
       - ../app:/app/app
       - ../migrations:/app/migrations
       - ./.env:/app/.env
-      # start.sh 파일 보존 (읽기 전용)
-      - ./start.sh:/app/start.sh:ro
     depends_on:
       postgres:
         condition: service_started
@@ -80,19 +76,10 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
-      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
-      # PostgreSQL 연결 정보 (자동 설정용)
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
     ports:
       - "5050:80"
     volumes:
       - ./pgadmin_data:/var/lib/pgadmin
-      - ./pgadmin/generate_config.py:/pgadmin4/generate_config.py
-      - ./pgadmin/init_pgadmin.sh:/docker-entrypoint-initdb.d/init_pgadmin.sh
     depends_on:
       - postgres
     networks:

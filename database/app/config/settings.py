@@ -121,6 +121,7 @@ class Settings:
     
     def __init__(self):
         print(f"[DEBUG] Settings가 불러오는 .env 파일 경로: {DOTENV_PATH}")
+        # 각 설정 객체 초기화
         self.database = DatabaseSettings()
         self.pgadmin = PgAdminSettings()
         self.minio = MinIOSettings()
