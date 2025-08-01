@@ -3,7 +3,7 @@
 router_api.py와 각 에이전트에서 사용하기 위한 헬퍼 함수들
 """
 from typing import Dict, List, Optional
-from .chat_history_manager import chat_history_manager
+from .postgres_chat_manager import postgres_chat_history_manager
 from .context_manager import context_manager
 import logging
 
@@ -13,14 +13,14 @@ class ChatHistoryIntegration:
     """채팅 히스토리와 컨텍스트 관리를 통합하는 클래스"""
     
     def __init__(self):
-        self.history_manager = chat_history_manager
+        self.history_manager = postgres_chat_history_manager
         self.context_manager = context_manager
     
     async def process_user_message(
         self,
         session_id: str,
         query: str,
-        metadata: Optional[Dict] = None
+        employee_id: int
     ) -> str:
         """
         사용자 메시지 처리 및 저장
@@ -28,7 +28,7 @@ class ChatHistoryIntegration:
         Args:
             session_id: 세션 ID
             query: 사용자 질문
-            metadata: 추가 정보
+            employee_id: 직원 ID
             
         Returns:
             message_id: 저장된 메시지 ID
@@ -38,7 +38,7 @@ class ChatHistoryIntegration:
             session_id=session_id,
             role="user",
             message_text=query,
-            metadata=metadata or {}
+            employee_id=employee_id
         )
         
         # 2. 컨텍스트 매니저 업데이트 (기존 기능 활용)
@@ -52,7 +52,7 @@ class ChatHistoryIntegration:
         session_id: str,
         response: str,
         agent_name: str,
-        metadata: Optional[Dict] = None
+        employee_id: int
     ) -> str:
         """
         어시스턴트 응답 처리 및 저장
@@ -61,21 +61,17 @@ class ChatHistoryIntegration:
             session_id: 세션 ID
             response: AI 응답
             agent_name: 처리한 에이전트 이름
-            metadata: 추가 정보
+            employee_id: 직원 ID
             
         Returns:
             message_id: 저장된 메시지 ID
         """
-        # 메타데이터에 에이전트 정보 추가
-        full_metadata = metadata or {}
-        full_metadata["agent"] = agent_name
-        
         # 응답 저장
         message_id = await self.history_manager.save_message(
             session_id=session_id,
             role="assistant",
             message_text=response,
-            metadata=full_metadata
+            employee_id=employee_id
         )
         
         logger.info(f"Assistant response processed: {message_id}")
@@ -101,8 +97,8 @@ class ChatHistoryIntegration:
             session_id, max_messages
         )
         
-        # 2. 현재 컨텍스트 (동기 -> 비동기 래핑 필요시 수정)
-        current_context = self.context_manager.get_context(session_id)
+        # 2. 현재 컨텍스트 (비동기 호출)
+        current_context = await self.context_manager.get_or_create_context(session_id)
         
         return {
             "messages": recent_messages,
