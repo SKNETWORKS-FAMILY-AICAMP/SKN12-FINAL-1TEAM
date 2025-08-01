@@ -596,11 +596,21 @@ async def analyze_employee_query(query: str) -> Dict[str, Any]:
     """비동기 쿼리 분석 함수 (API에서 호출)"""
     return enhanced_agent.analyze_employee_performance(query)
 
-async def run(query: str, session_id: str) -> Dict[str, Any]:
-    """router_api.py에서 호출하는 표준 인터페이스"""
+async def run(query: str, session_id: str, messages: List[Dict] = None) -> Dict[str, Any]:
+    """router_api.py에서 호출하는 표준 인터페이스 (멀티턴 대화 지원)"""
     try:
+        # 컨텍스트 유틸리티 임포트
+        from ..common.context_utils import resolve_references
+        
+        # 참조 해결 (그 사람 → 실제 이름)
+        enhanced_query = resolve_references(query, messages or [])
+        
+        # 로깅
+        if enhanced_query != query:
+            print(f"[CONTEXT] 쿼리 보완: '{query}' → '{enhanced_query}'")
+        
         # EnhancedEmployeeAgent를 사용하여 쿼리 분석
-        result = enhanced_agent.analyze_employee_performance(query)
+        result = enhanced_agent.analyze_employee_performance(enhanced_query)
         
         # 결과가 성공적으로 반환된 경우
         if result.get("success", False):

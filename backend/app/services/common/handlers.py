@@ -9,3 +9,6 @@ HANDLERS = {
     "search_agent": search_run,
     "docs_agent": doc_run,
 }
+
+# task_router에서 사용하는 이름으로 export
+agent_handlers = HANDLERS

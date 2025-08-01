@@ -16,7 +16,6 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 from app.services.router_agent.router_agent import RouterAgent, AVAILABLE_AGENT_IDS, AGENT_DESCS
-from app.services.router_agent.task_router import task_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -250,50 +249,7 @@ async def chat(req: QueryRequest):
         
         session["messages"].append({"role": "user", "content": req.query})
         
-        # 먼저 task_router로 처리 시도 (멀티 태스크 지원)
-        try:
-            task_result = await task_router.process_query(
-                query=query_to_process,
-                session_id=req.session_id,
-                messages=session["messages"]
-            )
-            
-            # 멀티 태스크로 처리된 경우
-            if task_result.get("type") in ["multi", "single"]:
-                response_text = task_result.get("response", "처리할 수 없습니다.")
-                
-                # 메시지 저장
-                save_message(req.session_id, "assistant", response_text, {
-                    "type": task_result.get("type"),
-                    "tasks": task_result.get("tasks", [])
-                })
-                
-                # 세션 메시지 업데이트
-                session["messages"].append({"role": "assistant", "content": response_text})
-                
-                # 컨텍스트 업데이트
-                if sync_context_manager:
-                    try:
-                        sync_context_manager.update_context(req.session_id, req.query, {
-                            "success": True,
-                            "response": response_text,
-                            "agent": "multi_task" if task_result.get("type") == "multi" else task_result.get("tasks", [{}])[0].get("agent")
-                        })
-                    except Exception as e:
-                        logger.error(f"Context update error: {e}")
-                
-                return {
-                    "success": True,
-                    "response": response_text,
-                    "agent": "multi_task" if task_result.get("type") == "multi" else task_result.get("tasks", [{}])[0].get("agent"),
-                    "type": task_result.get("type"),
-                    "tasks": task_result.get("tasks", [])
-                }
-                
-        except Exception as e:
-            logger.warning(f"Task router failed, falling back to single agent: {e}")
-        
-        # 단일 에이전트 처리 (기존 로직)
+        # RouterAgent를 통한 분류 시도 (최대 3회)
         classified_agent = None
         max_attempts = 3
         
@@ -363,9 +319,9 @@ async def chat(req: QueryRequest):
             logger.error(f"Failed to save assistant response: {e}")
         
         # 컨텍스트 업데이트
-        if sync_context_manager:
+        if context_manager:
             try:
-                sync_context_manager.update_context(req.session_id, req.query, result)
+                context_manager.update_context(req.session_id, req.query, result)
             except Exception as e:
                 logger.error(f"Context update error: {e}")
         
@@ -478,9 +434,9 @@ async def select_agent(req: SelectionRequest):
         })
         
         # 컨텍스트 업데이트
-        if sync_context_manager:
+        if context_manager:
             try:
-                sync_context_manager.update_context(req.session_id, req.query, result)
+                context_manager.update_context(req.session_id, req.query, result)
             except Exception as e:
                 logger.error(f"Context update error: {e}")
         
@@ -739,88 +695,5 @@ async def get_all_sessions():
         logger.error(f"Failed to get all sessions: {e}")
         return {
             "success": False,
-            "error": str(e)
-        }
-
-
-@router.post("/chat/multi")
-async def multi_task_chat(req: QueryRequest):
-    """
-    멀티 태스크 처리를 지원하는 새로운 채팅 엔드포인트
-    단일 태스크와 멀티 태스크를 자동으로 구분하여 처리
-    """
-    try:
-        # 세션 확인
-        if req.session_id not in sessions:
-            sessions[req.session_id] = {
-                "messages": [],
-                "routing_attempts": 0
-            }
-        
-        session = sessions[req.session_id]
-        
-        # 사용자 메시지 저장
-        save_message(req.session_id, "user", req.query)
-        
-        # 이전 대화 컨텍스트 로드
-        conversation_context = None
-        if chat_integration:
-            try:
-                conversation_context = await chat_integration.get_conversation_context(
-                    session_id=req.session_id,
-                    max_messages=10
-                )
-                logger.info(f"Loaded {len(conversation_context.get('messages', []))} previous messages")
-            except Exception as e:
-                logger.error(f"Failed to load conversation context: {e}")
-        
-        # 쿼리 처리 - context manager 적용
-        query_to_process = req.query
-        
-        if sync_context_manager:
-            try:
-                query_to_process = sync_context_manager.process_query(req.session_id, req.query)
-                logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{query_to_process}'")
-            except Exception as e:
-                logger.error(f"Context processing error: {e}")
-                query_to_process = req.query
-        
-        # 태스크 라우터로 처리
-        result = await task_router.process_query(
-            query=query_to_process,
-            session_id=req.session_id,
-            messages=session["messages"]
-        )
-        
-        # 결과 저장
-        response_text = result.get("response", "처리할 수 없습니다.")
-        save_message(req.session_id, "assistant", response_text, {
-            "type": result.get("type", "unknown"),
-            "tasks": result.get("tasks", [])
-        })
-        
-        # 세션 메시지 업데이트
-        session["messages"].append({"role": "user", "content": req.query})
-        session["messages"].append({"role": "assistant", "content": response_text})
-        
-        # 응답 반환
-        return {
-            "success": True,
-            "response": response_text,
-            "type": result.get("type"),
-            "tasks": result.get("tasks", []),
-            "detailed_results": result.get("detailed_results") if result.get("type") == "multi" else None
-        }
-        
-    except Exception as e:
-        logger.error(f"Multi-task chat error: {str(e)}")
-        error_message = "죄송합니다. 요청을 처리하는 중 오류가 발생했습니다."
-        
-        # 오류 메시지도 저장
-        save_message(req.session_id, "assistant", error_message, {"error": str(e)})
-        
-        return {
-            "success": False,
-            "response": error_message,
             "error": str(e)
         }
