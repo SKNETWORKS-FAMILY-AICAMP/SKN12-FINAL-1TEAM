@@ -1,12 +1,17 @@
-<<<<<<< HEAD
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './EmployeePerformance.css';
 
 function EmployeePerformance({ currentUser }) {
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedPeriod, setSelectedPeriod] = useState('최근 3개월');
   const [selectedDates, setSelectedDates] = useState([]); // 수동 선택된 날짜들
   const [selectedEmployee, setSelectedEmployee] = useState(null); // 선택된 직원
+  const [performanceData, setPerformanceData] = useState(null);
+  const [analysisData, setAnalysisData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const isAdmin = currentUser?.role === 'admin';
 
@@ -27,6 +32,65 @@ function EmployeePerformance({ currentUser }) {
 
   // 기간 설정 옵션
   const periodOptions = ['최근 3개월', '올해', '1분기', '2분기', '3분기', '4분기', '수동 선택'];
+
+  // 실적 요약 데이터 가져오기
+  const fetchPerformanceSummary = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch('/api/v1/employee/performance/summary');
+      const data = await response.json();
+      
+      if (data.success) {
+        setPerformanceData(data.summary);
+      } else {
+        setError(data.message || '실적 데이터를 가져오는데 실패했습니다.');
+      }
+    } catch (err) {
+      setError('서버 연결 오류가 발생했습니다.');
+      console.error('실적 요약 조회 오류:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 실적 분석 실행
+  const runAnalysis = async (saveReport = false) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch('/api/v1/employee/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          employee_name: '최수아',
+          period: '202312~202403',
+          save_report: saveReport,
+          filename: saveReport ? '최수아_실적분석보고서.docx' : null
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setAnalysisData(data);
+        if (saveReport) {
+          alert('보고서가 성공적으로 생성되었습니다!');
+        }
+      } else {
+        setError(data.message || '분석 중 오류가 발생했습니다.');
+      }
+    } catch (err) {
+      setError('서버 연결 오류가 발생했습니다.');
+      console.error('실적 분석 오류:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // 기간 선택 핸들러
   const handlePeriodSelect = (period) => {
@@ -181,373 +245,6 @@ function EmployeePerformance({ currentUser }) {
   const { firstMonth, secondMonth } = getDisplayMonths();
   const isManualSelection = selectedPeriod === '수동 선택';
 
-  return (
-    <div className="employee-performance">
-      {/* 왼쪽 사이드바 - 일반 사용자만 표시 */}
-      {!isAdmin && (
-        <div className="performance-sidebar">
-          <h2>실적 분석</h2>
-          
-          <button className="new-analysis-btn">
-            <span className="plus-icon">+</span>
-            새로운 분석 생성
-          </button>
-
-          <div className="analysis-history">
-            {analysisHistory.map((analysis, index) => (
-              <div key={index} className="history-item">
-                <span className="history-icon">💬</span>
-                <span className="history-text">{analysis}</span>
-                <span className="history-arrow">›</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 가운데 메인 영역 */}
-      <div className="performance-main">
-                 {/* 관리자용 직원 선택 */}
-         {isAdmin && (
-           <div className="employee-selection">
-             <h3>직원 선택</h3>
-             <div className="employee-search">
-               <input 
-                 type="text" 
-                 placeholder="분석할 직원의 이름 또는 사번을 입력하세요."
-                 className="employee-search-input"
-               />
-             </div>
-             <div className="employee-list">
-               <h4>나의 팀원</h4>
-               <div className="employee-grid">
-                 {employees.map((employee) => (
-                   <button 
-                     key={employee.id}
-                     className={`employee-card ${selectedEmployee?.id === employee.id ? 'selected' : ''}`}
-                     onClick={() => setSelectedEmployee(employee)}
-                   >
-                     <div className="employee-info">
-                       <div className="employee-name">{employee.name}</div>
-                       <div className="employee-team">{employee.team}</div>
-                     </div>
-                   </button>
-                 ))}
-               </div>
-             </div>
-           </div>
-         )}
-
-         {/* 선택된 직원의 상세 성과 보고서 */}
-         {isAdmin && selectedEmployee && (
-           <div className="employee-performance-report">
-             <div className="report-header">
-               <h2>직원 성과 보고서</h2>
-               <p>직원 개발을 위한 상세한 성과 분석 및 전략 인사이트.</p>
-             </div>
-             
-             <div className="employee-profile">
-               <div className="profile-image">
-                 <div className="profile-avatar">👤</div>
-               </div>
-               <div className="profile-info">
-                 <h3>{selectedEmployee.team} {selectedEmployee.name} 과장</h3>
-                 <p>{selectedEmployee.team}</p>
-               </div>
-             </div>
-
-             <div className="performance-overview">
-               <h3>성과 개요</h3>
-               <div className="overview-cards">
-                 <div className="overview-card">
-                   <div className="card-label">할당 업무 완수율</div>
-                   <div className="card-value">95%</div>
-                 </div>
-                 <div className="overview-card">
-                   <div className="card-label">분기 매출 증감</div>
-                   <div className="card-value">+12%</div>
-                 </div>
-               </div>
-             </div>
-
-             <div className="performance-trend">
-               <h3>성과 추이</h3>
-               <div className="trend-summary">
-                 <div className="trend-value">+8%</div>
-                 <div className="trend-period">This Quarter +8%</div>
-               </div>
-               <div className="trend-chart">
-                 <div className="chart-placeholder">
-                   📈 성과 추이 그래프 (1월~6월)
-                 </div>
-               </div>
-             </div>
-           </div>
-         )}
-
-        {/* 조회 기간 설정 - 일반 사용자만 표시 */}
-        {!isAdmin && (
-          <div className="period-selection">
-            <h3>조회 기간 설정</h3>
-            <div className="period-tabs">
-              {periodOptions.map((period) => (
-                <button 
-                  key={period}
-                  className={`period-tab ${selectedPeriod === period ? 'active' : ''}`}
-                  onClick={() => handlePeriodSelect(period)}
-                >
-                  {period}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 달력 영역 - 일반 사용자만 표시 */}
-        {!isAdmin && (
-          <div className="calendar-section">
-            {isManualSelection ? (
-              // 수동 선택일 때 - 제목 옆 네비게이션
-              <div className="calendar-container">
-                {/* 첫 번째 달력 */}
-                <div className="calendar">
-                  <div className="calendar-header">
-                    <button className="month-nav" onClick={() => changeMonth(-1)}>
-                      &#8249;
-                    </button>
-                    <div className="calendar-title">{firstMonth.year}년 {firstMonth.month + 1}월</div>
-                    <div className="nav-spacer"></div>
-                  </div>
-                  <div className="calendar-grid">
-                    <div className="weekdays">
-                      {weekDays.map((day) => (
-                        <div key={day} className="weekday">{day}</div>
-                      ))}
-                    </div>
-                    <div className="days">
-                      {getCalendarDays(firstMonth.year, firstMonth.month).map((day, index) => (
-                        <div 
-                          key={index} 
-                          className={`day ${isSelectedDate(firstMonth.year, firstMonth.month, day) ? 'selected' : ''} ${day ? 'clickable' : ''}`}
-                          onClick={() => handleDateClick(firstMonth.year, firstMonth.month, day)}
-                        >
-                          {day}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 두 번째 달력 */}
-                <div className="calendar">
-                  <div className="calendar-header">
-                    <div className="nav-spacer"></div>
-                    <div className="calendar-title">{secondMonth.year}년 {secondMonth.month + 1}월</div>
-                    <button className="month-nav" onClick={() => changeMonth(1)}>
-                      &#8250;
-                    </button>
-                  </div>
-                  <div className="calendar-grid">
-                    <div className="weekdays">
-                      {weekDays.map((day) => (
-                        <div key={day} className="weekday">{day}</div>
-                      ))}
-                    </div>
-                    <div className="days">
-                      {getCalendarDays(secondMonth.year, secondMonth.month).map((day, index) => (
-                        <div 
-                          key={index} 
-                          className={`day ${isSelectedDate(secondMonth.year, secondMonth.month, day) ? 'selected' : ''} ${day ? 'clickable' : ''}`}
-                          onClick={() => handleDateClick(secondMonth.year, secondMonth.month, day)}
-                        >
-                          {day}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              // 정해진 기간일 때 - 기존 방식
-              <div className="calendar-container">
-                {/* 첫 번째 달력 */}
-                <div className="calendar">
-                  <div className="calendar-header">
-                    <div className="nav-spacer"></div>
-                    <div className="calendar-title">{firstMonth.year}년 {firstMonth.month + 1}월</div>
-                    <div className="nav-spacer"></div>
-                  </div>
-                  <div className="calendar-grid">
-                    <div className="weekdays">
-                      {weekDays.map((day) => (
-                        <div key={day} className="weekday">{day}</div>
-                      ))}
-                    </div>
-                    <div className="days">
-                      {getCalendarDays(firstMonth.year, firstMonth.month).map((day, index) => (
-                        <div 
-                          key={index} 
-                          className={`day ${isSelectedDate(firstMonth.year, firstMonth.month, day) ? 'selected' : ''}`}
-                        >
-                          {day}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 두 번째 달력 */}
-                <div className="calendar">
-                  <div className="calendar-header">
-                    <div className="nav-spacer"></div>
-                    <div className="calendar-title">{secondMonth.year}년 {secondMonth.month + 1}월</div>
-                    <div className="nav-spacer"></div>
-                  </div>
-                  <div className="calendar-grid">
-                    <div className="weekdays">
-                      {weekDays.map((day) => (
-                        <div key={day} className="weekday">{day}</div>
-                      ))}
-                    </div>
-                    <div className="days">
-                      {getCalendarDays(secondMonth.year, secondMonth.month).map((day, index) => (
-                        <div 
-                          key={index} 
-                          className={`day ${isSelectedDate(secondMonth.year, secondMonth.month, day) ? 'selected' : ''}`}
-                        >
-                          {day}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 달력 하단 버튼들 */}
-            <div className="calendar-actions">
-              <button className="action-btn secondary">취소</button>
-              <button className="action-btn primary">적용하기</button>
-            </div>
-          </div>
-        )}
-
-        {/* 통계 카드 섹션 - 일반 사용자만 표시 */}
-        {!isAdmin && (
-          <div className="stats-section">
-            <div className="stat-card">
-              <div className="stat-label">달성 업무 완료율</div>
-              <div className="stat-value">92%</div>
-              <div className="stat-change positive">+2%</div>
-            </div>
-            
-            <div className="stat-card">
-              <div className="stat-label">매출 증감률</div>
-              <div className="stat-value">+15%</div>
-              <div className="stat-change positive">+15%</div>
-            </div>
-            
-            <div className="stat-card">
-              <div className="stat-label">총 방문 횟수</div>
-              <div className="stat-value">128</div>
-              <div className="stat-change negative">-5%</div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 오른쪽 패널 - 일반 사용자만 표시 */}
-      {!isAdmin && (
-        <div className="performance-right-panel">
-          <h2>실적 분석 보고서 생성</h2>
-          
-          <div className="report-input">
-            <input 
-              type="text" 
-              placeholder="생성중..."
-              className="report-input-field"
-              readOnly
-            />
-          </div>
-
-          <div className="generate-actions">
-            <button className="generate-btn">
-              보고서 다운로드
-            </button>
-          </div>
-        </div>
-      )}
-=======
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import './EmployeePerformance.css';
-
-function EmployeePerformance() {
-  const navigate = useNavigate();
-  const [performanceData, setPerformanceData] = useState(null);
-  const [analysisData, setAnalysisData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  // 실적 요약 데이터 가져오기
-  const fetchPerformanceSummary = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await fetch('/api/v1/employee/performance/summary');
-      const data = await response.json();
-      
-      if (data.success) {
-        setPerformanceData(data.summary);
-      } else {
-        setError(data.message || '실적 데이터를 가져오는데 실패했습니다.');
-      }
-    } catch (err) {
-      setError('서버 연결 오류가 발생했습니다.');
-      console.error('실적 요약 조회 오류:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 실적 분석 실행
-  const runAnalysis = async (saveReport = false) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await fetch('/api/v1/employee/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          employee_name: '최수아',
-          period: '202312~202403',
-          save_report: saveReport,
-          filename: saveReport ? '최수아_실적분석보고서.docx' : null
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setAnalysisData(data);
-        if (saveReport) {
-          alert('보고서가 성공적으로 생성되었습니다!');
-        }
-      } else {
-        setError(data.message || '분석 중 오류가 발생했습니다.');
-      }
-    } catch (err) {
-      setError('서버 연결 오류가 발생했습니다.');
-      console.error('실적 분석 오류:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // 컴포넌트 마운트 시 실적 데이터 로드
   useEffect(() => {
     fetchPerformanceSummary();
@@ -588,129 +285,131 @@ function EmployeePerformance() {
             <h3>직원 정보</h3>
             <div className="employee-card">
               <div className="employee-avatar">
-                <img src="https://via.placeholder.com/80x80" alt="Employee" />
+                <img src="https://via.placeholder.com/60x60" alt="Employee" />
               </div>
               <div className="employee-details">
-                <h4>최수아</h4>
-                <p>영업팀</p>
-                <p>담당 지역: 서부팀</p>
+                <h4>{currentUser?.name || '사용자'}</h4>
+                <p>{currentUser?.team || '영업 1팀'}</p>
+                <p>{currentUser?.position || '영업사원'}</p>
               </div>
             </div>
           </div>
-          
-          <div className="quick-actions">
-            <h3>빠른 작업</h3>
+
+          {isAdmin && (
+            <div className="employee-selector">
+              <h3>직원 선택</h3>
+              <div className="employee-list">
+                {employees.map(employee => (
+                  <div 
+                    key={employee.id}
+                    className={`employee-item ${selectedEmployee?.id === employee.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedEmployee(employee)}
+                  >
+                    <div className="employee-info">
+                      <h4>{employee.name}</h4>
+                      <p>{employee.team}</p>
+                    </div>
+                    <div className="performance-score">
+                      {employee.performance}%
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="period-selector">
+            <h3>기간 설정</h3>
+            <div className="period-options">
+              {periodOptions.map(period => (
+                <button
+                  key={period}
+                  className={`period-option ${selectedPeriod === period ? 'selected' : ''}`}
+                  onClick={() => handlePeriodSelect(period)}
+                >
+                  {period}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="analysis-actions">
+            <h3>분석 도구</h3>
             <button 
-              className="action-btn primary" 
+              className="analyze-btn"
               onClick={() => runAnalysis(false)}
               disabled={loading}
             >
               {loading ? '분석 중...' : '실적 분석'}
             </button>
             <button 
-              className="action-btn secondary" 
+              className="generate-report-btn"
               onClick={() => runAnalysis(true)}
               disabled={loading}
             >
               {loading ? '생성 중...' : '보고서 생성'}
             </button>
-            <button 
-              className="action-btn refresh" 
-              onClick={fetchPerformanceSummary}
-              disabled={loading}
-            >
-              {loading ? '새로고침 중...' : '데이터 새로고침'}
-            </button>
+          </div>
+
+          <div className="analysis-history">
+            <h3>분석 히스토리</h3>
+            <div className="history-list">
+              {analysisHistory.map((item, index) => (
+                <div key={index} className="history-item">
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
         <div className="performance-main">
-          <div className="performance-title">
-            <h2>실적 현황</h2>
-            <p>2023년 12월 ~ 2024년 3월</p>
-          </div>
-
-          {error && (
-            <div className="error-message">
-              <span>❌ {error}</span>
-            </div>
-          )}
-
-          {loading && (
-            <div className="loading-message">
-              <span>⏳ 데이터를 불러오는 중...</span>
-            </div>
-          )}
-
-          {performanceData && (
-            <div className="performance-summary">
-              <div className="summary-cards">
-                <div className="summary-card">
-                  <h3>총 실적</h3>
-                  <p className="card-value">
-                    {performanceData.total_performance?.toLocaleString() || 0}원
-                  </p>
+          <div className="performance-overview">
+            <h2>실적 개요</h2>
+            {loading ? (
+              <div className="loading">데이터를 불러오는 중...</div>
+            ) : error ? (
+              <div className="error">{error}</div>
+            ) : performanceData ? (
+              <div className="performance-stats">
+                <div className="stat-card">
+                  <h3>총 매출</h3>
+                  <p className="stat-value">{performanceData.totalSales?.toLocaleString()}원</p>
                 </div>
-                <div className="summary-card">
-                  <h3>총 목표</h3>
-                  <p className="card-value">
-                    {performanceData.total_target?.toLocaleString() || 0}원
-                  </p>
+                <div className="stat-card">
+                  <h3>평균 실적</h3>
+                  <p className="stat-value">{performanceData.averagePerformance}%</p>
                 </div>
-                <div className="summary-card">
-                  <h3>달성률</h3>
-                  <p className={`card-value ${performanceData.achievement_rate >= 100 ? 'success' : 'warning'}`}>
-                    {performanceData.achievement_rate?.toFixed(1) || 0}%
-                  </p>
-                </div>
-                <div className="summary-card">
-                  <h3>상태</h3>
-                  <p className={`card-value status-${performanceData.status === '급증' ? 'excellent' : performanceData.status === '안정' ? 'good' : 'poor'}`}>
-                    {performanceData.status || 'N/A'}
-                  </p>
+                <div className="stat-card">
+                  <h3>목표 달성률</h3>
+                  <p className="stat-value">{performanceData.goalAchievement}%</p>
                 </div>
               </div>
+            ) : (
+              <div className="no-data">데이터가 없습니다.</div>
+            )}
+          </div>
+
+          <div className="performance-chart">
+            <h2>실적 추이</h2>
+            <div className="chart-container">
+              {/* 차트 컴포넌트가 여기에 들어갈 예정 */}
+              <div className="chart-placeholder">
+                실적 차트가 여기에 표시됩니다.
+              </div>
             </div>
-          )}
+          </div>
 
           {analysisData && (
             <div className="analysis-results">
-              <h3>분석 결과</h3>
+              <h2>분석 결과</h2>
               <div className="analysis-content">
-                <div className="analysis-section">
-                  <h4>기본 정보</h4>
-                  <p><strong>직원명:</strong> {analysisData.analysis_result?.employee_name || 'N/A'}</p>
-                  <p><strong>기간:</strong> {analysisData.analysis_result?.period || 'N/A'}</p>
-                  <p><strong>상태:</strong> {analysisData.analysis_result?.status || 'N/A'}</p>
-                </div>
-                
-                {analysisData.analysis_result?.recommendations && (
-                  <div className="analysis-section">
-                    <h4>권장사항</h4>
-                    <ul>
-                      {analysisData.analysis_result.recommendations.map((rec, index) => (
-                        <li key={index}>{rec}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                
-                {analysisData.report && (
-                  <div className="analysis-section">
-                    <h4>상세 보고서</h4>
-                    <div className="report-preview">
-                      {analysisData.report.split('\n').map((line, index) => (
-                        <p key={index}>{line}</p>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <pre>{JSON.stringify(analysisData, null, 2)}</pre>
               </div>
             </div>
           )}
         </div>
       </div>
->>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
     </div>
   );
 }
