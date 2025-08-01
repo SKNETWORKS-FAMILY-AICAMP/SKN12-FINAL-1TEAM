@@ -10,6 +10,8 @@ const ChatScreen = () => {
   const [currentChatId, setCurrentChatId] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const [currentSessionAgent, setCurrentSessionAgent] = useState(null); // 현재 세션의 고정 에이전트
+  const [isWaitingForDocsInput, setIsWaitingForDocsInput] = useState(false); // Docs Agent 입력 대기 상태
+  const [docsInputType, setDocsInputType] = useState(null); // Docs Agent 입력 타입
   const messagesEndRef = useRef(null);
 
   // session_id 생성 함수 - 각 채팅방마다 고유 ID
@@ -378,6 +380,10 @@ const ChatScreen = () => {
     setIsLoading(true);
     const currentQuery = inputValue;
     setInputValue('');
+    
+    // Docs Agent 입력 대기 상태 초기화
+    setIsWaitingForDocsInput(false);
+    setDocsInputType(null);
 
     try {
       // 항상 Router를 통해 전송하여 동적 라우팅 활성화
@@ -423,6 +429,30 @@ const ChatScreen = () => {
           return;
         }
         
+        // Docs Agent의 대화형 응답 처리
+        if (data.agent === 'docs_agent' && data.waiting_for_input) {
+          const interactiveMessage = {
+            type: 'interactive',
+            content: data.response,
+            timestamp: new Date().toLocaleTimeString(),
+            agent: 'Docs Agent',
+            waiting_for_input: true,
+            input_type: data.input_type,
+            options: data.options || null,
+            step: data.step
+          };
+          
+          const messagesWithInteractive = [...newMessages, interactiveMessage];
+          setMessages(messagesWithInteractive);
+          saveMessageToHistory(messagesWithInteractive);
+          
+          // 입력 대기 상태로 설정
+          setIsWaitingForDocsInput(true);
+          setDocsInputType(data.input_type);
+          setIsLoading(false);
+          return;
+        }
+        
         // 응답에서 실제 사용된 에이전트 정보 추출
         const usedAgent = data.agent || data.classification_result?.split(': ')[1];
         if (usedAgent) {
@@ -435,6 +465,16 @@ const ChatScreen = () => {
         // 라우팅 정보가 있으면 추가
         if (data.classification_result) {
           botResponseContent += `\n\n[${data.classification_result}]`;
+        }
+        
+        // Docs Agent 완료 메시지 처리
+        if (data.agent === 'docs_agent' && data.step === 'completed') {
+          if (data.document) {
+            botResponseContent += '\n\n📄 생성된 문서:\n' + data.document;
+          }
+          if (data.file_path) {
+            botResponseContent += `\n\n💾 파일 위치: ${data.file_path}`;
+          }
         }
       } else {
         botResponseContent = `❌ 오류 발생: ${data.error || data.message}`;
@@ -816,6 +856,102 @@ const ChatScreen = () => {
                         ))}
                       </div>
                     </div>
+                  ) : message.type === 'interactive' ? (
+                    <div>
+                      <div style={{marginBottom: '15px'}}>
+                        {message.content.split('\n').map((line, i) => (
+                          <div key={i}>{line}</div>
+                        ))}
+                      </div>
+                      {message.waiting_for_input && (
+                        <div style={{marginTop: '15px'}}>
+                          {message.input_type === 'verification' && (
+                            <div className="verification-buttons" style={{display: 'flex', gap: '10px'}}>
+                              <button
+                                onClick={() => {
+                                  setInputValue('예');
+                                  sendMessage();
+                                }}
+                                style={{
+                                  padding: '8px 20px',
+                                  backgroundColor: '#4CAF50',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '5px',
+                                  cursor: 'pointer'
+                                }}
+                                disabled={isLoading}
+                              >
+                                예
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setInputValue('아니오');
+                                  sendMessage();
+                                }}
+                                style={{
+                                  padding: '8px 20px',
+                                  backgroundColor: '#f44336',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '5px',
+                                  cursor: 'pointer'
+                                }}
+                                disabled={isLoading}
+                              >
+                                아니오
+                              </button>
+                            </div>
+                          )}
+                          {message.input_type === 'manual_selection' && message.options && (
+                            <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                              {message.options.map((option, idx) => (
+                                <button
+                                  key={idx}
+                                  onClick={() => {
+                                    setInputValue((idx + 1).toString());
+                                    sendMessage();
+                                  }}
+                                  style={{
+                                    textAlign: 'left',
+                                    padding: '10px 15px',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: '8px',
+                                    backgroundColor: '#f7fafc',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.target.style.backgroundColor = '#edf2f7';
+                                    e.target.style.borderColor = '#cbd5e0';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.target.style.backgroundColor = '#f7fafc';
+                                    e.target.style.borderColor = '#e2e8f0';
+                                  }}
+                                  disabled={isLoading}
+                                >
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {message.input_type === 'data_input' && (
+                            <div style={{
+                              marginTop: '10px',
+                              padding: '10px',
+                              backgroundColor: '#f0f4f8',
+                              borderRadius: '8px',
+                              fontSize: '14px'
+                            }}>
+                              <div style={{color: '#555', marginBottom: '5px'}}>
+                                📝 입력창에 필요한 정보를 입력해주세요
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     message.content.split('\n').map((line, i) => (
                       <div key={i}>{line}</div>
@@ -855,7 +991,12 @@ const ChatScreen = () => {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="인사정보/거래처분석/실적분석/문서분류 중에 질문해주세요."
+                placeholder={isWaitingForDocsInput ? 
+                  (docsInputType === 'verification' ? "예/아니오로 답변해주세요" :
+                   docsInputType === 'manual_selection' ? "번호를 입력해주세요 (1, 2, 3)" :
+                   docsInputType === 'data_input' ? "필요한 정보를 입력해주세요" :
+                   "응답을 입력해주세요") :
+                  "인사정보/거래처분석/실적분석/문서분류 중에 질문해주세요."}
                 disabled={isLoading}
                 className="message-input"
                 rows="1"

@@ -1,15 +1,23 @@
 import os, logging, json
 from typing import Optional, List, Dict, Any
 from openai import AsyncOpenAI
+from pathlib import Path
+from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# .env 파일 로드
+env_path = Path(__file__).parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+    logger.info(f"Loaded .env from: {env_path}")
 
 AVAILABLE_AGENT_IDS: List[str] = [
     "employee_agent",
     "client_agent",
     "search_agent",
-    "create_document_agent",
+    "docs_agent",
 ]
 
 AGENT_DESCS = {
@@ -28,10 +36,10 @@ AGENT_DESCS = {
         "예: 문서 검색, 사내 규정, 업무 매뉴얼, 제품 정보, 교육 자료 등 "
         "특정 정보를 정제된 DB 또는 벡터DB 기반으로 검색합니다."
     ),
-    "create_document_agent": (
+    "docs_agent": (
         "문서 자동 생성 및 규정 검토를 담당합니다. "
-        "예: 보고서 초안 자동 생성, 전표/계획서 생성, 컴플라이언스 위반 여부 판단, "
-        "서식 분석 및 문서 오류 검토 등의 기능을 수행합니다."
+        "예: 영업방문 결과보고서, 제품설명회 시행 신청서, 제품설명회 시행 결과보고서 등의 "
+        "문서 작성, 템플릿 기반 문서 생성, 컴플라이언스 검토 등의 기능을 수행합니다."
     )
 }
 

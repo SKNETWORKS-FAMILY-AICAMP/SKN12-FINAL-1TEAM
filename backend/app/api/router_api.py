@@ -22,9 +22,11 @@ logger = logging.getLogger(__name__)
 
 # Context Manager import with error handling
 context_manager = None
+sync_context_manager = None
 try:
-    from app.services.common.context_manager import context_manager as cm
+    from app.services.common.context_manager import context_manager as cm, sync_context_manager as scm
     context_manager = cm
+    sync_context_manager = scm
     logger.info("Context Manager imported successfully")
 except Exception as e:
     logger.error(f"Failed to import context_manager: {e}")
@@ -125,7 +127,7 @@ AGENT_DISPLAY_NAMES = {
     "employee_agent": "직원 실적 분석",
     "client_agent": "고객/거래처 분석", 
     "search_agent": "정보 검색",
-    "create_document_agent": "문서 생성"
+    "docs_agent": "문서 생성"
 }
 
 # 에이전트별 예시 질문
@@ -148,7 +150,7 @@ AGENT_EXAMPLE_QUESTIONS = {
         "사내 휴가 규정을 검색해주세요",
         "신제품 교육 자료를 찾아주세요"
     ],
-    "create_document_agent": [
+    "docs_agent": [
         "이번 달 영업 실적 보고서를 작성해주세요",
         "거래처 방문 보고서 템플릿을 만들어주세요",
         "분기별 매출 분석 문서를 생성해주세요",
@@ -160,12 +162,12 @@ async def run_agent(agent_id: str, query: str, session_id: str) -> Dict[str, Any
     """각 에이전트의 run.py 실행"""
     try:
         if agent_id == "employee_agent":
-            from app.services.employee_agent.employee_agent import run
+            from app.services.employee_agent import run
             result = await run(query, session_id)
             return result
             
         elif agent_id == "client_agent":
-            from app.services.client_agent.run import run
+            from app.services.client_agent import run
             result = await run(query, session_id)
             return result
             
@@ -174,8 +176,8 @@ async def run_agent(agent_id: str, query: str, session_id: str) -> Dict[str, Any
             result = await run(query, session_id)
             return result
             
-        elif agent_id == "create_document_agent":
-            from app.services.create_document_agent.run import run
+        elif agent_id == "docs_agent":
+            from app.services.docs_agent import run
             result = await run(query, session_id)
             return result
             
@@ -198,7 +200,9 @@ async def chat(req: QueryRequest):
         if req.session_id not in sessions:
             sessions[req.session_id] = {
                 "messages": [],
-                "routing_attempts": 0
+                "routing_attempts": 0,
+                "fixed_agent": None,  # 고정된 에이전트
+                "agent_fixed_at": None  # 고정 시간
             }
         
         session = sessions[req.session_id]
@@ -231,9 +235,10 @@ async def chat(req: QueryRequest):
         # 쿼리 처리 - enhanced_query를 안전하게 처리
         query_to_process = req.query
         
-        if context_manager:
+        if sync_context_manager:
             try:
-                query_to_process = context_manager.process_query(req.session_id, req.query)
+                # 동기 래퍼 사용
+                query_to_process = sync_context_manager.process_query(req.session_id, req.query)
                 logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{query_to_process}'")
             except Exception as e:
                 logger.error(f"Context processing error: {e}")
@@ -370,9 +375,10 @@ async def select_agent(req: SelectionRequest):
         # 쿼리 처리
         query_to_process = req.query
         
-        if context_manager:
+        if sync_context_manager:
             try:
-                query_to_process = context_manager.process_query(req.session_id, req.query)
+                # 동기 래퍼 사용
+                query_to_process = sync_context_manager.process_query(req.session_id, req.query)
                 logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{query_to_process}'")
             except Exception as e:
                 logger.error(f"Context processing error: {e}")
