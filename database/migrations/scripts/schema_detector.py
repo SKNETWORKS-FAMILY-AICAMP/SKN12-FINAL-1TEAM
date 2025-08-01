@@ -41,8 +41,11 @@ class SchemaDetector:
         """현재 데이터베이스의 테이블 목록 조회"""
         try:
             tables = self.inspector.get_table_names()
-            logger.info(f"현재 DB 테이블: {tables}")
-            return set(tables)
+            # Alembic 시스템 테이블 제외
+            system_tables = {'alembic_version', 'spatial_ref_sys'}
+            filtered_tables = {table for table in tables if table not in system_tables}
+            logger.info(f"현재 DB 테이블 (시스템 테이블 제외): {filtered_tables}")
+            return filtered_tables
         except Exception as e:
             logger.error(f"❌ 테이블 목록 조회 실패: {e}")
             return set()

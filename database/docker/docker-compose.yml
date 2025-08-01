@@ -43,6 +43,8 @@ services:
       - ../app:/app/app
       - ../migrations:/app/migrations
       - ./.env:/app/.env
+      # start.sh 파일 보존 (읽기 전용)
+      - ./start.sh:/app/start.sh:ro
     depends_on:
       postgres:
         condition: service_started
@@ -77,10 +79,20 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+      # PostgreSQL 연결 정보 (자동 설정용)
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
     ports:
       - "5050:80"
     volumes:
       - ./pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin/generate_config.py:/pgadmin4/generate_config.py
+      - ./pgadmin/init_pgadmin.sh:/docker-entrypoint-initdb.d/init_pgadmin.sh
     depends_on:
       - postgres
     networks:

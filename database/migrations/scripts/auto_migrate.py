@@ -133,6 +133,55 @@ class AutoMigrator:
             logger.info("✅ 데이터베이스 초기화 완료")
         return success, output
     
+    def check_and_fix_migration_status(self):
+        """마이그레이션 상태 확인 및 수정"""
+        logger.info("🔍 마이그레이션 상태 확인 중...")
+        
+        # 1. 현재 데이터베이스 상태 확인
+        current_success, current_output = self.run_command("alembic current", "현재 마이그레이션 상태 확인")
+        
+        # 2. 현재 존재하는 마이그레이션 파일 확인
+        versions_dir = self.alembic_dir / "versions"
+        migration_files = []
+        
+        for file in versions_dir.glob("*.py"):
+            if file.name.startswith("__"):
+                continue
+            revision_id = file.name.split("_")[0]
+            migration_files.append(revision_id)
+        
+        if not migration_files:
+            logger.error("❌ 마이그레이션 파일을 찾을 수 없습니다.")
+            return False
+        
+        latest_revision = migration_files[-1]
+        logger.info(f"📝 최신 마이그레이션 파일: {latest_revision}")
+        
+        # 3. 데이터베이스 상태와 파일 상태 비교
+        if current_success and latest_revision in current_output:
+            logger.info("✅ 마이그레이션 상태가 정상입니다.")
+            return True
+        else:
+            logger.warning("⚠️ 마이그레이션 상태가 불일치합니다. 수정을 시도합니다.")
+            
+            # 4. 데이터베이스 초기화 후 최신 마이그레이션 적용
+            logger.info("🔄 데이터베이스 마이그레이션 상태 수정 중...")
+            
+            # 먼저 데이터베이스 초기화
+            reset_success, reset_output = self.run_command("alembic downgrade base", "데이터베이스 초기화")
+            if not reset_success:
+                logger.warning("⚠️ 데이터베이스 초기화 실패, stamp 명령으로 시도합니다.")
+            
+            # 최신 마이그레이션으로 stamp
+            stamp_success, stamp_output = self.run_command(f"alembic stamp {latest_revision}", f"최신 마이그레이션 {latest_revision} 적용")
+            
+            if stamp_success:
+                logger.info("✅ 마이그레이션 상태 수정 완료")
+                return True
+            else:
+                logger.error("❌ 마이그레이션 상태 수정 실패")
+                return False
+    
     def run_auto_migration(self):
         """자동 마이그레이션 실행"""
         print("\n" + "="*60)
@@ -140,35 +189,41 @@ class AutoMigrator:
         print("="*60)
         
         try:
-            # 1. 기존 마이그레이션 적용 (데이터베이스를 최신 상태로)
+            # 1. 마이그레이션 상태 확인 및 수정
+            logger.info("🔄 마이그레이션 상태 확인 및 수정 중...")
+            migration_status_success = self.check_and_fix_migration_status()
+            if not migration_status_success:
+                logger.warning("⚠️ 마이그레이션 상태 수정 실패, 계속 진행...")
+            
+            # 2. 기존 마이그레이션 적용 (데이터베이스를 최신 상태로)
             logger.info("🔄 기존 마이그레이션 적용 중...")
             apply_success, apply_output = self.apply_migrations()
             if not apply_success:
                 logger.warning("⚠️ 기존 마이그레이션 적용 실패, 계속 진행...")
             
-            # 2. 스키마 변경사항 감지
+            # 3. 스키마 변경사항 감지
             has_changes, changes_output = self.check_schema_changes()
             
             if not has_changes:
                 print("\n✅ 스키마 변경사항이 없습니다. 마이그레이션이 필요하지 않습니다.")
                 return True
             
-            # 3. 백업 (선택사항)
+            # 4. 백업 (선택사항)
             self.backup_database()
             
-            # 4. 새 마이그레이션 파일 생성
+            # 5. 새 마이그레이션 파일 생성
             migration_success, migration_output = self.create_migration()
             if not migration_success:
                 logger.error("❌ 마이그레이션 파일 생성 실패")
                 return False
             
-            # 5. 새 마이그레이션 적용
+            # 6. 새 마이그레이션 적용
             apply_success, apply_output = self.apply_migrations()
             if not apply_success:
                 logger.error("❌ 마이그레이션 적용 실패")
                 return False
             
-            # 6. 최종 상태 확인
+            # 7. 최종 상태 확인
             final_status_success, final_status_output = self.check_migration_status()
             
             print("\n" + "="*60)
