@@ -600,10 +600,10 @@ async def get_chat_history(
                     "content": row[3],
                     "metadata": json.loads(row[4]) if row[4] else {}
                 })
-        
+
         # 시간순으로 정렬 (오래된 것부터)
         messages.reverse()
-        
+
         return {
             "success": True,
             "session_id": session_id,
@@ -625,7 +625,7 @@ async def get_session_info(session_id: str):
         with sqlite3.connect(str(DB_PATH)) as conn:
             # 첫 메시지와 마지막 메시지 시간 조회
             cursor = conn.execute("""
-                SELECT 
+                SELECT
                     MIN(timestamp) as first_message,
                     MAX(timestamp) as last_message,
                     COUNT(*) as message_count
@@ -659,7 +659,7 @@ async def get_all_sessions():
     try:
         with sqlite3.connect(str(DB_PATH)) as conn:
             cursor = conn.execute("""
-                SELECT 
+                SELECT
                     session_id,
                     MIN(timestamp) as first_message,
                     MAX(timestamp) as last_message,
@@ -670,12 +670,12 @@ async def get_all_sessions():
                 ORDER BY MAX(timestamp) DESC
                 LIMIT 50
             """)
-            
+
             sessions = []
             for row in cursor:
                 # 첫 번째 사용자 메시지로 제목 생성
                 title = row[4][:30] + "..." if row[4] and len(row[4]) > 30 else (row[4] or "대화")
-                
+
                 sessions.append({
                     "id": row[0],
                     "sessionId": row[0],

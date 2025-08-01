@@ -89,12 +89,12 @@ const ChatScreen = () => {
     try {
       console.log('🔄 백엔드에서 모든 세션 불러오는 중...');
       const response = await fetch('http://localhost:8000/api/all-sessions');
-      
+
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.sessions) {
           console.log(`✅ 백엔드에서 ${data.count}개 세션 불러옴`);
-          
+
           // 세션 데이터를 채팅 히스토리 형식으로 변환
           const chatHistoryFromDB = data.sessions.map(session => ({
             id: session.id,
@@ -104,14 +104,14 @@ const ChatScreen = () => {
             createdAt: session.createdAt,
             messageCount: session.messageCount
           }));
-          
+
           // localStorage의 기존 데이터와 병합 (중복 제거)
           const savedHistory = localStorage.getItem('chatHistory');
           let localHistory = [];
           if (savedHistory) {
             localHistory = JSON.parse(savedHistory);
           }
-          
+
           // sessionId를 기준으로 중복 제거
           const mergedHistory = [...chatHistoryFromDB];
           localHistory.forEach(localChat => {
@@ -119,14 +119,14 @@ const ChatScreen = () => {
               mergedHistory.push(localChat);
             }
           });
-          
+
           setChatHistory(mergedHistory);
           localStorage.setItem('chatHistory', JSON.stringify(mergedHistory));
-          
+
           return mergedHistory;
         }
       }
-      
+
       console.log('⚠️ 백엔드에서 세션 목록 없음, localStorage 사용');
       // 백엔드에 데이터가 없으면 localStorage 사용
       const savedHistory = localStorage.getItem('chatHistory');
@@ -135,11 +135,11 @@ const ChatScreen = () => {
         setChatHistory(localHistory);
         return localHistory;
       }
-      
+
       return [];
     } catch (error) {
       console.error('❌ 세션 목록 불러오기 실패:', error);
-      
+
       // 오류 시 localStorage 폴백
       const savedHistory = localStorage.getItem('chatHistory');
       if (savedHistory) {
@@ -147,7 +147,7 @@ const ChatScreen = () => {
         setChatHistory(localHistory);
         return localHistory;
       }
-      
+
       return [];
     }
   };
@@ -161,7 +161,7 @@ const ChatScreen = () => {
         content: '안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?',
         timestamp: new Date().toLocaleTimeString()
       };
-      
+
       // 에이전트 선택 메시지 (H2H와 동일한 형태)
       const agentSelectionMessage = {
         type: 'agent_selection',
@@ -189,10 +189,10 @@ const ChatScreen = () => {
           "create_document_agent": "문서 생성"
         }
       };
-      
+
       // 백엔드에서 모든 세션 목록 불러오기
       const history = await loadChatHistoryFromBackend();
-      
+
       // 세션이 있으면 첫 번째 세션 선택, 없으면 새 채팅 시작
       if (history.length > 0) {
         console.log(`📚 ${history.length}개의 세션 발견`);
@@ -212,7 +212,7 @@ const ChatScreen = () => {
         startNewChat();
       }
     };
-    
+
     initializeChat();
   }, []);
 
@@ -220,7 +220,7 @@ const ChatScreen = () => {
   const startNewChat = () => {
     const chatId = Date.now().toString();
     const newSessionId = generateSessionId();
-    
+
     // 시스템 메시지
     const systemMessage = {
       type: 'system',
@@ -259,7 +259,7 @@ const ChatScreen = () => {
     setMessages([systemMessage, agentSelectionMessage]);
     setCurrentChatId(chatId);
     setSessionId(newSessionId);
-    
+
     // 새 채팅을 히스토리에 추가
     const newChat = {
       id: chatId,
@@ -268,7 +268,7 @@ const ChatScreen = () => {
       messages: [systemMessage, agentSelectionMessage],
       createdAt: new Date().toISOString()
     };
-    
+
     const updatedHistory = [newChat, ...chatHistory];
     setChatHistory(updatedHistory);
     localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
@@ -280,7 +280,7 @@ const ChatScreen = () => {
     if (selectedChat) {
       setCurrentChatId(chatId);
       setSessionId(selectedChat.sessionId);
-      
+
       // 메시지가 이미 로드되어 있으면 바로 사용
       if (selectedChat.messages && selectedChat.messages.length > 0) {
         setMessages(selectedChat.messages);
@@ -293,7 +293,7 @@ const ChatScreen = () => {
             setMessages(selectedChat.messages || []);
             return;
           }
-          
+
           console.log(`🔄 세션 ${selectedChat.sessionId}의 메시지 불러오는 중...`);
           const response = await fetch(`http://localhost:8000/api/chat-history/${selectedChat.sessionId}`);
           
@@ -380,16 +380,16 @@ const ChatScreen = () => {
     setIsLoading(true);
     const currentQuery = inputValue;
     setInputValue('');
-    
+
     // Docs Agent 입력 대기 상태 초기화
     setIsWaitingForDocsInput(false);
     setDocsInputType(null);
 
     try {
       // 항상 Router를 통해 전송하여 동적 라우팅 활성화
-      const requestBody = { 
+      const requestBody = {
         session_id: sessionId,
-        query: currentQuery 
+        query: currentQuery
       };
 
       const response = await fetch('http://localhost:8000/api/chat', {
@@ -422,13 +422,13 @@ const ChatScreen = () => {
             agent_descriptions: data.agent_descriptions,
             agent_display_names: data.agent_display_names
           };
-          
+
           const messagesWithSelection = [...newMessages, selectionMessage];
           setMessages(messagesWithSelection);
           saveMessageToHistory(messagesWithSelection);
           return;
         }
-        
+
         // Docs Agent의 대화형 응답 처리
         if (data.agent === 'docs_agent' && data.waiting_for_input) {
           const interactiveMessage = {
@@ -441,32 +441,32 @@ const ChatScreen = () => {
             options: data.options || null,
             step: data.step
           };
-          
+
           const messagesWithInteractive = [...newMessages, interactiveMessage];
           setMessages(messagesWithInteractive);
           saveMessageToHistory(messagesWithInteractive);
-          
+
           // 입력 대기 상태로 설정
           setIsWaitingForDocsInput(true);
           setDocsInputType(data.input_type);
           setIsLoading(false);
           return;
         }
-        
+
         // 응답에서 실제 사용된 에이전트 정보 추출
         const usedAgent = data.agent || data.classification_result?.split(': ')[1];
         if (usedAgent) {
           responseAgent = AGENT_DISPLAY_NAMES[usedAgent] || usedAgent;
         }
-        
+
         // 기본 응답 내용
         botResponseContent = data.response || data.message || '처리가 완료되었습니다.';
-        
+
         // 라우팅 정보가 있으면 추가
         if (data.classification_result) {
           botResponseContent += `\n\n[${data.classification_result}]`;
         }
-        
+
         // Docs Agent 완료 메시지 처리
         if (data.agent === 'docs_agent' && data.step === 'completed') {
           if (data.document) {
@@ -519,7 +519,7 @@ const ChatScreen = () => {
     try {
       // 초기 화면에서 선택하는 경우 (query가 비어있음)
       const endpoint = query === '' ? '/api/initial-agent-select' : '/api/select-agent';
-      
+
       const response = await fetch(`http://localhost:8000${endpoint}`, {
         method: 'POST',
         headers: {
@@ -537,7 +537,7 @@ const ChatScreen = () => {
       }
 
       const data = await response.json();
-      
+
       if (data.success) {
         if (data.needs_new_question) {
           // 예시 질문을 보여주는 특별한 메시지 타입
@@ -549,11 +549,11 @@ const ChatScreen = () => {
             selected_agent: data.selected_agent,
             example_questions: data.example_questions
           };
-          
+
           const updatedMessages = [...messages, guideMessage];
           setMessages(updatedMessages);
           saveMessageToHistory(updatedMessages);
-          
+
           // 선택된 에이전트는 표시용으로만 사용하고 고정하지 않음
           // 모든 메시지는 Router를 통해 동적으로 라우팅됨
         } else {
@@ -564,11 +564,11 @@ const ChatScreen = () => {
             timestamp: new Date().toLocaleTimeString(),
             agent: data.agent
           };
-          
+
           const updatedMessages = [...messages, botMessage];
           setMessages(updatedMessages);
           saveMessageToHistory(updatedMessages);
-          
+
           checkCurrentAgent(sessionId);
         }
       } else {
@@ -578,7 +578,7 @@ const ChatScreen = () => {
           timestamp: new Date().toLocaleTimeString(),
           agent: 'System'
         };
-        
+
         const updatedMessages = [...messages, errorMessage];
         setMessages(updatedMessages);
         saveMessageToHistory(updatedMessages);
@@ -617,7 +617,7 @@ const ChatScreen = () => {
   // 현재 세션의 선택된 에이전트 확인
   const checkCurrentAgent = async (sessionId) => {
     if (!sessionId) return;
-    
+
     try {
       const response = await fetch(`http://localhost:8000/api/current-agent/${sessionId}`);
       if (response.ok) {

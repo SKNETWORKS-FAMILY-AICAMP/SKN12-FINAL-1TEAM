@@ -375,7 +375,7 @@
 
 .messages-container::-webkit-scrollbar-thumb,
 .chat-panel::-webkit-scrollbar-thumb {
-  background: #c1c1c1; 
+  background: #c1c1c1;
   border-radius: 3px;
 }
 
@@ -389,15 +389,15 @@
   .chat-panel {
     width: 240px;
   }
-  
+
   .chat-title {
     padding: 12px 20px;
   }
-  
+
   .messages-container {
     padding: 15px 20px;
   }
-  
+
   .message-input-container {
     padding: 12px 20px;
   }
