@@ -43,8 +43,6 @@ services:
       - ../app:/app/app
       - ../migrations:/app/migrations
       - ./.env:/app/.env
-      # start.sh 파일 보존 (읽기 전용)
-      - ./start.sh:/app/start.sh:ro
     depends_on:
       postgres:
         condition: service_started

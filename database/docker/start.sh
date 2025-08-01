@@ -43,4 +43,4 @@ cd /app && python migrations/scripts/auto_migrate.py
 
 # 애플리케이션 실행
 echo "🚀 FastAPI 애플리케이션 시작..."
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app/routers --reload-dir /app/app/services --reload-dir /app/app/models --reload-dir /app/app/schemas --reload-dir /app/app/config --reload-dir /app/app/main.py 
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app/routers --reload-dir /app/app/services --reload-dir /app/app/models --reload-dir /app/app/schemas --reload-dir /app/app/config --reload-dir /app/app/main.py

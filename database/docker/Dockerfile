@@ -59,9 +59,14 @@ EXPOSE 8000
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# 시작 스크립트 복사
+# 시작 스크립트 복사 및 라인 엔딩 변환
 COPY docker/start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+RUN apt-get update && apt-get install -y dos2unix && \
+    dos2unix /app/start.sh && \
+    chmod +x /app/start.sh && \
+    apt-get remove -y dos2unix && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # 애플리케이션 실행
 CMD ["/app/start.sh"] 
