@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { verifyToken, logoutUser } from './services/api';
@@ -98,39 +97,18 @@ function App() {
         <div className={`main-content ${!sidebarVisible ? 'sidebar-hidden' : ''}`}>
           <Routes>
             <Route path="/" element={<Dashboard currentUser={currentUser} />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/chat" element={<ChatScreen />} />
-            <Route path="/docs" element={<DocsPage />} />
-            <Route path="/client" element={<ClientPage />} />
-            <Route path="/employee" element={<EmployeePerformance currentUser={currentUser} />} />
-            <Route path="/schedule" element={<SchedulePage />} />
+            <Route path="/search" element={<SearchPage currentUser={currentUser} />} />
+            <Route path="/chat" element={<ChatScreen currentUser={currentUser} />} />
+            <Route path="/docs" element={<DocsPage currentUser={currentUser} />} />
+            <Route path="/client" element={<ClientPage currentUser={currentUser} />} />
+            <Route path="/employee-performance" element={<EmployeePerformance currentUser={currentUser} />} />
+            <Route path="/schedule" element={<SchedulePage currentUser={currentUser} />} />
             <Route path="/admin" element={<AdminPage currentUser={currentUser} />} />
-            <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
       </div>
     </Router>
-=======
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import './App.css';
-import MainDashboard from './components/MainDashboard';
-import ChatScreen from './components/ChatScreen';
-import EmployeePerformance from './components/EmployeePerformance';
-
-function App() {
-  return (
-    <div className="App">
-      <Router>
-        <Routes>
-          <Route path="/" element={<MainDashboard />} />
-          <Route path="/chat" element={<ChatScreen />} />
-          <Route path="/performance" element={<EmployeePerformance />} />
-        </Routes>
-      </Router>
-    </div>
->>>>>>> e68a39a974366e551e5e2b37a4e9c1b12d803ee4
   );
 }
 
