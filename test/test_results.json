@@ -1,0 +1,481 @@
+[
+  {
+    "category": "단순 질의 - 단일 에이전트",
+    "test_case": {
+      "query": "김철수 직원의 실적을 조회해줘",
+      "expected_agent": "employee_agent",
+      "expected_task_count": 1,
+      "description": "직원 실적 조회"
+    },
+    "result": {
+      "success": true,
+      "tasks": [
+        {
+          "id": 0,
+          "description": "김철수 직원 실적 조회",
+          "agent": "employee_agent",
+          "query": "김철수 직원의 실적을 조회해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        }
+      ],
+      "task_count": 1,
+      "execution_plan": {
+        "0": [
+          0
+        ]
+      },
+      "agents": [
+        "employee_agent"
+      ]
+    },
+    "passed": true
+  },
+  {
+    "category": "단순 질의 - 단일 에이전트",
+    "test_case": {
+      "query": "미라클의원의 거래처 정보를 알려줘",
+      "expected_agent": "client_agent",
+      "expected_task_count": 1,
+      "description": "거래처 정보 조회"
+    },
+    "result": {
+      "success": true,
+      "tasks": [
+        {
+          "id": 0,
+          "description": "미라클의원 거래처 정보 조회",
+          "agent": "client_agent",
+          "query": "미라클의원의 거래처 정보를 조회해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        }
+      ],
+      "task_count": 1,
+      "execution_plan": {
+        "0": [
+          0
+        ]
+      },
+      "agents": [
+        "client_agent"
+      ]
+    },
+    "passed": true
+  },
+  {
+    "category": "단순 질의 - 단일 에이전트",
+    "test_case": {
+      "query": "영업 규정을 검색해줘",
+      "expected_agent": "search_agent",
+      "expected_task_count": 1,
+      "description": "문서 검색"
+    },
+    "result": {
+      "success": true,
+      "tasks": [
+        {
+          "id": 0,
+          "description": "영업 규정 검색",
+          "agent": "search_agent",
+          "query": "영업 규정을 검색해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        }
+      ],
+      "task_count": 1,
+      "execution_plan": {
+        "0": [
+          0
+        ]
+      },
+      "agents": [
+        "search_agent"
+      ]
+    },
+    "passed": true
+  },
+  {
+    "category": "단순 질의 - 단일 에이전트",
+    "test_case": {
+      "query": "방문보고서 템플릿 보여줘",
+      "expected_agent": "docs_agent",
+      "expected_task_count": 1,
+      "description": "문서 템플릿 조회"
+    },
+    "result": {
+      "success": true,
+      "tasks": [
+        {
+          "id": 0,
+          "description": "방문보고서 템플릿 조회",
+          "agent": "docs_agent",
+          "query": "방문보고서 템플릿을 보여주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        }
+      ],
+      "task_count": 1,
+      "execution_plan": {
+        "0": [
+          0
+        ]
+      },
+      "agents": [
+        "docs_agent"
+      ]
+    },
+    "passed": true
+  },
+  {
+    "category": "복잡 질의 - 멀티 에이전트 (순차)",
+    "test_case": {
+      "query": "미라클의원의 거래처 정보를 분석하고 방문보고서를 작성해줘",
+      "expected_agents": [
+        "client_agent",
+        "docs_agent"
+      ],
+      "expected_task_count": 2,
+      "expected_strategy": "sequential",
+      "description": "거래처 분석 후 보고서 작성"
+    },
+    "result": {
+      "success": true,
+      "tasks": [
+        {
+          "id": 0,
+          "description": "미라클의원 거래처 정보 분석",
+          "agent": "client_agent",
+          "query": "미라클의원의 거래처 정보를 분석해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        },
+        {
+          "id": 1,
+          "description": "방문보고서 작성",
+          "agent": "docs_agent",
+          "query": "미라클의원 방문보고서를 작성해주세요",
+          "depends_on": [
+            0
+          ],
+          "parallel_group": 1
+        }
+      ],
+      "task_count": 2,
+      "execution_plan": {
+        "0": [
+          0
+        ],
+        "1": [
+          1
+        ]
+      },
+      "agents": [
+        "client_agent",
+        "docs_agent"
+      ]
+    },
+    "passed": true
+  },
+  {
+    "category": "복잡 질의 - 멀티 에이전트 (순차)",
+    "test_case": {
+      "query": "김철수 직원의 실적을 조회하고 이를 바탕으로 평가보고서를 작성해줘",
+      "expected_agents": [
+        "employee_agent",
+        "docs_agent"
+      ],
+      "expected_task_count": 2,
+      "expected_strategy": "sequential",
+      "description": "직원 실적 조회 후 평가보고서 작성"
+    },
+    "result": {
+      "success": true,
+      "tasks": [
+        {
+          "id": 0,
+          "description": "김철수 직원 실적 조회",
+          "agent": "employee_agent",
+          "query": "김철수 직원의 실적을 조회해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        },
+        {
+          "id": 1,
+          "description": "평가보고서 작성",
+          "agent": "docs_agent",
+          "query": "김철수 직원의 실적을 바탕으로 평가보고서를 작성해주세요",
+          "depends_on": [
+            0
+          ],
+          "parallel_group": 1
+        }
+      ],
+      "task_count": 2,
+      "execution_plan": {
+        "0": [
+          0
+        ],
+        "1": [
+          1
+        ]
+      },
+      "agents": [
+        "employee_agent",
+        "docs_agent"
+      ]
+    },
+    "passed": true
+  },
+  {
+    "category": "복잡 질의 - 멀티 에이전트 (병렬)",
+    "test_case": {
+      "query": "김철수 직원의 실적과 미라클의원의 매출을 동시에 조회해줘",
+      "expected_agents": [
+        "employee_agent",
+        "client_agent"
+      ],
+      "expected_task_count": 2,
+      "expected_strategy": "parallel",
+      "description": "직원 실적과 거래처 매출 병렬 조회"
+    },
+    "result": {
+      "success": true,
+      "tasks": [
+        {
+          "id": 0,
+          "description": "김철수 직원 실적 조회",
+          "agent": "employee_agent",
+          "query": "김철수 직원의 실적을 조회해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        },
+        {
+          "id": 1,
+          "description": "미라클의원 매출 조회",
+          "agent": "client_agent",
+          "query": "미라클의원의 매출을 조회해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        }
+      ],
+      "task_count": 2,
+      "execution_plan": {
+        "0": [
+          0,
+          1
+        ]
+      },
+      "agents": [
+        "employee_agent",
+        "client_agent"
+      ]
+    },
+    "passed": true
+  },
+  {
+    "category": "복잡 질의 - 멀티 에이전트 (병렬)",
+    "test_case": {
+      "query": "영업 규정과 제품 설명서를 모두 검색해줘",
+      "expected_agents": [
+        "search_agent",
+        "search_agent"
+      ],
+      "expected_task_count": 2,
+      "expected_strategy": "parallel",
+      "description": "여러 문서 병렬 검색"
+    },
+    "result": {
+      "success": true,
+      "tasks": [
+        {
+          "id": 0,
+          "description": "영업 규정 검색",
+          "agent": "search_agent",
+          "query": "영업 규정을 검색해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        },
+        {
+          "id": 1,
+          "description": "제품 설명서 검색",
+          "agent": "search_agent",
+          "query": "제품 설명서를 검색해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        }
+      ],
+      "task_count": 2,
+      "execution_plan": {
+        "0": [
+          0,
+          1
+        ]
+      },
+      "agents": [
+        "search_agent",
+        "search_agent"
+      ]
+    },
+    "passed": true
+  },
+  {
+    "category": "복잡 질의 - 멀티 에이전트 (혼합)",
+    "test_case": {
+      "query": "김철수 직원의 실적과 미라클의원의 거래 정보를 분석한 후 종합 보고서를 작성해줘",
+      "expected_agents": [
+        "employee_agent",
+        "client_agent",
+        "docs_agent"
+      ],
+      "expected_task_count": 3,
+      "expected_strategy": "mixed",
+      "description": "병렬 분석 후 순차 보고서 작성"
+    },
+    "result": {
+      "success": true,
+      "tasks": [
+        {
+          "id": 0,
+          "description": "김철수 직원 실적 분석",
+          "agent": "employee_agent",
+          "query": "김철수 직원의 실적을 분석해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        },
+        {
+          "id": 1,
+          "description": "미라클의원 거래 정보 분석",
+          "agent": "client_agent",
+          "query": "미라클의원의 거래 정보를 분석해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        },
+        {
+          "id": 2,
+          "description": "종합 보고서 작성",
+          "agent": "docs_agent",
+          "query": "김철수 직원 실적과 미라클의원 거래 정보를 포함한 종합 보고서를 작성해주세요",
+          "depends_on": [
+            0,
+            1
+          ],
+          "parallel_group": 1
+        }
+      ],
+      "task_count": 3,
+      "execution_plan": {
+        "0": [
+          0,
+          1
+        ],
+        "1": [
+          2
+        ]
+      },
+      "agents": [
+        "employee_agent",
+        "client_agent",
+        "docs_agent"
+      ]
+    },
+    "passed": true
+  },
+  {
+    "category": "복잡 질의 - 멀티 에이전트 (혼합)",
+    "test_case": {
+      "query": "전체 직원의 실적을 조회하고, 상위 3명의 거래처 정보를 분석한 다음, 우수 직원 보고서를 작성해줘",
+      "expected_agents": [
+        "employee_agent",
+        "client_agent",
+        "docs_agent"
+      ],
+      "expected_task_count": 3,
+      "expected_strategy": "mixed",
+      "description": "복잡한 의존성을 가진 멀티 태스크"
+    },
+    "result": {
+      "success": true,
+      "tasks": [
+        {
+          "id": 0,
+          "description": "전체 직원 실적 조회",
+          "agent": "employee_agent",
+          "query": "전체 직원의 실적을 조회해주세요",
+          "depends_on": [],
+          "parallel_group": 0
+        },
+        {
+          "id": 1,
+          "description": "상위 3명의 거래처 정보 분석",
+          "agent": "client_agent",
+          "query": "상위 3명의 거래처 정보를 분석해주세요",
+          "depends_on": [
+            0
+          ],
+          "parallel_group": 1
+        },
+        {
+          "id": 2,
+          "description": "우수 직원 보고서 작성",
+          "agent": "docs_agent",
+          "query": "우수 직원 보고서를 작성해주세요",
+          "depends_on": [
+            1
+          ],
+          "parallel_group": 2
+        }
+      ],
+      "task_count": 3,
+      "execution_plan": {
+        "0": [
+          0
+        ],
+        "1": [
+          1
+        ],
+        "2": [
+          2
+        ]
+      },
+      "agents": [
+        "employee_agent",
+        "client_agent",
+        "docs_agent"
+      ]
+    },
+    "passed": true
+  },
+  {
+    "category": "일반 대화 - 에이전트 불필요",
+    "test_case": {
+      "query": "안녕하세요",
+      "expected_task_count": 0,
+      "description": "인사말"
+    },
+    "result": {
+      "success": true,
+      "tasks": [],
+      "task_count": 0,
+      "execution_plan": null,
+      "agents": []
+    },
+    "passed": true
+  },
+  {
+    "category": "일반 대화 - 에이전트 불필요",
+    "test_case": {
+      "query": "오늘 날씨가 좋네요",
+      "expected_task_count": 0,
+      "description": "일상 대화"
+    },
+    "result": {
+      "success": true,
+      "tasks": [],
+      "task_count": 0,
+      "execution_plan": null,
+      "agents": []
+    },
+    "passed": true
+  }
+]

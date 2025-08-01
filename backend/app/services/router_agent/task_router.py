@@ -91,14 +91,24 @@ class TaskRouter:
             response = await self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "You are a task decomposition expert."},
+                    {"role": "system", "content": "You are a task decomposition expert. Always respond with valid JSON only, no code blocks."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1,
-                response_format={"type": "json_object"}
+                temperature=0.1
             )
             
-            result = json.loads(response.choices[0].message.content)
+            # 응답 내용 가져오기
+            response_content = response.choices[0].message.content
+            logger.debug(f"GPT Response: {response_content}")
+            
+            # JSON 파싱 (코드 블록 제거)
+            if "```json" in response_content:
+                response_content = response_content.split("```json")[1].split("```")[0]
+            elif "```" in response_content:
+                response_content = response_content.split("```")[1].split("```")[0]
+            
+            # 전후 공백 제거 후 파싱
+            result = json.loads(response_content.strip())
             tasks = result.get("tasks", [])
             
             logger.info(f"Query decomposed into {len(tasks)} tasks")
