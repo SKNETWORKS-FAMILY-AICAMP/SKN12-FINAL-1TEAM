@@ -8,6 +8,7 @@ from app.routers.user_router import router as user_router
 from app.routers.admin_router import router as admin_router
 from app.routers.qa_router import router as qa_router
 from app.routers.hybrid_search_router import router as hybrid_search_router
+from app.routers.chat_history_router import router as chat_history_router
 from fastapi import FastAPI
 from app.services.opensearch_service import initialize_search_pipeline
 
@@ -93,6 +94,7 @@ app.include_router(user_router, prefix="/user", tags=["User"])
 app.include_router(admin_router, prefix="/admin", tags=["Admin"])
 app.include_router(qa_router, prefix="/qa", tags=["QA"])
 app.include_router(hybrid_search_router, prefix="", tags=["Hybrid Search"])
+app.include_router(chat_history_router, prefix="", tags=["Chat History"])
 
 @app.get("/")
 def root():
