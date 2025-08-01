@@ -202,9 +202,9 @@ class Text2SQLSearchService:
         }}
         
         예시 쿼리:
-        - "최수아 매출" → SELECT ... FROM sales_records sr JOIN employee_info ei ON sr.employee_id = ei.employee_info_id WHERE ei.name LIKE '%최수아%'
-        - "폭세틴 판매" → SELECT ... FROM sales_records sr JOIN products p ON sr.product_id = p.product_id WHERE p.product_name LIKE '%폭세틴%'
-        - "우리가족의원 2024년 2월부터 5월까지 매출" → SELECT ... FROM sales_records sr JOIN customers c ON sr.customer_id = c.customer_id WHERE c.customer_name LIKE '%우리가족의원%' AND sr.sale_date >= '2024-02-01' AND sr.sale_date <= '2024-05-31'
+        - "최수아 매출" → SELECT ... FROM sales_records AS sr JOIN employee_info AS ei ON sr.employee_id = ei.employee_info_id WHERE ei.name LIKE '%최수아%'
+        - "폭세틴 판매" → SELECT ... FROM sales_records AS sr JOIN products AS p ON sr.product_id = p.product_id WHERE p.product_name LIKE '%폭세틴%'
+        - "우리가족의원 2024년 2월부터 5월까지 매출" → SELECT ... FROM sales_records AS sr JOIN customers AS c ON sr.customer_id = c.customer_id WHERE c.customer_name LIKE '%우리가족의원%' AND sr.sale_date >= '2024-02-01' AND sr.sale_date <= '2024-05-31'
         
         중요: 
         - 고객명, 직원명, 제품명이 쿼리에 언급되면 반드시 WHERE 조건에 포함해야 함
