@@ -134,8 +134,15 @@ function ChatScreen() {
       
       // 응답에서 에이전트 타입과 내용 추출
       if (responseData.success) {
-        agentType = responseData.agent || 'unknown';
-        currentContent = responseData.response || responseData.message || '응답을 처리했습니다.';
+        agentType = responseData.agent || responseData.type || 'unknown';
+        
+        // response가 객체인 경우 (멀티 태스크)
+        if (responseData.type === 'multi' && typeof responseData.response === 'object') {
+          currentContent = responseData.response;
+        } else {
+          currentContent = responseData.response || responseData.message || '응답을 처리했습니다.';
+        }
+        
         finalData = responseData;
       } else {
         throw new Error(responseData.error || '라우터 처리 중 오류가 발생했습니다.');
@@ -191,10 +198,46 @@ function ChatScreen() {
     window.open(url, '_blank');
   };
 
+  // 멀티 태스크 응답을 렌더링하는 함수
+  const renderMultiTaskContent = (content) => {
+    if (!content || typeof content !== 'object' || !content.steps) {
+      return content;
+    }
+
+    return (
+      <div className="multi-task-container">
+        <div className="multi-task-summary">
+          {content.summary}
+        </div>
+        <div className="multi-task-steps">
+          <h4>실행 단계 ({content.completed_steps}/{content.total_steps})</h4>
+          {content.steps.map((step, index) => (
+            <div key={index} className="step-card">
+              <div className="step-header">
+                <span className="step-number">Step {step.step}</span>
+                <span className="step-agent">{getAgentDisplayInfo(step.agent).name}</span>
+                <span className="step-status">{step.status === 'completed' ? '✅' : '⏳'}</span>
+              </div>
+              <div className="step-description">{step.description}</div>
+              <div className="step-result">
+                {renderMessageContent(step.result)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // 메시지 내용에서 링크를 클릭 가능한 형태로 변환
   const renderMessageContent = (content) => {
+    // 멀티 태스크 응답인 경우
+    if (content && typeof content === 'object' && content.steps) {
+      return renderMultiTaskContent(content);
+    }
+    
     if (!content || typeof content !== 'string') {
-      return content;
+      return content || '';
     }
 
     try {
@@ -316,7 +359,7 @@ function ChatScreen() {
             {messages.map((message) => (
               <div key={message.id} className={`message ${message.sender}-message ${message.isStreaming ? 'streaming' : ''}`}>
                 <div className="message-content">
-                  {renderMessageContent(message.content)}
+                  {message.content ? renderMessageContent(message.content) : ''}
                   {message.isStreaming && <span className="typing-indicator">...</span>}
                 </div>
                 {message.agentType && (

@@ -72,11 +72,13 @@ class TaskRouter:
             else:
                 # 멀티 태스크
                 results = await self._execute_multi_tasks(tasks, execution_plan, session_id, messages)
+                aggregated = self._aggregate_results(results, tasks)
                 return {
                     "type": "multi",
-                    "response": self._aggregate_results(results, tasks),
+                    "response": aggregated,  # 이제 구조화된 객체
                     "tasks": tasks,
-                    "detailed_results": results
+                    "detailed_results": results,
+                    "execution_plan": execution_plan
                 }
                 
         except Exception as e:
@@ -206,20 +208,40 @@ class TaskRouter:
         
         return await self._execute_single_task(modified_task, session_id, messages)
     
-    def _aggregate_results(self, results: Dict[int, Any], tasks: List[Dict]) -> str:
-        """멀티 태스크 결과를 통합"""
+    def _aggregate_results(self, results: Dict[int, Any], tasks: List[Dict]) -> Dict[str, Any]:
+        """멀티 태스크 결과를 구조화된 형태로 반환"""
         if not results:
-            return "요청을 처리할 수 없습니다."
+            return {
+                "summary": "요청을 처리할 수 없습니다.",
+                "steps": []
+            }
             
         # 태스크 순서대로 결과 정리
-        aggregated = []
+        steps = []
+        summary_parts = []
         
         for task in sorted(tasks, key=lambda x: x["id"]):
             task_id = task["id"]
             if task_id in results:
-                aggregated.append(f"## {task['description']}\n{results[task_id]}")
+                step_info = {
+                    "step": task_id + 1,
+                    "agent": task["agent"],
+                    "description": task["description"],
+                    "status": "completed",
+                    "result": results[task_id]
+                }
+                steps.append(step_info)
+                summary_parts.append(f"✅ {task['description']}")
+                
+        # 전체 요약
+        summary = "모든 작업이 완료되었습니다.\n\n" + "\n".join(summary_parts)
         
-        return "\n\n".join(aggregated)
+        return {
+            "summary": summary,
+            "steps": steps,
+            "total_steps": len(tasks),
+            "completed_steps": len(steps)
+        }
 
 
 # 싱글톤 인스턴스

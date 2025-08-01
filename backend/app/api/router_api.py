@@ -712,6 +712,31 @@ async def get_all_sessions():
         }
 
 
+@router.post("/route/router")
+async def route_router(req: Dict[str, Any]):
+    """
+    프론트엔드 호환성을 위한 라우터 엔드포인트
+    /chat/multi로 리다이렉트
+    """
+    try:
+        # QueryRequest 형태로 변환
+        query_req = QueryRequest(
+            session_id=req.get("session_id", f"session_{int(datetime.now().timestamp())}"),
+            query=req.get("query", "")
+        )
+        
+        # multi_task_chat 호출
+        return await multi_task_chat(query_req)
+        
+    except Exception as e:
+        logger.error(f"Route router error: {str(e)}")
+        return {
+            "success": False,
+            "response": f"요청 처리 중 오류가 발생했습니다: {str(e)}",
+            "error": str(e)
+        }
+
+
 @router.post("/chat/multi")
 async def multi_task_chat(req: QueryRequest):
     """
@@ -762,10 +787,18 @@ async def multi_task_chat(req: QueryRequest):
         )
         
         # 결과 저장
-        response_text = result.get("response", "처리할 수 없습니다.")
+        response_data = result.get("response", "처리할 수 없습니다.")
+        
+        # response가 딕셔너리인 경우 (멀티 태스크) summary를 텍스트로 사용
+        if isinstance(response_data, dict):
+            response_text = response_data.get("summary", "처리할 수 없습니다.")
+        else:
+            response_text = response_data
+            
         save_message(req.session_id, "assistant", response_text, {
             "type": result.get("type", "unknown"),
-            "tasks": result.get("tasks", [])
+            "tasks": result.get("tasks", []),
+            "response_data": response_data if isinstance(response_data, dict) else None
         })
         
         # 세션 메시지 업데이트
@@ -775,10 +808,11 @@ async def multi_task_chat(req: QueryRequest):
         # 응답 반환
         return {
             "success": True,
-            "response": response_text,
+            "response": response_data,  # 구조화된 응답 그대로 반환
             "type": result.get("type"),
             "tasks": result.get("tasks", []),
-            "detailed_results": result.get("detailed_results") if result.get("type") == "multi" else None
+            "detailed_results": result.get("detailed_results") if result.get("type") == "multi" else None,
+            "execution_plan": result.get("execution_plan") if result.get("type") == "multi" else None
         }
         
     except Exception as e:
