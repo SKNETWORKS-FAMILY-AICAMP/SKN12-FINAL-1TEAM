@@ -201,35 +201,13 @@ class EnhancedEmployeeAgent:
             if len(monthly_data) >= 2:
                 monthly_amounts = [data["amount"] for data in monthly_data]
                 
-                # 트렌드 분석
-                trend_calc = self.calc_tools.calculate_trend_analysis(monthly_amounts)
-                analysis_results["detailed_trend"] = trend_calc
+                # 강화된 트렌드 분석 (안정성 정보 포함)
+                enhanced_trend = self.calc_tools.calculate_enhanced_trend_analysis(monthly_amounts)
+                analysis_results["enhanced_trend_analysis"] = enhanced_trend
                 
-                # 분산 분석
-                variance_analysis = self.calc_tools.calculate_variance_analysis(monthly_amounts)
-                analysis_results["variance_analysis"] = variance_analysis
-                
-                # 계절성 분석
+                # 계절성 분석 (4개월 이상일 때만)
                 seasonal_analysis = self.calc_tools.calculate_seasonal_analysis(monthly_data)
                 analysis_results["seasonal_analysis"] = seasonal_analysis
-                
-                # 예측 분석
-                forecast = self.calc_tools.calculate_forecast(monthly_amounts, periods=3)
-                analysis_results["forecast"] = forecast
-            
-            # 3. 제품 분석
-            if performance_data["product_breakdown"]:
-                product_pareto = self.calc_tools.calculate_pareto_analysis(
-                    performance_data["product_breakdown"], "amount"
-                )
-                analysis_results["product_pareto"] = product_pareto
-            
-            # 4. 거래처 분석
-            if performance_data["client_breakdown"]:
-                client_pareto = self.calc_tools.calculate_pareto_analysis(
-                    performance_data["client_breakdown"], "amount"
-                )
-                analysis_results["client_pareto"] = client_pareto
             
             # 5. 달성 분석
             achievement_analysis = {
@@ -281,8 +259,8 @@ class EnhancedEmployeeAgent:
         score_components["achievement"] = achievement_score
         
         # 2. 트렌드 점수 (30점)
-        trend_data = analysis_results.get("detailed_trend", {})
-        trend = trend_data.get("trend", "안정")
+        enhanced_trend_data = analysis_results.get("enhanced_trend_analysis", {})
+        trend = enhanced_trend_data.get("trend", "안정")
         if trend in ["강한 상승", "상승"]:
             trend_score = 30
         elif trend == "안정":
@@ -291,9 +269,8 @@ class EnhancedEmployeeAgent:
             trend_score = 10
         score_components["trend"] = trend_score
         
-        # 3. 안정성 점수 (20점)
-        variance_data = analysis_results.get("variance_analysis", {})
-        stability = variance_data.get("stability", "보통")
+        # 3. 안정성 점수 (20점) - 강화된 트렌드 분석에서 가져옴
+        stability = enhanced_trend_data.get("stability", "보통")
         stability_score_map = {
             "매우 안정": 20, "안정": 16, "보통": 12, 
             "불안정": 8, "매우 불안정": 4
@@ -301,35 +278,20 @@ class EnhancedEmployeeAgent:
         stability_score = stability_score_map.get(stability, 10)
         score_components["stability"] = stability_score
         
-        # 4. 집중도 점수 (10점) - 파레토 분석 기반
-        product_pareto = analysis_results.get("product_pareto", {})
-        if product_pareto.get("pareto_point"):
-            # 파레토 효율성이 좋을수록 높은 점수
-            pareto_ratio = product_pareto["pareto_point"] / product_pareto["total_items"]
-            if pareto_ratio <= 0.2:  # 20% 이하가 80% 차지
-                concentration_score = 10
-            elif pareto_ratio <= 0.3:
-                concentration_score = 8
-            else:
-                concentration_score = 6
-        else:
-            concentration_score = 5
-        score_components["concentration"] = concentration_score
-        
-        # 총점 계산
+        # 총점 계산 (달성률 40점 + 트렌드 30점 + 안정성 20점 = 90점 만점)
         total_score = sum(score_components.values())
         
-        # 등급 결정
-        if total_score >= 90:
+        # 등급 결정 (90점 만점 기준으로 조정)
+        if total_score >= 80:
             grade = "S"
             grade_desc = "탁월"
-        elif total_score >= 80:
+        elif total_score >= 70:
             grade = "A"
             grade_desc = "우수"
-        elif total_score >= 70:
+        elif total_score >= 60:
             grade = "B"
             grade_desc = "양호"
-        elif total_score >= 60:
+        elif total_score >= 50:
             grade = "C"
             grade_desc = "보통"
         else:
@@ -347,8 +309,6 @@ class EnhancedEmployeeAgent:
                 improvement_priorities.append("실적 증가 추세 확보")
             elif component == "stability" and score < 15:
                 improvement_priorities.append("실적 안정성 확보")
-            elif component == "concentration" and score < 8:
-                improvement_priorities.append("핵심 제품 집중도 향상")
         
         return {
             "total_score": int(total_score),  # numpy 타입 방지
@@ -369,8 +329,6 @@ class EnhancedEmployeeAgent:
             strengths.append("성장 추세 양호")
         if score_components.get("stability", 0) >= 16:
             strengths.append("실적 안정성 확보")
-        if score_components.get("concentration", 0) >= 8:
-            strengths.append("제품 집중도 효율적")
         
         return strengths if strengths else ["기본 실적 유지"]
     
@@ -383,8 +341,6 @@ class EnhancedEmployeeAgent:
             weaknesses.append("성장 추세 부진")
         if score_components.get("stability", 0) < 12:
             weaknesses.append("실적 변동성 과대")
-        if score_components.get("concentration", 0) < 6:
-            weaknesses.append("제품 포트폴리오 분산 과다")
         
         return weaknesses if weaknesses else ["특별한 약점 없음"]
     
@@ -596,11 +552,21 @@ async def analyze_employee_query(query: str) -> Dict[str, Any]:
     """비동기 쿼리 분석 함수 (API에서 호출)"""
     return enhanced_agent.analyze_employee_performance(query)
 
-async def run(query: str, session_id: str) -> Dict[str, Any]:
-    """router_api.py에서 호출하는 표준 인터페이스"""
+async def run(query: str, session_id: str, messages: List[Dict] = None) -> Dict[str, Any]:
+    """router_api.py에서 호출하는 표준 인터페이스 (멀티턴 대화 지원)"""
     try:
+        # 컨텍스트 유틸리티 임포트
+        from ..common.context_utils import resolve_references
+        
+        # 참조 해결 (그 사람 → 실제 이름)
+        enhanced_query = resolve_references(query, messages or [])
+        
+        # 로깅
+        if enhanced_query != query:
+            print(f"[CONTEXT] 쿼리 보완: '{query}' → '{enhanced_query}'")
+        
         # EnhancedEmployeeAgent를 사용하여 쿼리 분석
-        result = enhanced_agent.analyze_employee_performance(query)
+        result = enhanced_agent.analyze_employee_performance(enhanced_query)
         
         # 결과가 성공적으로 반환된 경우
         if result.get("success", False):

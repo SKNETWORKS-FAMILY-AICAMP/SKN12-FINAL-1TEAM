@@ -4,7 +4,7 @@ Client Analysis Agent
 """
 import pandas as pd
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pathlib import Path
 import asyncio
 
@@ -141,20 +141,31 @@ class ClientAgent:
 agent = ClientAgent()
 
 
-async def run(query: str, session_id: str) -> Dict[str, Any]:
+async def run(query: str, session_id: str, messages: List[Dict] = None) -> Dict[str, Any]:
     """
-    Client Agent 실행 함수
+    Client Agent 실행 함수 (멀티턴 대화 지원)
     
     Args:
         query: 사용자 쿼리
         session_id: 세션 ID
+        messages: 이전 대화 기록
         
     Returns:
         Dict: 실행 결과
     """
     try:
+        # 컨텍스트 유틸리티 임포트
+        from ..common.context_utils import resolve_references
+        
+        # 참조 해결 (그 병원, 그 거래처 → 실제 이름)
+        enhanced_query = resolve_references(query, messages or [])
+        
+        # 로깅
+        if enhanced_query != query:
+            print(f"[CONTEXT] 쿼리 보완: '{query}' → '{enhanced_query}'")
+        
         # 거래처 분석 실행
-        result = await agent.analyze_company(query)
+        result = await agent.analyze_company(enhanced_query)
         
         if result["success"]:
             return {

@@ -12,7 +12,6 @@ code {
     monospace;
 }
 
-/* 다크 테마 스타일 */
 body.dark-theme {
   background-color: #1a1a1a;
   color: #ffffff;
