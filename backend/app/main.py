@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-# 경로 설정 - main.py가 어디서 실행되든 작동하도록
+# 경로 설정 
 current_file = Path(__file__).resolve()
 app_dir = current_file.parent  # backend/app
 backend_dir = app_dir.parent    # backend

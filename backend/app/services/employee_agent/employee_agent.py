@@ -588,6 +588,52 @@ class EnhancedEmployeeAgent:
                 "error": str(e),
                 "message": "분석 실행 중 오류가 발생했습니다."
             }
+    
+    def run(self, user_input: str = None) -> Dict[str, Any]:
+        """
+        라우터와 통합하기 위한 표준 run() 인터페이스
+        
+        Args:
+            user_input: 사용자 입력 쿼리
+            
+        Returns:
+            Dict: 실행 결과 (success, result 등)
+        """
+        if not user_input:
+            return {
+                "success": False,
+                "error": "입력이 필요합니다."
+            }
+        
+        try:
+            # analyze_employee_performance 메서드 호출
+            result = self.analyze_employee_performance(user_input)
+            
+            # 표준 형식으로 변환
+            if result.get("success", False):
+                return {
+                    "success": True,
+                    "result": {
+                        "report": result.get("report", ""),
+                        "employee_name": result.get("employee_name"),
+                        "period": result.get("period"),
+                        "total_performance": result.get("total_performance"),
+                        "achievement_rate": result.get("achievement_rate"),
+                        "evaluation": result.get("evaluation"),
+                        "analysis_details": result.get("analysis_details", {})
+                    }
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": result.get("error", "분석 실패")
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"실행 중 오류: {str(e)}"
+            }
 
 # 전역 에이전트 인스턴스
 enhanced_agent = EnhancedEmployeeAgent()
@@ -596,21 +642,11 @@ async def analyze_employee_query(query: str) -> Dict[str, Any]:
     """비동기 쿼리 분석 함수 (API에서 호출)"""
     return enhanced_agent.analyze_employee_performance(query)
 
-async def run(query: str, session_id: str, messages: List[Dict] = None) -> Dict[str, Any]:
-    """router_api.py에서 호출하는 표준 인터페이스 (멀티턴 대화 지원)"""
+async def run(query: str, session_id: str) -> Dict[str, Any]:
+    """router_api.py에서 호출하는 표준 인터페이스 (기존 유지)"""
     try:
-        # 컨텍스트 유틸리티 임포트
-        from ..common.context_utils import resolve_references
-        
-        # 참조 해결 (그 사람 → 실제 이름)
-        enhanced_query = resolve_references(query, messages or [])
-        
-        # 로깅
-        if enhanced_query != query:
-            print(f"[CONTEXT] 쿼리 보완: '{query}' → '{enhanced_query}'")
-        
         # EnhancedEmployeeAgent를 사용하여 쿼리 분석
-        result = enhanced_agent.analyze_employee_performance(enhanced_query)
+        result = enhanced_agent.analyze_employee_performance(query)
         
         # 결과가 성공적으로 반환된 경우
         if result.get("success", False):

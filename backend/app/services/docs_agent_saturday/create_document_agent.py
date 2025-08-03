@@ -23,19 +23,6 @@ from tools.common_tools import check_policy_violation, separate_document_type_an
 
 load_dotenv()
 
-
-class UserInputRequired(Exception):
-    """API 모드에서 사용자 입력이 필요할 때 발생하는 예외"""
-    def __init__(self, prompt: str, thread_id: str, next_node: str = None, 
-                 doc_type: str = None, state_info: dict = None):
-        self.prompt = prompt
-        self.thread_id = thread_id
-        self.next_node = next_node
-        self.doc_type = doc_type
-        self.state_info = state_info or {}
-        super().__init__(prompt)
-
-
 class State(TypedDict):
     messages: List[HumanMessage]
     doc_type: Optional[str]
@@ -1346,37 +1333,8 @@ class CreateDocumentAgent:
             else:
                 # 인터럽트로 중단된 경우 - 대화형 처리 시작
                 print(f"\n[INTERRUPT] 인터럽트 발생 - 스레드 ID: {thread_id}")
-                # API 모드인 경우 바로 예외 발생 (상태 정보 포함)
-                if os.getenv("NO_INPUT_MODE", "").lower() == "true":
-                    print(f"[API_MODE] NO_INPUT_MODE detected, thread_id: {thread_id}")
-                    current_state = self.app.get_state({"configurable": {"thread_id": thread_id}})
-                    print(f"[API_MODE] Current state exists: {current_state is not None}")
-                    next_node = current_state.next[0] if current_state and current_state.next else None
-                    print(f"[API_MODE] Next node: {next_node}")
-                    doc_type = current_state.values.get("doc_type") if current_state and current_state.values else None
-                    print(f"[API_MODE] doc_type: {doc_type}")
-                    state_info = {
-                        "doc_type": doc_type,
-                        "classification_failed": current_state.values.get("classification_failed") if current_state and current_state.values else None,
-                        "user_content": current_state.values.get("user_content") if current_state and current_state.values else None,
-                        "verification_result": current_state.values.get("verification_result") if current_state and current_state.values else None
-                    }
-                    print(f"[API_MODE] State info collected: {state_info}")
-                    raise UserInputRequired("\n>>> ", thread_id, next_node=next_node, 
-                                          doc_type=doc_type, state_info=state_info)
                 return self._handle_interactive_mode(thread_id)
                 
-        except UserInputRequired as e:
-            # API 모드에서 사용자 입력 필요
-            return {
-                "success": False, 
-                "interrupted": True, 
-                "thread_id": e.thread_id, 
-                "prompt": e.prompt,
-                "next_node": e.next_node,
-                "doc_type": e.doc_type,
-                "state_info": e.state_info
-            }
         except Exception as e:
             print(f"\n[ERROR] 실행 중 오류: {e}")
             return {"success": False, "error": str(e)}
@@ -1396,28 +1354,12 @@ class CreateDocumentAgent:
         # 인터럽트 처리 루프
         while True:
             try:
+                # 사용자 입력 받기
+                user_response = input("\n>>> ")
+                
                 # 현재 상태 확인하여 입력 타입 결정
                 current_state = self.app.get_state({"configurable": {"thread_id": thread_id}})
                 next_node = current_state.next[0] if current_state.next else None
-                
-                # 사용자 입력 받기
-                if os.getenv("NO_INPUT_MODE", "").lower() == "true":
-                    print(f"[INTERACTIVE] API mode interrupt at {next_node}")
-                    # API 모드에서는 상태 정보와 함께 예외 발생
-                    state_info = {
-                        "doc_type": current_state.values.get("doc_type") if current_state and current_state.values else None,
-                        "classification_failed": current_state.values.get("classification_failed") if current_state and current_state.values else None,
-                        "user_content": current_state.values.get("user_content") if current_state and current_state.values else None,
-                        "verification_result": current_state.values.get("verification_result") if current_state and current_state.values else None,
-                        "skip_ask_fields": current_state.values.get("skip_ask_fields") if current_state and current_state.values else None
-                    }
-                    print(f"[INTERACTIVE] Collected state info: {state_info}")
-                    
-                    raise UserInputRequired("\n>>> ", thread_id, 
-                                          next_node=next_node, 
-                                          doc_type=state_info.get("doc_type"),
-                                          state_info=state_info)
-                user_response = input("\n>>> ")
                 
                 # 다음 노드에 따라 입력 타입 결정
                 if next_node == "receive_verification_input":
@@ -1445,17 +1387,6 @@ class CreateDocumentAgent:
                     print(f"\n[ERROR] 처리 실패: {resume_result}")
                     return {"success": False, "result": resume_result}
                     
-            except UserInputRequired as e:
-                # API 모드에서 사용자 입력 필요 - 바로 반환
-                return {
-                    "success": False, 
-                    "interrupted": True, 
-                    "thread_id": e.thread_id, 
-                    "prompt": e.prompt,
-                    "next_node": e.next_node,
-                    "doc_type": e.doc_type,
-                    "state_info": e.state_info
-                }
             except KeyboardInterrupt:
                 print("\n\n[EXIT] 사용자가 중단했습니다.")
                 return {"success": False, "interrupted_by_user": True}
@@ -1500,7 +1431,7 @@ class CreateDocumentAgent:
                     final_result = list(chunk.values())[-1]  # 마지막 결과 저장
             
             # 최종 상태 확인
-            if final_result is not None and final_result:
+            if final_result:
                 violation_text = final_result.get("violation", "")
                 has_no_violation = not self._is_actual_violation(violation_text)
                 
@@ -1520,41 +1451,12 @@ class CreateDocumentAgent:
                 if current_state_after.next:  # 다음 실행할 노드가 있으면 인터럽트 상황
                     next_node = current_state_after.next[0] if current_state_after.next else None
                     print(f"[WAIT] 다음 인터럽트 대기 중 - 다음 노드: {next_node}")
-                    
-                    # 상태 정보 수집
-                    state_info = {
-                        "doc_type": current_state_after.values.get("doc_type"),
-                        "classification_failed": current_state_after.values.get("classification_failed"),
-                        "user_content": current_state_after.values.get("user_content"),
-                        "verification_result": current_state_after.values.get("verification_result"),
-                        "skip_ask_fields": current_state_after.values.get("skip_ask_fields")
-                    }
-                    
-                    return {
-                        "success": False, 
-                        "interrupted": True, 
-                        "thread_id": thread_id, 
-                        "next_node": next_node, 
-                        "prompt": "\n>>> ",
-                        "doc_type": state_info.get("doc_type"),
-                        "state_info": state_info
-                    }
+                    return {"success": False, "interrupted": True, "thread_id": thread_id, "next_node": next_node}
                 else:
                     print("\n[ERROR] 문서 생성 실패")
                     print(f"최종 결과: {final_result}")
                     return {"success": False, "result": final_result}
                 
-        except UserInputRequired as e:
-            # API 모드에서 사용자 입력 필요
-            return {
-                "success": False, 
-                "interrupted": True, 
-                "thread_id": e.thread_id, 
-                "prompt": e.prompt,
-                "next_node": e.next_node,
-                "doc_type": e.doc_type,
-                "state_info": e.state_info
-            }
         except Exception as e:
             print(f"\n[ERROR] 재개 중 오류: {e}")
             import traceback

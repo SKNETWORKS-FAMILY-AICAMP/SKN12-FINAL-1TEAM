@@ -46,7 +46,7 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
         response = llm.invoke(extraction_prompt.format_messages(content=content))
         extracted_text = response.content.strip()
         
-        print(f"📋 LLM 문구 추출 결과: {extracted_text}")
+        print(f"[LLM] 문구 추출 결과: {extracted_text}")
         
         # JSON 파싱
         try:
@@ -56,14 +56,14 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
                 # JSON 형태가 아닌 경우 빈 리스트로 처리
                 policy_phrases = []
         except json.JSONDecodeError:
-            print("⚠️ JSON 파싱 실패, 빈 리스트로 처리")
+            print("[WARNING] JSON 파싱 실패, 빈 리스트로 처리")
             policy_phrases = []
         
         if not policy_phrases:
-            print("✅ 규정 확인이 필요한 문구가 발견되지 않았습니다.")
+            print("[OK] 규정 확인이 필요한 문구가 발견되지 않았습니다.")
             return "OK"
         
-        print(f"🔍 추출된 규정 확인 대상 문구: {policy_phrases}")
+        print(f"[SEARCH] 추출된 규정 확인 대상 문구: {policy_phrases}")
         
         # 2단계: FastAPI를 통해 각 문구별로 유사한 규정 정보 검색
         violations = []
@@ -90,25 +90,25 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
                     api_result = response.json()
                     if api_result.get('success', False):
                         search_results = api_result.get('search_results', [])
-                        print(f"📊 '{phrase}' 검색 결과: {len(search_results)}개")
+                        print(f"[RESULT] '{phrase}' 검색 결과: {len(search_results)}개")
                         
                         # 3단계: LLM을 사용해 추출된 규정 정보와 비교하여 위반 여부 판단
                         violation_result = _check_phrase_against_regulations(phrase, search_results, llm)
                         if violation_result != "OK":
                             violations.append(f"{phrase}: {violation_result}")
                     else:
-                        print(f"⚠️ API 응답 실패 ({phrase}): {api_result}")
+                        print(f"[WARNING] API 응답 실패 ({phrase}): {api_result}")
                         violations.append(f"{phrase}: API 응답 오류")
                         
                 else:
-                    print(f"⚠️ FastAPI 호출 실패 ({phrase}): {response.status_code}")
+                    print(f"[WARNING] FastAPI 호출 실패 ({phrase}): {response.status_code}")
                     violations.append(f"{phrase}: 규정 검색 실패 (HTTP {response.status_code})")
                     
             except requests.exceptions.RequestException as e:
-                print(f"⚠️ API 호출 오류 ({phrase}): {e}")
+                print(f"[WARNING] API 호출 오류 ({phrase}): {e}")
                 violations.append(f"{phrase}: 네트워크 오류로 규정 확인 불가")
             except Exception as e:
-                print(f"⚠️ 처리 중 오류 ({phrase}): {e}")
+                print(f"[WARNING] 처리 중 오류 ({phrase}): {e}")
                 violations.append(f"{phrase}: 처리 오류 - {str(e)}")
         
         # 최종 결과 반환
@@ -124,7 +124,7 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
             return "OK"
             
     except Exception as e:
-        print(f"❌ 규정 검사 중 오류 발생: {e}")
+        print(f"[ERROR] 규정 검사 중 오류 발생: {e}")
         return f"규정 검사 오류: {str(e)}"
 
 def _check_phrase_against_regulations(phrase: str, search_results: list, llm: ChatOpenAI) -> str:
@@ -173,12 +173,12 @@ def _check_phrase_against_regulations(phrase: str, search_results: list, llm: Ch
         ))
         
         result = response.content.strip()
-        print(f"🔍 '{phrase}' 규정 검사 결과: {result[:100]}{'...' if len(result) > 100 else ''}")
+        print(f"[CHECK] '{phrase}' 규정 검사 결과: {result[:100]}{'...' if len(result) > 100 else ''}")
         
         return result
         
     except Exception as e:
-        print(f"⚠️ 규정 비교 중 오류: {e}")
+        print(f"[WARNING] 규정 비교 중 오류: {e}")
         return f"규정 비교 오류: {str(e)}"
 
 @tool
@@ -225,13 +225,13 @@ def convert_structured_to_natural_text(structured_data: Annotated[str, "JSON 형
         response = llm.invoke(conversion_prompt.format_messages(data=data_str))
         natural_text = response.content.strip()
         
-        print(f"📝 구조화된 데이터 → 자연어 변환 완료")
-        print(f"🔍 변환된 텍스트 길이: {len(natural_text)}자")
+        print(f"[CONVERT] 구조화된 데이터 -> 자연어 변환 완료")
+        print(f"[INFO] 변환된 텍스트 길이: {len(natural_text)}자")
         
         return natural_text
         
     except Exception as e:
-        print(f"❌ 데이터 변환 중 오류 발생: {e}")
+        print(f"[ERROR] 데이터 변환 중 오류 발생: {e}")
         return f"데이터 변환 오류: {str(e)}"
 
 @tool
@@ -271,7 +271,7 @@ def separate_document_type_and_content(user_input: Annotated[str, "사용자가 
         response = llm.invoke(separation_prompt.format_messages(user_input=user_input))
         result = response.content.strip()
         
-        print(f"📋 문서 분류 및 내용 분리 결과: {result}")
+        print(f"[SEPARATE] 문서 분류 및 내용 분리 결과: {result}")
         
         # JSON 코드 블록 제거 (```json ... ``` 형태)
         if result.startswith('```json'):
@@ -285,20 +285,20 @@ def separate_document_type_and_content(user_input: Annotated[str, "사용자가 
             if 'document_type' in parsed and 'content' in parsed:
                 return result
             else:
-                print("⚠️ 필수 키가 누락된 응답")
+                print("[WARNING] 필수 키가 누락된 응답")
                 return json.dumps({
                     "document_type": "",
                     "content": user_input
                 }, ensure_ascii=False)
         except json.JSONDecodeError:
-            print("⚠️ JSON 파싱 실패")
+            print("[WARNING] JSON 파싱 실패")
             return json.dumps({
                 "document_type": "",
                 "content": user_input
             }, ensure_ascii=False)
         
     except Exception as e:
-        print(f"❌ 문서 분류 및 내용 분리 중 오류 발생: {e}")
+        print(f"[ERROR] 문서 분류 및 내용 분리 중 오류 발생: {e}")
         return json.dumps({
             "document_type": "",
             "content": user_input

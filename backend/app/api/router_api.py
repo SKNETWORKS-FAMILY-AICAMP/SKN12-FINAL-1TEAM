@@ -1,795 +1,435 @@
-from fastapi import APIRouter, HTTPException
+"""
+LangGraph 기반 멀티 에이전트 라우터 API
+"""
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Dict, Any, Optional, List
-import asyncio
+from typing import Dict, Any, Optional
 import logging
-import sys
-from pathlib import Path
-from datetime import datetime
-import sqlite3
-import json
 import uuid
+from datetime import datetime
 
-# 경로 설정
-backend_dir = Path(__file__).parent.parent.parent
-if str(backend_dir) not in sys.path:
-    sys.path.insert(0, str(backend_dir))
+# 라우터 에이전트 임포트
+from app.services.router_agent import RouterAgent
 
-from app.services.router_agent.router_agent import RouterAgent, AVAILABLE_AGENT_IDS, AGENT_DESCS
-from app.services.router_agent.task_router import task_router
-
+# 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Context Manager import with error handling
-context_manager = None
-sync_context_manager = None
-try:
-    from app.services.common.context_manager import context_manager as cm, sync_context_manager as scm
-    context_manager = cm
-    sync_context_manager = scm
-    logger.info("Context Manager imported successfully")
-except Exception as e:
-    logger.error(f"Failed to import context_manager: {e}")
-    context_manager = None
+# FastAPI 라우터 생성
+router = APIRouter(prefix="/v1", tags=["langgraph"])
 
-router = APIRouter()
+# 전역 라우터 에이전트 인스턴스
+router_agent = RouterAgent()
 
-# Chat History Integration import
-chat_integration = None
-try:
-    from app.services.common.chat_history_integration import chat_integration as chi
-    chat_integration = chi
-    logger.info("Chat History Integration imported successfully")
-except Exception as e:
-    logger.error(f"Failed to import chat_history_integration: {e}")
-    chat_integration = None
 
-# SQLite DB 경로
-DB_PATH = backend_dir / "chat_history.db"
-
-def init_db():
-    """데이터베이스 초기화"""
-    try:
-        with sqlite3.connect(str(DB_PATH)) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS chat_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL,
-                    message_id TEXT UNIQUE NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    message_text TEXT NOT NULL,
-                    metadata TEXT
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_session ON chat_history(session_id)")
-            conn.commit()
-        logger.info(f"Database initialized at: {DB_PATH}")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-
-# DB 초기화
-try:
-    init_db()
-except Exception as e:
-    logger.error(f"DB initialization error: {e}")
-
-def save_message(session_id: str, role: str, message_text: str, metadata: Dict = None):
-    """메시지를 DB에 저장"""
-    message_id = str(uuid.uuid4())
-    timestamp = datetime.now().isoformat()
+# Request/Response 모델
+class ChatRequest(BaseModel):
+    """채팅 요청 모델"""
+    message: str
+    session_id: Optional[str] = None
     
-    try:
-        with sqlite3.connect(str(DB_PATH)) as conn:
-            conn.execute("""
-                INSERT INTO chat_history 
-                (session_id, message_id, timestamp, role, message_text, metadata)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                session_id,
-                message_id,
-                timestamp,
-                role,
-                message_text,
-                json.dumps(metadata or {}, ensure_ascii=False)
-            ))
-            conn.commit()
-        logger.info(f"[SAVED] {role} message for session {session_id}")
-        return message_id
-    except Exception as e:
-        logger.error(f"Failed to save message: {e}")
-        return None
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "영업방문 결과보고서 작성해줘",
+                "session_id": "optional-session-id"
+            }
+        }
 
-# 요청 모델
-class QueryRequest(BaseModel):
-    session_id: str
-    query: str
 
-class SelectionRequest(BaseModel):
+class ResumeRequest(BaseModel):
+    """세션 재개 요청 모델"""
+    user_reply: str
+    reply_type: str = "user_reply"
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_reply": "네, 맞습니다",
+                "reply_type": "verification_reply"
+            }
+        }
+
+
+class ChatResponse(BaseModel):
+    """채팅 응답 모델"""
+    success: bool
     session_id: str
+    target_agent: Optional[str] = None
+    requires_interrupt: bool = False
+    response: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class SessionStatusResponse(BaseModel):
+    """세션 상태 응답 모델"""
+    exists: bool
+    session_id: Optional[str] = None
     agent: Optional[str] = None
-    selected_agent: Optional[str] = None
-    query: str
-
-# 세션 관리
-sessions = {}
-
-# Router Agent 인스턴스 (싱글톤)
-try:
-    router_agent = RouterAgent()
-    logger.info("RouterAgent 초기화 성공")
-except Exception as e:
-    logger.error(f"RouterAgent 초기화 실패: {e}")
-    router_agent = None
-
-# 에이전트 표시 이름
-AGENT_DISPLAY_NAMES = {
-    "employee_agent": "직원 실적 분석",
-    "client_agent": "고객/거래처 분석", 
-    "search_agent": "정보 검색",
-    "docs_agent": "문서 생성"
-}
-
-# 에이전트별 예시 질문
-AGENT_EXAMPLE_QUESTIONS = {
-    "employee_agent": [
-        "김철수 사원의 이번 달 실적을 보여주세요",
-        "영업1팀의 평균 매출액은 얼마인가요?",
-        "작년 우수 사원 명단을 조회해주세요",
-        "영업본부 조직도를 보여주세요"
-    ],
-    "client_agent": [
-        "A병원의 월별 구매 추이를 분석해주세요",
-        "서울 지역 약국 거래처 목록을 보여주세요",
-        "이번 달 신규 거래처는 몇 개인가요?",
-        "VIP 등급 병원들의 주요 구매 품목은?"
-    ],
-    "search_agent": [
-        "항생제 제품 카탈로그를 검색해주세요",
-        "영업 매뉴얼에서 계약 절차를 찾아주세요",
-        "사내 휴가 규정을 검색해주세요",
-        "신제품 교육 자료를 찾아주세요"
-    ],
-    "docs_agent": [
-        "이번 달 영업 실적 보고서를 작성해주세요",
-        "거래처 방문 보고서 템플릿을 만들어주세요",
-        "분기별 매출 분석 문서를 생성해주세요",
-        "신규 거래처 제안서를 작성해주세요"
-    ]
-}
-
-async def run_agent(agent_id: str, query: str, session_id: str) -> Dict[str, Any]:
-    """각 에이전트의 run.py 실행"""
-    try:
-        if agent_id == "employee_agent":
-            from app.services.employee_agent import run
-            result = await run(query, session_id)
-            return result
-            
-        elif agent_id == "client_agent":
-            from app.services.client_agent import run
-            result = await run(query, session_id)
-            return result
-            
-        elif agent_id == "search_agent":
-            from app.services.search_agent.run import run
-            result = await run(query, session_id)
-            return result
-            
-        elif agent_id == "docs_agent":
-            from app.services.docs_agent import run
-            result = await run(query, session_id)
-            return result
-            
-        else:
-            raise ValueError(f"알 수 없는 에이전트: {agent_id}")
-            
-    except Exception as e:
-        logger.error(f"에이전트 실행 오류 ({agent_id}): {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "agent": agent_id
-        }
-
-@router.post("/chat")
-async def chat(req: QueryRequest):
-    """메인 채팅 엔드포인트 - RouterAgent를 통한 자동 라우팅"""
-    try:
-        # 세션 초기화
-        if req.session_id not in sessions:
-            sessions[req.session_id] = {
-                "messages": [],
-                "routing_attempts": 0,
-                "fixed_agent": None,  # 고정된 에이전트
-                "agent_fixed_at": None  # 고정 시간
-            }
-        
-        session = sessions[req.session_id]
-        
-        # 사용자 메시지를 PostgreSQL에 저장
-        try:
-            if chat_integration:
-                await chat_integration.process_user_message(
-                    session_id=req.session_id,
-                    query=req.query,
-                    employee_id=1  # TODO: 실제 사용자 인증에서 가져와야 함
-                )
-            else:
-                logger.error("사용자 메시지를 PostgreSQL에 저장 실패")
-        except Exception as e:
-            logger.error(f"Failed to save user message: {e}")
-        
-        # 이전 대화 컨텍스트 로드
-        conversation_context = None
-        if chat_integration:
-            try:
-                conversation_context = await chat_integration.get_conversation_context(
-                    session_id=req.session_id,
-                    max_messages=10
-                )
-                logger.info(f"Loaded {len(conversation_context.get('messages', []))} previous messages")
-            except Exception as e:
-                logger.error(f"Failed to load conversation context: {e}")
-        
-        # 쿼리 처리 - enhanced_query를 안전하게 처리
-        query_to_process = req.query
-        
-        if sync_context_manager:
-            try:
-                # 동기 래퍼 사용
-                query_to_process = sync_context_manager.process_query(req.session_id, req.query)
-                logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{query_to_process}'")
-            except Exception as e:
-                logger.error(f"Context processing error: {e}")
-                query_to_process = req.query
-        else:
-            logger.warning("Context manager not available, using original query")
-        
-        session["messages"].append({"role": "user", "content": req.query})
-        
-        # 먼저 task_router로 처리 시도 (멀티 태스크 지원)
-        try:
-            task_result = await task_router.process_query(
-                query=query_to_process,
-                session_id=req.session_id,
-                messages=session["messages"]
-            )
-            
-            # 멀티 태스크로 처리된 경우
-            if task_result.get("type") in ["multi", "single"]:
-                response_text = task_result.get("response", "처리할 수 없습니다.")
-                
-                # 메시지 저장
-                save_message(req.session_id, "assistant", response_text, {
-                    "type": task_result.get("type"),
-                    "tasks": task_result.get("tasks", [])
-                })
-                
-                # 세션 메시지 업데이트
-                session["messages"].append({"role": "assistant", "content": response_text})
-                
-                # 컨텍스트 업데이트
-                if sync_context_manager:
-                    try:
-                        sync_context_manager.update_context(req.session_id, req.query, {
-                            "success": True,
-                            "response": response_text,
-                            "agent": "multi_task" if task_result.get("type") == "multi" else task_result.get("tasks", [{}])[0].get("agent")
-                        })
-                    except Exception as e:
-                        logger.error(f"Context update error: {e}")
-                
-                return {
-                    "success": True,
-                    "response": response_text,
-                    "agent": "multi_task" if task_result.get("type") == "multi" else task_result.get("tasks", [{}])[0].get("agent"),
-                    "type": task_result.get("type"),
-                    "tasks": task_result.get("tasks", [])
-                }
-                
-        except Exception as e:
-            logger.warning(f"Task router failed, falling back to single agent: {e}")
-        
-        # 단일 에이전트 처리 (기존 로직)
-        classified_agent = None
-        max_attempts = 3
-        
-        if router_agent:
-            for attempt in range(max_attempts):
-                session["routing_attempts"] = attempt + 1
-                # 보완된 쿼리로 분류
-                classified_agent = await router_agent.classify(query_to_process, session["messages"])
-                
-                if classified_agent and classified_agent in AVAILABLE_AGENT_IDS:
-                    logger.info(f"분류 성공 (시도 {attempt + 1}): {classified_agent}")
-                    break
-                    
-                logger.warning(f"분류 실패 (시도 {attempt + 1})")
-                await asyncio.sleep(0.5)  # 재시도 전 대기
-        
-        # 분류 실패 시 수동 선택 필요
-        if not classified_agent:
-            fallback_message = f"""죄송합니다. '{req.query}' 질문이 저희 시스템의 기능과 관련이 없거나 분류가 어렵습니다.
-
-저희 시스템은 다음 기능을 제공합니다:
-- 직원 실적/평가 조회
-- 고객/거래처(병원,약국) 정보 관리  
-- 영업 데이터 검색
-- 보고서/문서 자동 생성
-
-해당하는 기능이 있다면 아래에서 선택해주세요:"""
-            
-            return {
-                "success": True,
-                "needs_user_selection": True,
-                "message": fallback_message,
-                "available_agents": AVAILABLE_AGENT_IDS,
-                "agent_descriptions": AGENT_DESCS,
-                "agent_display_names": AGENT_DISPLAY_NAMES,
-                "routing_attempts": session["routing_attempts"]
-            }
-        
-        # 에이전트 실행
-        result = await run_agent(classified_agent, query_to_process, req.session_id)
-        result["routing_attempts"] = session["routing_attempts"]
-        result["classification_result"] = f"자동 분류: {classified_agent}"
-        
-        # 응답 저장
-        session["messages"].append({
-            "role": "assistant",
-            "content": result.get("response", ""),
-            "agent": classified_agent
-        })
-        
-        # AI 응답을 PostgreSQL에 저장
-        try:
-            if chat_integration:
-                await chat_integration.process_assistant_response(
-                    session_id=req.session_id,
-                    response=result.get("response", ""),
-                    agent_name=classified_agent,
-                    employee_id=1  # TODO: 실제 사용자 인증에서 가져와야 함
-                )
-            else:
-                logger.error("AI 응답을 PostgreSQL에 저장 실패")
-        except Exception as e:
-            logger.error(f"Failed to save assistant response: {e}")
-        
-        # 컨텍스트 업데이트
-        if sync_context_manager:
-            try:
-                sync_context_manager.update_context(req.session_id, req.query, result)
-            except Exception as e:
-                logger.error(f"Context update error: {e}")
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Chat error: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "response": "처리 중 오류가 발생했습니다."
-        }
-
-@router.post("/select-agent")
-async def select_agent(req: SelectionRequest):
-    """사용자가 직접 에이전트 선택"""
-    try:
-        agent_id = req.selected_agent or req.agent
-        
-        if not agent_id or agent_id not in AVAILABLE_AGENT_IDS:
-            return {
-                "success": False,
-                "error": "유효하지 않은 에이전트입니다."
-            }
-        
-        # 세션 초기화
-        if req.session_id not in sessions:
-            sessions[req.session_id] = {
-                "messages": [],
-                "routing_attempts": 0
-            }
-        
-        # 사용자가 새 질문을 입력하지 않았다면 예시 질문 제공
-        if not req.query or req.query == "" or req.query == req.selected_agent:
-            agent_name = AGENT_DISPLAY_NAMES.get(agent_id, agent_id)
-            example_questions = AGENT_EXAMPLE_QUESTIONS.get(agent_id, [])
-            
-            guide_message = f"""{agent_name}을(를) 선택하셨습니다.
-
-이 에이전트는 다음과 같은 질문에 답변할 수 있습니다:
-"""
-            for i, example in enumerate(example_questions, 1):
-                guide_message += f"\n{i}. {example}"
-            
-            guide_message += "\n\n위 예시를 참고하여 질문을 입력해주세요."
-            
-            return {
-                "success": True,
-                "agent_selected": True,
-                "needs_new_question": True,
-                "selected_agent": agent_id,
-                "message": guide_message,
-                "example_questions": example_questions
-            }
-        
-        # 쿼리 처리
-        query_to_process = req.query
-        
-        if sync_context_manager:
-            try:
-                # 동기 래퍼 사용
-                query_to_process = sync_context_manager.process_query(req.session_id, req.query)
-                logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{query_to_process}'")
-            except Exception as e:
-                logger.error(f"Context processing error: {e}")
-                query_to_process = req.query
-        else:
-            logger.warning("Context manager not available, using original query")
-        
-        # 사용자 메시지를 PostgreSQL에 저장
-        try:
-            if chat_integration:
-                await chat_integration.process_user_message(
-                    session_id=req.session_id,
-                    query=req.query,
-                    employee_id=1  # TODO: 실제 사용자 인증에서 가져와야 함
-                )
-            else:
-                logger.error("사용자 메시지를 PostgreSQL에 저장 실패")
-        except Exception as e:
-            logger.error(f"Failed to save user message: {e}")
-        
-        # 질문이 있으면 에이전트 실행
-        result = await run_agent(agent_id, query_to_process, req.session_id)
-        result["agent_selected"] = True
-        result["classification_result"] = f"사용자 선택: {agent_id}"
-        
-        # AI 응답을 PostgreSQL에 저장
-        try:
-            if chat_integration:
-                await chat_integration.process_assistant_response(
-                    session_id=req.session_id,
-                    response=result.get("response", ""),
-                    agent_name=agent_id,
-                    employee_id=1  # TODO: 실제 사용자 인증에서 가져와야 함
-                )
-            else:
-                logger.error("AI 응답을 PostgreSQL에 저장 실패")
-        except Exception as e:
-            logger.error(f"Failed to save assistant response: {e}")
-        
-        # 세션에 메시지 저장 (메모리)
-        sessions[req.session_id]["messages"].append({
-            "role": "user",
-            "content": req.query
-        })
-        sessions[req.session_id]["messages"].append({
-            "role": "assistant",
-            "content": result.get("response", ""),
-            "agent": agent_id
-        })
-        
-        # 컨텍스트 업데이트
-        if sync_context_manager:
-            try:
-                sync_context_manager.update_context(req.session_id, req.query, result)
-            except Exception as e:
-                logger.error(f"Context update error: {e}")
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Select agent error: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-@router.post("/initial-agent-select")
-async def initial_agent_select(req: SelectionRequest):
-    """초기 화면에서 에이전트 직접 선택"""
-    try:
-        agent_id = req.selected_agent or req.agent
-        
-        if not agent_id or agent_id not in AVAILABLE_AGENT_IDS:
-            return {
-                "success": False,
-                "error": "유효하지 않은 에이전트입니다."
-            }
-        
-        # 세션 초기화
-        if req.session_id not in sessions:
-            sessions[req.session_id] = {
-                "messages": [],
-                "routing_attempts": 0
-            }
-        
-        # 선택된 에이전트 정보와 예시 질문 제공
-        agent_name = AGENT_DISPLAY_NAMES.get(agent_id, agent_id)
-        example_questions = AGENT_EXAMPLE_QUESTIONS.get(agent_id, [])
-        
-        guide_message = f"""{agent_name}을(를) 선택하셨습니다.
-
-이 에이전트는 다음과 같은 질문에 답변할 수 있습니다:
-"""
-        for i, example in enumerate(example_questions, 1):
-            guide_message += f"\n{i}. {example}"
-        
-        guide_message += "\n\n위 예시를 참고하여 질문을 입력해주세요."
-        
-        return {
-            "success": True,
-            "agent_selected": True,
-            "needs_new_question": True,
-            "selected_agent": agent_id,
-            "message": guide_message,
-            "example_questions": example_questions
-        }
-        
-    except Exception as e:
-        logger.error(f"Initial agent select error: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-@router.get("/test")
-async def test():
-    """테스트 엔드포인트"""
-    return {"message": "API is working!", "status": "ok"}
-
-@router.get("/chat-history")
-async def get_chat_history():
-    """채팅 기록"""
-    history = []
-    for session_id, data in sessions.items():
-        history.append({
-            "session_id": session_id,
-            "message_count": len(data.get("messages", [])),
-            "selected_agent": data.get("selected_agent"),
-            "created_at": data.get("created_at", "")
-        })
-    
-    return {
-        "success": True,
-        "chatHistory": history,
-        "count": len(history)
-    }
-
-@router.get("/sessions/{session_id}/messages")
-async def get_session_messages(session_id: str):
-    """세션별 메시지"""
-    if session_id in sessions:
-        messages = sessions[session_id].get("messages", [])
-        return {
-            "success": True,
-            "messages": messages,
-            "count": len(messages)
-        }
-    
-    return {
-        "success": True,
-        "messages": [],
-        "count": 0
-    }
-
-@router.get("/current-agent/{session_id}")
-async def get_current_agent(session_id: str):
-    """현재 세션의 마지막 사용 에이전트 확인"""
-    if session_id in sessions:
-        messages = sessions[session_id].get("messages", [])
-        # 마지막 assistant 메시지에서 에이전트 정보 찾기
-        for msg in reversed(messages):
-            if msg.get("role") == "assistant" and msg.get("agent"):
-                agent = msg["agent"]
-                return {
-                    "success": True,
-                    "has_selected_agent": False,  # 고정되지 않음
-                    "last_agent": {
-                        "agent_name": AGENT_DISPLAY_NAMES.get(agent, agent),
-                        "agent_key": agent
-                    }
-                }
-    
-    return {
-        "success": True,
-        "has_selected_agent": False,
-        "agent": None
-    }
-
-@router.post("/reset-agent")
-async def reset_agent(req: Dict[str, Any]):
-    """대화 이력 리셋"""
-    session_id = req.get("session_id")
-    if session_id and session_id in sessions:
-        sessions[session_id]["messages"] = []
-        sessions[session_id]["routing_attempts"] = 0
-    
-    return {
-        "success": True,
-        "message": "대화 이력이 초기화되었습니다."
-    }
-
-@router.get("/chat-history/{session_id}")
-async def get_chat_history(
-    session_id: str,
-    limit: int = 50,
-    offset: int = 0
-):
-    """세션의 대화 기록 조회"""
-    try:
-        if chat_integration:
-            # PostgreSQL에서 조회
-            messages = await chat_integration.history_manager.get_conversation_history(
-                session_id=session_id,
-                limit=limit,
-                offset=offset
-            )
-            
-            return {
-                "success": True,
-                "session_id": session_id,
-                "messages": messages,
-                "count": len(messages),
-                "db_type": "postgresql"
-            }
-        else:
-            logger.error("PostgreSql에서 세션의 대화 기록 조회 실패")
-            return {
-                "success": False,
-                "error": "Chat integration not available"
-            }
-    except Exception as e:
-        logger.error(f"Failed to get chat history: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-@router.get("/session-info/{session_id}")
-async def get_session_info(session_id: str):
-    """세션 정보 조회"""
-    try:
-        if chat_integration:
-            # PostgreSQL에서 조회
-            session_info = await chat_integration.history_manager.get_session_info(session_id)
-            
-            if session_info:
-                return {
-                    "success": True,
-                    "session": {
-                        "session_id": session_id,
-                        "first_message": session_info["created_at"],
-                        "last_message": session_info["last_activity"],
-                        "message_count": session_info["message_count"]
-                    },
-                    "db_type": "postgresql"
-                }
-            else:
-                return {"success": False, "error": "Session not found"}
-        else:
-            logger.error("PostgreSql에서 세션 기록 조회 실패")
-            return {
-                "success": False,
-                "error": "Chat integration not available"
-            }
-    except Exception as e:
-        logger.error(f"Failed to get session info: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-@router.get("/all-sessions")
-async def get_all_sessions():
-    """모든 세션 목록 조회"""
-    try:
-        if chat_integration:
-            # PostgreSQL에서 세션 목록 조회
-            sessions = await chat_integration.history_manager.get_all_sessions(limit=50)
-            
-            return {
-                "success": True,
-                "sessions": sessions,
-                "count": len(sessions),
-                "db_type": "postgresql"
-            }
-        else:
-            logger.error("PostgreSql에서 세션 목록 조회 실패")
-            return {
-                "success": False,
-                "error": "Chat integration not available"
-            }
-    except Exception as e:
-        logger.error(f"Failed to get all sessions: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+    status: Optional[str] = None
+    thread_id: Optional[str] = None
+    message: Optional[str] = None
 
 
-@router.post("/chat/multi")
-async def multi_task_chat(req: QueryRequest):
+@router.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest) -> ChatResponse:
     """
-    멀티 태스크 처리를 지원하는 새로운 채팅 엔드포인트
-    단일 태스크와 멀티 태스크를 자동으로 구분하여 처리
+    사용자 메시지를 처리하고 적절한 에이전트로 라우팅합니다.
+    
+    Args:
+        request: 채팅 요청
+        
+    Returns:
+        ChatResponse: 처리 결과
     """
     try:
-        # 세션 확인
-        if req.session_id not in sessions:
-            sessions[req.session_id] = {
-                "messages": [],
-                "routing_attempts": 0
-            }
+        logger.info(f"[CHAT] 요청 수신: {request.message[:50]}...")
         
-        session = sessions[req.session_id]
-        
-        # 사용자 메시지 저장
-        save_message(req.session_id, "user", req.query)
-        
-        # 이전 대화 컨텍스트 로드
-        conversation_context = None
-        if chat_integration:
-            try:
-                conversation_context = await chat_integration.get_conversation_context(
-                    session_id=req.session_id,
-                    max_messages=10
-                )
-                logger.info(f"Loaded {len(conversation_context.get('messages', []))} previous messages")
-            except Exception as e:
-                logger.error(f"Failed to load conversation context: {e}")
-        
-        # 쿼리 처리 - context manager 적용
-        query_to_process = req.query
-        
-        if sync_context_manager:
-            try:
-                query_to_process = sync_context_manager.process_query(req.session_id, req.query)
-                logger.info(f"원본 쿼리: '{req.query}' -> 보완된 쿼리: '{query_to_process}'")
-            except Exception as e:
-                logger.error(f"Context processing error: {e}")
-                query_to_process = req.query
-        
-        # 태스크 라우터로 처리
-        result = await task_router.process_query(
-            query=query_to_process,
-            session_id=req.session_id,
-            messages=session["messages"]
+        # 라우터 에이전트 실행
+        result = router_agent.run(
+            user_input=request.message,
+            session_id=request.session_id
         )
         
-        # 결과 저장
-        response_text = result.get("response", "처리할 수 없습니다.")
-        save_message(req.session_id, "assistant", response_text, {
-            "type": result.get("type", "unknown"),
-            "tasks": result.get("tasks", [])
-        })
+        # 응답 구성
+        response = ChatResponse(
+            success=result.get("success", False),
+            session_id=result.get("session_id"),
+            target_agent=result.get("agent_type"),  # agent_type으로 변경
+            requires_interrupt=result.get("requires_interrupt", False),
+            error=result.get("error"),
+            data={}  # 초기화
+        )
         
-        # 세션 메시지 업데이트
-        session["messages"].append({"role": "user", "content": req.query})
-        session["messages"].append({"role": "assistant", "content": response_text})
+        # 하위 에이전트 결과 처리
+        sub_result = result.get("result", {})
         
-        # 응답 반환
-        return {
-            "success": True,
-            "response": response_text,
-            "type": result.get("type"),
-            "tasks": result.get("tasks", []),
-            "detailed_results": result.get("detailed_results") if result.get("type") == "multi" else None
+        logger.info(f"[CHAT] Router result: {result}")
+        logger.info(f"[CHAT] Sub-agent result: {sub_result}")
+        logger.info(f"[CHAT] Router requires_interrupt: {result.get('requires_interrupt')}, next_node: {result.get('next_node')}, doc_type: {result.get('doc_type')}")
+        logger.info(f"[CHAT] Router has response: {result.get('response') is not None}")
+        
+        # help_message 처리 (router에서 직접 반환하는 경우)
+        if result.get("response"):
+            logger.info(f"[CHAT] Returning help message from router")
+            response.response = result["response"]
+            return response
+        
+        # 인터럽트 처리를 먼저 확인
+        if result.get("requires_interrupt"):
+            # router 레벨의 인터럽트 정보 사용
+            response.requires_interrupt = True
+            
+            # 상태 정보 추출 (router 레벨 우선, 없으면 sub_result 확인)
+            next_node = result.get("next_node") or (sub_result.get("next_node") if sub_result else None)
+            doc_type = result.get("doc_type") or (sub_result.get("doc_type") if sub_result else None)
+            state_info = result.get("state_info") or (sub_result.get("state_info", {}) if sub_result else {})
+            
+            logger.info(f"[INTERRUPT] next_node: {next_node}, doc_type: {doc_type}")
+            
+            response.data = {
+                "thread_id": result.get("thread_id") or (sub_result.get("thread_id") if sub_result else None),
+                "next_node": next_node,
+                "doc_type": doc_type,
+                "state_info": state_info
+            }
+            
+            # next_node로 정확한 상황 판단
+            if next_node == "receive_verification_input":
+                # 분류 검증 단계
+                response.response = f"분류된 문서 타입: {doc_type}\n\n위 분류 결과가 올바른가요?"
+                response.data["interrupt_type"] = "verification"
+                response.data["prompt_type"] = "verification"
+                
+            elif next_node == "receive_manual_doc_type_input":
+                # 수동 선택 단계
+                response.response = "문서 타입을 선택해주세요."
+                response.data["prompt_type"] = "manual_doc_selection"
+                response.data["options"] = [
+                    {"value": "1", "label": "영업방문 결과보고서"},
+                    {"value": "2", "label": "제품설명회 시행 신청서"},
+                    {"value": "3", "label": "제품설명회 시행 결과보고서"},
+                    {"value": "4", "label": "종료"}
+                ]
+                response.data["message"] = "올바른 문서 타입을 선택해주세요. 번호(1-4) 또는 문서명을 직접 입력할 수 있습니다."
+                
+            elif next_node == "receive_user_input":
+                # 필드 입력 단계
+                response.response = "필요한 정보를 입력해주세요."
+                response.data["interrupt_type"] = "data_input"
+                
+            else:
+                # 기본값
+                response.response = sub_result.get("prompt") if sub_result else "추가 정보가 필요합니다."
+                response.data["interrupt_type"] = "verification"
+                
+        elif sub_result and sub_result.get("success"):
+            # 성공적인 결과
+            agent_type = result.get("agent_type")
+            
+            if agent_type == "docs_agent":
+                response.response = "문서가 성공적으로 생성되었습니다."
+                response.data = {
+                    "document_path": sub_result.get("result", {}).get("final_doc"),
+                    "document_type": sub_result.get("result", {}).get("doc_type"),
+                    "filled_data": sub_result.get("result", {}).get("filled_data")
+                }
+            elif agent_type == "employee_agent":
+                response.response = sub_result.get("report", "")
+                response.data = {
+                    "employee_name": sub_result.get("employee_name"),
+                    "period": sub_result.get("period"),
+                    "total_performance": sub_result.get("total_performance"),
+                    "achievement_rate": sub_result.get("achievement_rate")
+                }
+            elif agent_type == "client_agent":
+                # client_agent 결과 처리
+                response.response = sub_result.get("response", "") or sub_result.get("report", "") or sub_result.get("analysis_result", "") or sub_result.get("result", "") or str(sub_result)
+                response.data = sub_result if isinstance(sub_result, dict) else {"result": sub_result}
+            elif agent_type == "search_agent":
+                # search_agent 결과 처리
+                response.response = sub_result.get("search_result", "") or sub_result.get("result", "") or str(sub_result)
+                response.data = sub_result if isinstance(sub_result, dict) else {"result": sub_result}
+        
+        
+        else:
+            # 오류 발생 또는 결과 없음
+            if sub_result:
+                response.error = sub_result.get("error", "알 수 없는 오류")
+            else:
+                response.error = result.get("error", "결과를 가져올 수 없습니다.")
+        
+        # 메타데이터 추가
+        response.metadata = {
+            "classification_confidence": result.get("classification_confidence"),
+            "timestamp": datetime.now().isoformat()
         }
+        
+        logger.info(f"[CHAT] 응답 완료: success={response.success}, agent={response.target_agent}")
+        return response
         
     except Exception as e:
-        logger.error(f"Multi-task chat error: {str(e)}")
-        error_message = "죄송합니다. 요청을 처리하는 중 오류가 발생했습니다."
+        logger.error(f"[CHAT] 오류 발생: {str(e)}")
+        return ChatResponse(
+            success=False,
+            session_id=request.session_id or str(uuid.uuid4()),
+            requires_interrupt=False,
+            error=f"처리 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.post("/resume/{session_id}", response_model=ChatResponse)
+async def resume_session(session_id: str, request: ResumeRequest) -> ChatResponse:
+    """
+    인터럽트된 세션을 재개합니다.
+    
+    Args:
+        session_id: 세션 ID
+        request: 재개 요청
         
-        # 오류 메시지도 저장
-        save_message(req.session_id, "assistant", error_message, {"error": str(e)})
+    Returns:
+        ChatResponse: 처리 결과
+    """
+    try:
+        logger.info(f"[RESUME] 세션 재개: {session_id}")
         
-        return {
-            "success": False,
-            "response": error_message,
-            "error": str(e)
-        }
+        # 세션 재개
+        result = router_agent.resume(
+            session_id=session_id,
+            user_reply=request.user_reply,
+            reply_type=request.reply_type
+        )
+        
+        # result가 None인 경우 처리
+        if result is None:
+            logger.error(f"[RESUME] None 반환: session_id={session_id}")
+            result = {
+                "success": False,
+                "error": "세션 처리 중 오류가 발생했습니다."
+            }
+        
+        # 응답 구성
+        response = ChatResponse(
+            success=result.get("success", False),
+            session_id=session_id,
+            error=result.get("error")
+        )
+        
+        if result.get("success"):
+            # 성공적으로 완료
+            response.response = "처리가 완료되었습니다."
+            result_data = result.get("result") or {}
+            response.data = {
+                "final_doc": result_data.get("final_doc") if isinstance(result_data, dict) else None,
+                "filled_data": result_data.get("filled_data") if isinstance(result_data, dict) else None
+            }
+        
+        elif result.get("interrupted"):
+            # 여전히 인터럽트 상태
+            response.requires_interrupt = True
+            response.response = "추가 정보가 필요합니다."
+            response.data = {
+                "thread_id": result.get("thread_id"),
+                "next_node": result.get("next_node")
+            }
+            
+            # next_node로 정확한 상황 판단
+            next_node = result.get("next_node")
+            doc_type = result.get("doc_type")
+            
+            if next_node == "receive_verification_input":
+                # 분류 검증 단계
+                response.response = f"분류된 문서 타입: {doc_type}\n\n위 분류 결과가 올바른가요?"
+                response.data["interrupt_type"] = "verification"
+                response.data["prompt_type"] = "verification"
+                response.data["doc_type"] = doc_type
+                
+            elif next_node == "receive_manual_doc_type_input":
+                # 수동 선택 단계
+                response.response = "문서 타입을 선택해주세요."
+                response.data["prompt_type"] = "manual_doc_selection"
+                response.data["options"] = [
+                    {"value": "1", "label": "영업방문 결과보고서"},
+                    {"value": "2", "label": "제품설명회 시행 신청서"},
+                    {"value": "3", "label": "제품설명회 시행 결과보고서"},
+                    {"value": "4", "label": "종료"}
+                ]
+                response.data["message"] = "올바른 문서 타입을 선택해주세요. 번호(1-4) 또는 문서명을 직접 입력할 수 있습니다."
+                
+            elif next_node == "receive_user_input":
+                # 필드 입력 단계
+                response.response = "필요한 정보를 입력해주세요."
+                response.data["interrupt_type"] = "data_input"
+                response.data["doc_type"] = doc_type
+        else:
+            # 실패 케이스 (규정 위반 등)
+            response.requires_interrupt = False
+            
+            # 에러 메시지 구성
+            error_msg = "처리 중 오류가 발생했습니다."
+            if result.get("error"):
+                error_msg = f"오류 발생: {result['error']}"
+            elif result.get("violation"):
+                error_msg = "규정 위반으로 문서 생성이 중단되었습니다."
+            elif result.get("result") is None:
+                error_msg = "문서 생성 실패: 결과가 없습니다."
+            
+            response.response = error_msg
+            
+            # result가 dict인지 확인하고 안전하게 처리
+            if isinstance(result, dict):
+                # result.result에서 violation 정보 확인
+                inner_result = result.get("result", {})
+                violation = None
+                
+                if result.get("violation"):
+                    violation = result["violation"]
+                elif isinstance(inner_result, dict) and inner_result.get("violation"):
+                    violation = inner_result["violation"]
+                
+                response.data = {
+                    "error_type": "policy_violation" if violation else "processing_error",
+                    "violation": violation,
+                    "details": result.get("details", result.get("error"))
+                }
+            else:
+                response.data = {"error_type": "unknown_error"}
+        
+        logger.info(f"[RESUME] 응답 완료: success={response.success}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"[RESUME] 오류 발생: {str(e)}")
+        return ChatResponse(
+            success=False,
+            session_id=session_id,
+            requires_interrupt=False,
+            error=f"세션 재개 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.get("/status/{session_id}", response_model=SessionStatusResponse)
+async def get_session_status(session_id: str) -> SessionStatusResponse:
+    """
+    세션 상태를 조회합니다.
+    
+    Args:
+        session_id: 세션 ID
+        
+    Returns:
+        SessionStatusResponse: 세션 상태
+    """
+    try:
+        logger.info(f"[STATUS] 세션 상태 조회: {session_id}")
+        
+        # 세션 상태 조회
+        status = router_agent.get_session_status(session_id)
+        
+        return SessionStatusResponse(**status)
+        
+    except Exception as e:
+        logger.error(f"[STATUS] 오류 발생: {str(e)}")
+        return SessionStatusResponse(
+            exists=False,
+            message=f"상태 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.get("/health")
+async def health_check():
+    """
+    헬스 체크 엔드포인트
+    
+    Returns:
+        Dict: 서비스 상태
+    """
+    return {
+        "status": "healthy",
+        "service": "langgraph-router",
+        "version": "1.0.0",
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@router.get("/agents")
+async def list_agents():
+    """
+    사용 가능한 에이전트 목록을 반환합니다.
+    
+    Returns:
+        Dict: 에이전트 목록 및 설명
+    """
+    return {
+        "agents": [
+            {
+                "name": "docs_agent",
+                "description": "문서 작성 에이전트 - 영업방문 결과보고서, 제품설명회 신청서/결과보고서 작성",
+                "features": [
+                    "템플릿 기반 문서 생성",
+                    "규정 준수 검사",
+                    "대화형 입력 지원"
+                ]
+            },
+            {
+                "name": "employee_agent",
+                "description": "직원 실적 분석 에이전트 - 실적 조회, 목표 달성률 분석, 트렌드 분석",
+                "features": [
+                    "실적 데이터 분석",
+                    "목표 대비 달성률 계산",
+                    "성과 트렌드 분석",
+                    "종합 평가 보고서 생성"
+                ]
+            }
+        ]
+    }
+
+
+# 개발용 테스트 엔드포인트
+if __name__ == "__main__":
+    # 테스트를 위한 간단한 예제
+    @router.post("/test")
+    async def test_endpoint(message: str):
+        """테스트 엔드포인트"""
+        return {"message": f"Received: {message}"}

@@ -42,7 +42,7 @@ const ChatScreen = () => {
   const agents = {
     router: {
       name: 'Router Agent',
-      endpoint: '/api/chat',  // 원래 API 경로
+      endpoint: '/api/v1/chat',  // 원래 API 경로
       description: '쿼리를 분석하고 적절한 에이전트로 자동 라우팅',
       color: '#3b82f6'
     },
@@ -84,70 +84,20 @@ const ChatScreen = () => {
     scrollToBottom();
   }, [messages]);
 
-  // 백엔드에서 채팅 내역 불러오기
-  const loadChatHistoryFromBackend = async () => {
+  // 로컬 스토리지에서 채팅 내역 불러오기
+  const loadChatHistoryFromLocal = () => {
     try {
-      console.log('🔄 백엔드에서 모든 세션 불러오는 중...');
-      const response = await fetch('http://localhost:8000/api/all-sessions');
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.sessions) {
-          console.log(`✅ 백엔드에서 ${data.count}개 세션 불러옴`);
-          
-          // 세션 데이터를 채팅 히스토리 형식으로 변환
-          const chatHistoryFromDB = data.sessions.map(session => ({
-            id: session.id,
-            sessionId: session.sessionId,
-            title: session.title,
-            messages: [], // 메시지는 선택할 때 로드
-            createdAt: session.createdAt,
-            messageCount: session.messageCount
-          }));
-          
-          // localStorage의 기존 데이터와 병합 (중복 제거)
-          const savedHistory = localStorage.getItem('chatHistory');
-          let localHistory = [];
-          if (savedHistory) {
-            localHistory = JSON.parse(savedHistory);
-          }
-          
-          // sessionId를 기준으로 중복 제거
-          const mergedHistory = [...chatHistoryFromDB];
-          localHistory.forEach(localChat => {
-            if (!mergedHistory.find(dbChat => dbChat.sessionId === localChat.sessionId)) {
-              mergedHistory.push(localChat);
-            }
-          });
-          
-          setChatHistory(mergedHistory);
-          localStorage.setItem('chatHistory', JSON.stringify(mergedHistory));
-          
-          return mergedHistory;
-        }
-      }
-      
-      console.log('⚠️ 백엔드에서 세션 목록 없음, localStorage 사용');
-      // 백엔드에 데이터가 없으면 localStorage 사용
+      console.log('🔄 로컬 스토리지에서 채팅 내역 불러오는 중...');
       const savedHistory = localStorage.getItem('chatHistory');
       if (savedHistory) {
         const localHistory = JSON.parse(savedHistory);
         setChatHistory(localHistory);
+        console.log(`✅ ${localHistory.length}개 채팅 내역 불러옴`);
         return localHistory;
       }
-      
       return [];
     } catch (error) {
-      console.error('❌ 세션 목록 불러오기 실패:', error);
-      
-      // 오류 시 localStorage 폴백
-      const savedHistory = localStorage.getItem('chatHistory');
-      if (savedHistory) {
-        const localHistory = JSON.parse(savedHistory);
-        setChatHistory(localHistory);
-        return localHistory;
-      }
-      
+      console.error('❌ 채팅 내역 불러오기 실패:', error);
       return [];
     }
   };
@@ -155,23 +105,27 @@ const ChatScreen = () => {
   // 초기 안내 메시지
   useEffect(() => {
     const initializeChat = async () => {
-      // 시스템 안내 메시지
-      const systemMessage = {
-        type: 'system',
-        content: '안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?',
-        timestamp: new Date().toLocaleTimeString()
-      };
+      // 초기에는 메시지를 비워두어 예시 프롬프트가 표시되도록 함
+      // 시스템 메시지 제거
       
-      // 에이전트 선택 메시지 (H2H와 동일한 형태)
+      // 에이전트 선택 메시지 (H2H와 동일한 형태) - 사용하지 않음
       const agentSelectionMessage = {
         type: 'agent_selection',
-        content: `저희 시스템은 다음 기능을 제공합니다:
-- 직원 실적/평가 조회
-- 고객/거래처(병원,약국) 정보 관리
-- 영업 데이터 검색
-- 보고서/문서 자동 생성
+        content: `안녕하세요! 무엇을 도와드릴까요?
 
-원하시는 기능을 선택하시거나, 바로 질문을 입력하셔도 됩니다.`,
+💼 직원 실적 분석
+   예: "최시우 직원의 실적 조회해줘"
+
+🏥 거래처 분석  
+   예: "미라클의원의 거래처 분석해줘"
+
+🔍 정보 검색
+   예: "출장비 정산 규정 찾아줘"
+
+📄 문서 생성 및 규정 위반여부 검토
+   예: "영업방문 결과보고서 작성해줘"
+
+위 예시처럼 자유롭게 질문하시면 됩니다.`,
         timestamp: new Date().toLocaleTimeString(),
         agent: 'System',
         query: '',  // 초기 선택이므로 query 없음
@@ -190,8 +144,8 @@ const ChatScreen = () => {
         }
       };
       
-      // 백엔드에서 모든 세션 목록 불러오기
-      const history = await loadChatHistoryFromBackend();
+      // 로컬 스토리지에서 채팅 내역 불러오기
+      const history = loadChatHistoryFromLocal();
       
       // 세션이 있으면 첫 번째 세션 선택, 없으면 새 채팅 시작
       if (history.length > 0) {
@@ -201,14 +155,13 @@ const ChatScreen = () => {
         if (mostRecentSession.sessionId) {
           await selectChat(mostRecentSession.id);
         } else {
-          // 기본 메시지 표시하고 새 채팅 시작
-          setMessages([systemMessage, agentSelectionMessage]);
-          startNewChat();
+          // 메시지를 비워두어 예시 프롬프트가 표시되도록 함
+          setMessages([]);
         }
       } else {
         console.log('📝 세션이 없음, 새 채팅 시작');
-        // 기본 메시지 표시
-        setMessages([systemMessage, agentSelectionMessage]);
+        // 메시지를 비워두어 예시 프롬프트가 표시되도록 함
+        setMessages([]);
         startNewChat();
       }
     };
@@ -221,42 +174,8 @@ const ChatScreen = () => {
     const chatId = Date.now().toString();
     const newSessionId = generateSessionId();
     
-    // 시스템 메시지
-    const systemMessage = {
-      type: 'system',
-      content: '안녕하세요! NaruTalk AI Assistant입니다. 무엇을 도와드릴까요?',
-      timestamp: new Date().toLocaleTimeString()
-    };
-    
-    // 에이전트 선택 메시지
-    const agentSelectionMessage = {
-      type: 'agent_selection',
-      content: `저희 시스템은 다음 기능을 제공합니다:
-- 직원 실적/평가 조회
-- 고객/거래처(병원,약국) 정보 관리
-- 영업 데이터 검색
-- 보고서/문서 자동 생성
-
-원하시는 기능을 선택하시거나, 바로 질문을 입력하셔도 됩니다.`,
-      timestamp: new Date().toLocaleTimeString(),
-      agent: 'System',
-      query: '',
-      available_agents: ['employee_agent', 'client_agent', 'search_agent', 'create_document_agent'],
-      agent_descriptions: {
-        "employee_agent": "사내 직원에 대한 정보 제공을 담당합니다. 예: 개인 실적 조회, 인사 이력, 직책, 소속 부서, 조직도 확인, 성과 평가 등 직원 관련 질의 응답을 처리합니다.",
-        "client_agent": "고객 및 거래처에 대한 정보를 제공합니다. 반드시 병원, 제약영업과 관련이 있는 질문에만 답변합니다.예: 특정 고객의 매출 추이, 거래 이력, 등급 분류, 잠재 고객 분석, 영업 성과 분석 등 외부 고객 관련 질문에 대응합니다.",
-        "search_agent": "내부 데이터베이스에서 정보 검색을 수행합니다. 예: 문서 검색, 사내 규정, 업무 매뉴얼, 제품 정보, 교육 자료 등 특정 정보를 정제된 DB 또는 벡터DB 기반으로 검색합니다.",
-        "create_document_agent": "문서 자동 생성 및 규정 검토를 담당합니다. 예: 보고서 초안 자동 생성, 전표/계획서 생성, 컴플라이언스 위반 여부 판단, 서식 분석 및 문서 오류 검토 등의 기능을 수행합니다."
-      },
-      agent_display_names: {
-        "employee_agent": "직원 실적 분석",
-        "client_agent": "고객/거래처 분석",
-        "search_agent": "정보 검색",
-        "create_document_agent": "문서 생성"
-      }
-    };
-    
-    setMessages([systemMessage, agentSelectionMessage]);
+    // 메시지를 비워서 예시 프롬프트가 표시되도록 함
+    setMessages([]);
     setCurrentChatId(chatId);
     setSessionId(newSessionId);
     
@@ -265,7 +184,7 @@ const ChatScreen = () => {
       id: chatId,
       sessionId: newSessionId,
       title: `채팅 ${new Date().toLocaleString()}`,
-      messages: [systemMessage, agentSelectionMessage],
+      messages: [],
       createdAt: new Date().toISOString()
     };
     
@@ -294,39 +213,13 @@ const ChatScreen = () => {
             return;
           }
           
-          console.log(`🔄 세션 ${selectedChat.sessionId}의 메시지 불러오는 중...`);
-          const response = await fetch(`http://localhost:8000/api/chat-history/${selectedChat.sessionId}`);
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.messages && data.messages.length > 0) {
-              console.log(`✅ ${data.count}개 메시지 불러옴`);
-              
-              // DB에서 가져온 메시지 형식을 프론트엔드 형식으로 변환
-              const formattedMessages = data.messages.map(msg => ({
-                type: msg.role === 'user' ? 'user' : msg.role === 'assistant' ? 'bot' : 'system',
-                content: msg.content,
-                timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString(),
-                agent: msg.metadata?.agent || 'System'
-              }));
-              
-              setMessages(formattedMessages);
-              
-              // 채팅 히스토리 업데이트
-              const updatedHistory = chatHistory.map(chat => 
-                chat.id === chatId 
-                  ? { ...chat, messages: formattedMessages }
-                  : chat
-              );
-              setChatHistory(updatedHistory);
-              localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
-            } else {
-              console.log('해당 세션에 메시지가 없습니다.');
-              setMessages(selectedChat.messages || []);
-            }
+          // 로컬 데이터에서 메시지 복원
+          if (selectedChat.messages && selectedChat.messages.length > 0) {
+            console.log(`✅ ${selectedChat.messages.length}개 메시지 복원`);
+            setMessages(selectedChat.messages);
           } else {
-            console.error('메시지 불러오기 실패:', response.status);
-            setMessages(selectedChat.messages || []);
+            console.log('해당 세션에 메시지가 없습니다.');
+            setMessages([]);
           }
         } catch (error) {
           console.error('메시지 불러오기 오류:', error);
@@ -386,19 +279,50 @@ const ChatScreen = () => {
     setDocsInputType(null);
 
     try {
-      // 항상 Router를 통해 전송하여 동적 라우팅 활성화
-      const requestBody = { 
-        session_id: sessionId,
-        query: currentQuery 
-      };
+      let response;
+      let requestBody;
+      
+      // Check if we have an active thread_id (indicates we're in resume mode)
+      const activeThreadId = sessionStorage.getItem(`thread_${sessionId}`);
+      
+      if (activeThreadId) {
+        // Resume API call for interactive responses
+        // Determine reply_type based on the current interactive state
+        const interruptType = sessionStorage.getItem(`interrupt_type_${sessionId}`);
+        let replyType = 'user_reply';
+        if (interruptType === 'verification') {
+          replyType = 'verification_reply';
+        } else if (interruptType === 'manual_doc_selection') {
+          replyType = 'verification_reply';  // manual_doc_selection도 verification_reply로 처리
+        }
+        
+        requestBody = {
+          user_reply: currentQuery,
+          reply_type: replyType
+        };
+        
+        response = await fetch(`http://localhost:8000/api/v1/resume/${sessionId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
+        });
+      } else {
+        // Normal chat API call
+        requestBody = { 
+          message: currentQuery,
+          session_id: sessionId
+        };
 
-      const response = await fetch('http://localhost:8000/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
+        response = await fetch('http://localhost:8000/api/v1/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -408,6 +332,61 @@ const ChatScreen = () => {
       
       let botResponseContent = '';
       let responseAgent = 'Router Agent';
+      
+      // Handle interrupt responses first (both success and failure cases)
+      if (data.requires_interrupt && data.data?.thread_id) {
+        // Store thread_id and interrupt_type for subsequent resume calls
+        sessionStorage.setItem(`thread_${sessionId}`, data.data.thread_id);
+        sessionStorage.setItem(`interrupt_type_${sessionId}`, data.data.interrupt_type || 'verification');
+        
+        // Check if this is a manual document type selection
+        if (data.data.prompt_type === 'manual_doc_selection' && data.data.options) {
+          // Update interrupt type for manual selection
+          sessionStorage.setItem(`interrupt_type_${sessionId}`, 'manual_doc_selection');
+          
+          const interactiveMessage = {
+            type: 'interactive',
+            content: data.response || '문서 타입을 선택해주세요.',
+            timestamp: new Date().toLocaleTimeString(),
+            agent: data.target_agent || 'Docs Agent',
+            waiting_for_input: true,
+            input_type: 'manual_selection',
+            options: data.data.options.map(opt => opt.label),
+            thread_id: data.data.thread_id
+          };
+          
+          const messagesWithInteractive = [...newMessages, interactiveMessage];
+          setMessages(messagesWithInteractive);
+          saveMessageToHistory(messagesWithInteractive);
+          
+          // 입력 대기 상태로 설정
+          setIsWaitingForDocsInput(true);
+          setDocsInputType('manual_selection');
+          setIsLoading(false);
+          return;
+        }
+        
+        // Regular interrupt handling
+        const interactiveMessage = {
+          type: 'interactive',
+          content: data.response || '추가 정보가 필요합니다.',
+          timestamp: new Date().toLocaleTimeString(),
+          agent: data.target_agent || 'Docs Agent',
+          waiting_for_input: true,
+          input_type: data.data.interrupt_type || 'verification',
+          thread_id: data.data.thread_id
+        };
+        
+        const messagesWithInteractive = [...newMessages, interactiveMessage];
+        setMessages(messagesWithInteractive);
+        saveMessageToHistory(messagesWithInteractive);
+        
+        // 입력 대기 상태로 설정
+        setIsWaitingForDocsInput(true);
+        setDocsInputType(data.data.interrupt_type || 'verification');
+        setIsLoading(false);
+        return;
+      }
       
       if (data.success) {
         // Router 에이전트에서 사용자 선택이 필요한 경우
@@ -429,7 +408,13 @@ const ChatScreen = () => {
           return;
         }
         
-        // Docs Agent의 대화형 응답 처리
+        // Clear thread_id and interrupt_type if task is completed
+        if (!data.requires_interrupt && sessionStorage.getItem(`thread_${sessionId}`)) {
+          sessionStorage.removeItem(`thread_${sessionId}`);
+          sessionStorage.removeItem(`interrupt_type_${sessionId}`);
+        }
+        
+        // Docs Agent의 대화형 응답 처리 (legacy compatibility)
         if (data.agent === 'docs_agent' && data.waiting_for_input) {
           const interactiveMessage = {
             type: 'interactive',
@@ -476,6 +461,14 @@ const ChatScreen = () => {
             botResponseContent += `\n\n💾 파일 위치: ${data.file_path}`;
           }
         }
+        
+        // Handle completed data from resume endpoint
+        if (data.data?.final_doc) {
+          botResponseContent += '\n\n📄 생성된 문서가 저장되었습니다.';
+          if (data.data.final_doc) {
+            botResponseContent += `\n💾 파일 위치: ${data.data.final_doc}`;
+          }
+        }
       } else {
         botResponseContent = `❌ 오류 발생: ${data.error || data.message}`;
       }
@@ -491,10 +484,7 @@ const ChatScreen = () => {
       setMessages(finalMessages);
       saveMessageToHistory(finalMessages);
 
-      // 에이전트가 새로 선택되었거나 변경된 경우 현재 에이전트 정보 갱신
-      if (data.agent_selected || data.agent_fixed) {
-        checkCurrentAgent(sessionId);
-      }
+      // RouterAgent가 자동으로 처리하므로 에이전트 확인 불필요
 
     } catch (error) {
       console.error('API 요청 오류:', error);
@@ -509,6 +499,9 @@ const ChatScreen = () => {
       saveMessageToHistory(finalMessages);
     } finally {
       setIsLoading(false);
+      // Clear any pending interactive states on error
+      setIsWaitingForDocsInput(false);
+      setDocsInputType(null);
     }
   };
 
@@ -518,7 +511,7 @@ const ChatScreen = () => {
 
     try {
       // 초기 화면에서 선택하는 경우 (query가 비어있음)
-      const endpoint = query === '' ? '/api/initial-agent-select' : '/api/select-agent';
+      const endpoint = query === '' ? '/api/v1/initial-agent-select' : '/api/v1/select-agent';
       
       const response = await fetch(`http://localhost:8000${endpoint}`, {
         method: 'POST',
@@ -526,8 +519,8 @@ const ChatScreen = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          message: query,
           session_id: sessionId,
-          query: query,
           selected_agent: selectedAgentKey
         })
       });
@@ -569,7 +562,7 @@ const ChatScreen = () => {
           setMessages(updatedMessages);
           saveMessageToHistory(updatedMessages);
           
-          checkCurrentAgent(sessionId);
+          // RouterAgent가 자동으로 처리
         }
       } else {
         const errorMessage = {
@@ -614,30 +607,9 @@ const ChatScreen = () => {
     }
   }, []);
 
-  // 현재 세션의 선택된 에이전트 확인
-  const checkCurrentAgent = async (sessionId) => {
-    if (!sessionId) return;
-    
-    try {
-      const response = await fetch(`http://localhost:8000/api/current-agent/${sessionId}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.has_selected_agent) {
-          setCurrentSessionAgent(data.agent_info);
-          console.log(`✅ 현재 세션 에이전트: ${data.agent_info.agent_name}`);
-        } else {
-          setCurrentSessionAgent(null);
-          console.log('📝 현재 세션에 고정된 에이전트 없음');
-        }
-      }
-    } catch (error) {
-      console.error('❌ 현재 에이전트 확인 실패:', error);
-    }
-  };
+  // checkCurrentAgent 함수 제거 - RouterAgent가 자동으로 처리
 
-  useEffect(() => {
-    checkCurrentAgent(sessionId);
-  }, [sessionId]);
+  // useEffect 제거 - checkCurrentAgent 호출 불필요
 
   // 에이전트 초기화
   const resetAgent = async () => {
@@ -648,7 +620,7 @@ const ChatScreen = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/reset-agent', {
+      const response = await fetch('http://localhost:8000/api/v1/reset-agent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -770,7 +742,45 @@ const ChatScreen = () => {
           </div>
 
           <div className="messages-container">
-            {messages.map((message, index) => (
+            {messages.length === 0 ? (
+              <div className="example-prompts-container">
+                <h2 className="welcome-title">무엇을 도와드릴까요?</h2>
+                <p className="welcome-subtitle">아래 예시를 클릭하거나 직접 질문해 주세요</p>
+                <div className="example-prompts-grid">
+                  <div className="prompt-card" onClick={() => setInputValue("최수아 직원의 이번달 실적을 분석해줘")}>
+                    <div className="prompt-icon">👥</div>
+                    <div className="prompt-text">최수아 직원의 이번달 실적을 분석해줘</div>
+                    <div className="prompt-category">직원 실적</div>
+                  </div>
+                  <div className="prompt-card" onClick={() => setInputValue("미라클신경과 거래처 매출 추이를 보여줘")}>
+                    <div className="prompt-icon">🏢</div>
+                    <div className="prompt-text">미라클신경과 거래처 매출 추이를 보여줘</div>
+                    <div className="prompt-category">거래처 분석</div>
+                  </div>
+                  <div className="prompt-card" onClick={() => setInputValue("영업방문 보고서를 작성해줘")}>
+                    <div className="prompt-icon">📄</div>
+                    <div className="prompt-text">영업방문 보고서를 작성해줘</div>
+                    <div className="prompt-category">문서 작성</div>
+                  </div>
+                  <div className="prompt-card" onClick={() => setInputValue("영업 규정 및 가이드라인을 찾아줘")}>
+                    <div className="prompt-icon">🔍</div>
+                    <div className="prompt-text">영업 규정 및 가이드라인을 찾아줘</div>
+                    <div className="prompt-category">정보 검색</div>
+                  </div>
+                  <div className="prompt-card" onClick={() => setInputValue("서부팀 전체 성과를 분석해줘")}>
+                    <div className="prompt-icon">📊</div>
+                    <div className="prompt-text">서부팀 전체 성과를 분석해줘</div>
+                    <div className="prompt-category">팀 성과</div>
+                  </div>
+                  <div className="prompt-card" onClick={() => setInputValue("제품설명회 신청서를 만들어줘")}>
+                    <div className="prompt-icon">📋</div>
+                    <div className="prompt-text">제품설명회 신청서를 만들어줘</div>
+                    <div className="prompt-category">문서 작성</div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              messages.map((message, index) => (
               <div key={index} className={`message ${message.type === 'user' ? 'user-message' : 'ai-message'}`}>
                 <div className="message-header">
                   <span className="message-sender">
@@ -931,7 +941,7 @@ const ChatScreen = () => {
                                   }}
                                   disabled={isLoading}
                                 >
-                                  {option}
+                                  {idx + 1}. {option}
                                 </button>
                               ))}
                             </div>
@@ -959,7 +969,7 @@ const ChatScreen = () => {
                   )}
                 </div>
               </div>
-            ))}
+            )))}
             
             {isLoading && (
               <div className="message ai-message">

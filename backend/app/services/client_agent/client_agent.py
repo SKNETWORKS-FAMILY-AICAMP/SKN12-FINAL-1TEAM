@@ -154,15 +154,8 @@ async def run(query: str, session_id: str, messages: List[Dict] = None) -> Dict[
         Dict: 실행 결과
     """
     try:
-        # 컨텍스트 유틸리티 임포트
-        from ..common.context_utils import resolve_references
-        
-        # 참조 해결 (그 병원, 그 거래처 → 실제 이름)
-        enhanced_query = resolve_references(query, messages or [])
-        
-        # 로깅
-        if enhanced_query != query:
-            print(f"[CONTEXT] 쿼리 보완: '{query}' → '{enhanced_query}'")
+        # 참조 해결 없이 원본 쿼리 사용
+        enhanced_query = query
         
         # 거래처 분석 실행
         result = await agent.analyze_company(enhanced_query)
