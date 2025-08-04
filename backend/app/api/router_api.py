@@ -129,41 +129,59 @@ async def chat(request: ChatRequest) -> ChatResponse:
             
             logger.info(f"[INTERRUPT] next_node: {next_node}, doc_type: {doc_type}")
             
-            response.data = {
-                "thread_id": result.get("thread_id") or (sub_result.get("thread_id") if sub_result else None),
-                "next_node": next_node,
-                "doc_type": doc_type,
-                "state_info": state_info
-            }
-            
-            # next_node로 정확한 상황 판단
-            if next_node == "receive_verification_input":
-                # 분류 검증 단계
-                response.response = f"분류된 문서 타입: {doc_type}\n\n위 분류 결과가 올바른가요?"
-                response.data["interrupt_type"] = "verification"
-                response.data["prompt_type"] = "verification"
+            # docs_agent에서 반환한 정보가 있으면 우선 사용
+            if sub_result and isinstance(sub_result, dict):
+                response.data = {
+                    "thread_id": result.get("thread_id") or sub_result.get("thread_id"),
+                    "next_node": next_node,
+                    "doc_type": doc_type,
+                    "state_info": state_info,
+                    "prompt": sub_result.get("prompt"),
+                    "prompt_type": sub_result.get("prompt_type"),
+                    "options": sub_result.get("options"),
+                    "required_fields": sub_result.get("required_fields")
+                }
                 
-            elif next_node == "receive_manual_doc_type_input":
-                # 수동 선택 단계
-                response.response = "문서 타입을 선택해주세요."
-                response.data["prompt_type"] = "manual_doc_selection"
-                response.data["options"] = [
-                    {"value": "1", "label": "영업방문 결과보고서"},
-                    {"value": "2", "label": "제품설명회 시행 신청서"},
-                    {"value": "3", "label": "제품설명회 시행 결과보고서"},
-                    {"value": "4", "label": "종료"}
-                ]
-                response.data["message"] = "올바른 문서 타입을 선택해주세요. 번호(1-4) 또는 문서명을 직접 입력할 수 있습니다."
-                
-            elif next_node == "receive_user_input":
-                # 필드 입력 단계
-                response.response = "필요한 정보를 입력해주세요."
-                response.data["interrupt_type"] = "data_input"
-                
+                # docs_agent에서 반환한 프롬프트 사용
+                response.response = sub_result.get("prompt", "추가 정보가 필요합니다.")
+                response.data["interrupt_type"] = sub_result.get("prompt_type", "unknown")
             else:
-                # 기본값
-                response.response = sub_result.get("prompt") if sub_result else "추가 정보가 필요합니다."
-                response.data["interrupt_type"] = "verification"
+                # 기본 처리 (sub_result가 없는 경우)
+                response.data = {
+                    "thread_id": result.get("thread_id"),
+                    "next_node": next_node,
+                    "doc_type": doc_type,
+                    "state_info": state_info
+                }
+                
+                # next_node로 정확한 상황 판단
+                if next_node == "receive_verification_input":
+                    # 분류 검증 단계
+                    response.response = f"분류된 문서 타입: {doc_type}\n\n위 분류 결과가 올바른가요?"
+                    response.data["interrupt_type"] = "verification"
+                    response.data["prompt_type"] = "verification"
+                    
+                elif next_node == "receive_manual_doc_type_input":
+                    # 수동 선택 단계
+                    response.response = "문서 타입을 선택해주세요."
+                    response.data["prompt_type"] = "manual_doc_selection"
+                    response.data["options"] = [
+                        {"value": "1", "label": "영업방문 결과보고서"},
+                        {"value": "2", "label": "제품설명회 시행 신청서"},
+                        {"value": "3", "label": "제품설명회 시행 결과보고서"},
+                        {"value": "4", "label": "종료"}
+                    ]
+                    response.data["message"] = "올바른 문서 타입을 선택해주세요. 번호(1-4) 또는 문서명을 직접 입력할 수 있습니다."
+                    
+                elif next_node == "receive_user_input":
+                    # 필드 입력 단계
+                    response.response = "필요한 정보를 입력해주세요."
+                    response.data["interrupt_type"] = "data_input"
+                    
+                else:
+                    # 기본값
+                    response.response = "추가 정보가 필요합니다."
+                    response.data["interrupt_type"] = "unknown"
                 
         elif sub_result and sub_result.get("success"):
             # 성공적인 결과
@@ -258,13 +276,26 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
         )
         
         if result.get("success"):
-            # 성공적으로 완료
-            response.response = "처리가 완료되었습니다."
+            # 성공적으로 완료 (규정 위반이 있어도 분석은 완료)
             result_data = result.get("result") or {}
-            response.data = {
-                "final_doc": result_data.get("final_doc") if isinstance(result_data, dict) else None,
-                "filled_data": result_data.get("filled_data") if isinstance(result_data, dict) else None
-            }
+            
+            # 규정 위반으로 파일 생성이 차단된 경우 확인
+            if result.get("violation_blocked"):
+                response.response = "분석이 완료되었지만 규정 위반으로 파일 생성이 차단되었습니다."
+                response.data = {
+                    "final_doc": None,  # 파일이 생성되지 않음
+                    "filled_data": result.get("filled_data") or (result_data.get("filled_data") if isinstance(result_data, dict) else None),
+                    "violation": result.get("violation"),
+                    "violation_details": result.get("violation_details", []),
+                    "violation_blocked": True
+                }
+            else:
+                # 정상적으로 완료
+                response.response = "처리가 완료되었습니다."
+                response.data = {
+                    "final_doc": result_data.get("final_doc") if isinstance(result_data, dict) else None,
+                    "filled_data": result.get("filled_data") or (result_data.get("filled_data") if isinstance(result_data, dict) else None)
+                }
         
         elif result.get("interrupted"):
             # 여전히 인터럽트 상태
@@ -304,15 +335,34 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
                 response.data["interrupt_type"] = "data_input"
                 response.data["doc_type"] = doc_type
         else:
-            # 실패 케이스 (규정 위반 등)
+            # 실패 케이스 (규정 위반, 종료 등)
             response.requires_interrupt = False
+            
+            # 종료 처리 확인
+            if result.get("error_type") == "user_terminated" or result.get("end_process"):
+                response.response = "문서 작성이 종료되었습니다."
+                response.data = {
+                    "error_type": "user_terminated",
+                    "message": "사용자가 종료를 선택했습니다.",
+                    "end_session": True
+                }
+                # 세션 정리
+                if hasattr(router_agent, 'sessions') and session_id in router_agent.sessions:
+                    del router_agent.sessions[session_id]
+                return response
             
             # 에러 메시지 구성
             error_msg = "처리 중 오류가 발생했습니다."
+            violation_text = None
+            
             if result.get("error"):
                 error_msg = f"오류 발생: {result['error']}"
             elif result.get("violation"):
                 error_msg = "규정 위반으로 문서 생성이 중단되었습니다."
+                violation_text = result.get("violation")
+            elif result.get("error_type") == "policy_violation":
+                error_msg = "규정 위반으로 문서 생성이 중단되었습니다."
+                violation_text = result.get("violation")
             elif result.get("result") is None:
                 error_msg = "문서 생성 실패: 결과가 없습니다."
             
@@ -322,17 +372,20 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
             if isinstance(result, dict):
                 # result.result에서 violation 정보 확인
                 inner_result = result.get("result", {})
-                violation = None
                 
-                if result.get("violation"):
-                    violation = result["violation"]
-                elif isinstance(inner_result, dict) and inner_result.get("violation"):
-                    violation = inner_result["violation"]
+                # violation_text가 이미 설정되어 있지 않으면 inner_result에서 확인
+                if not violation_text and isinstance(inner_result, dict):
+                    violation_text = inner_result.get("violation")
+                
+                # 위반 상세 정보가 있으면 포함
+                violation_details = result.get("violation_details", [])
                 
                 response.data = {
-                    "error_type": "policy_violation" if violation else "processing_error",
-                    "violation": violation,
-                    "details": result.get("details", result.get("error"))
+                    "error_type": result.get("error_type", "policy_violation" if violation_text else "processing_error"),
+                    "violation": violation_text,
+                    "violation_details": violation_details,
+                    "details": result.get("details", result.get("error")),
+                    "filled_data": inner_result.get("filled_data") if inner_result else None
                 }
             else:
                 response.data = {"error_type": "unknown_error"}

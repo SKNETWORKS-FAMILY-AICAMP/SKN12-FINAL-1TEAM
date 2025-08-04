@@ -29,7 +29,7 @@ class RouterAgent:
         # 에이전트 설정 (메타데이터 포함)
         self.agents_config = {
             "docs_agent": {
-                "instance": CreateDocumentAgent(),
+                "instance": CreateDocumentAgent(api_mode=True),  # API 모드로 초기화
                 "metadata": {
                     "description": "문서 자동 생성 및 규정 검토를 담당합니다. 문서생성시 규정위반 여부도 검토합니다.",
                     "capabilities": [
@@ -185,44 +185,42 @@ class RouterAgent:
             
             # 에이전트별 실행
             if agent_name == "docs_agent":
-                # API 모드 설정
-                os.environ["NO_INPUT_MODE"] = "true"
-                logger.info(f"[EXECUTE_AGENT] API mode enabled for docs_agent")
+                logger.info(f"[EXECUTE_AGENT] Running docs_agent in API mode")
                 try:
-                    # docs_agent는 thread_id를 지원하지 않음
+                    # docs_agent는 이미 API 모드로 초기화됨
                     result = agent.run(user_input=query)
                     logger.info(f"[EXECUTE_AGENT] docs_agent result keys: {list(result.keys()) if result else 'None'}")
-                finally:
-                    # 환경 변수 복원
-                    os.environ.pop("NO_INPUT_MODE", None)
-                
-                # 인터럽트 처리
-                if isinstance(result, dict) and result.get("interrupted"):
-                    logger.info(f"[EXECUTE_AGENT] Interrupt detected - next_node: {result.get('next_node')}, doc_type: {result.get('doc_type')}")
-                    current_state["requires_interrupt"] = True
-                    current_state["agent_type"] = agent_name
                     
-                    # 추가 정보를 result에 병합
-                    if result.get("next_node"):
-                        current_state["next_node"] = result["next_node"]
-                    if result.get("doc_type"):
-                        current_state["doc_type"] = result["doc_type"]
-                    if result.get("state_info"):
-                        current_state["state_info"] = result["state_info"]
+                    # 인터럽트 처리
+                    if isinstance(result, dict) and result.get("interrupted"):
+                        logger.info(f"[EXECUTE_AGENT] Interrupt detected - next_node: {result.get('next_node')}, doc_type: {result.get('doc_type')}")
+                        
+                        # router의 current_state에 모든 인터럽트 정보 저장
+                        current_state["requires_interrupt"] = True
+                        current_state["agent_type"] = agent_name
+                        current_state["thread_id"] = result.get("thread_id")
+                        current_state["next_node"] = result.get("next_node")
+                        current_state["doc_type"] = result.get("doc_type")
+                        current_state["state_info"] = result.get("state_info", {})
+                        
+                        # 세션 정보 업데이트
+                        if session_id:
+                            logger.info(f"[EXECUTE_AGENT] Saving session for {session_id} with thread_id: {result.get('thread_id')}")
+                            self.sessions[session_id] = {
+                                "agent": agent_name,
+                                "thread_id": result.get("thread_id"),
+                                "active": True,
+                                "context": context,
+                                "next_node": result.get("next_node"),
+                                "doc_type": result.get("doc_type"),
+                                "state_info": result.get("state_info", {})
+                            }
                     
-                    # 세션 생성/업데이트
-                    if session_id:
-                        logger.info(f"[EXECUTE_AGENT] Saving session for {session_id} with thread_id: {result.get('thread_id')}")
-                        self.sessions[session_id] = {
-                            "agent": agent_name,
-                            "thread_id": result.get("thread_id"),
-                            "active": True,
-                            "context": context,
-                            "next_node": result.get("next_node"),
-                            "doc_type": result.get("doc_type")
-                        }
-                
-                return result
+                    return result
+                    
+                except Exception as e:
+                    logger.error(f"[EXECUTE_AGENT] docs_agent error: {e}")
+                    return {"success": False, "error": str(e)}
             
             elif agent_name == "employee_agent":
                 # employee_agent는 analyze_employee_performance 메서드 사용
@@ -388,13 +386,8 @@ class RouterAgent:
                 thread_id = session_info["thread_id"]
                 agent = self.agents_config["docs_agent"]["instance"]
                 
-                # API 모드 설정
-                os.environ["NO_INPUT_MODE"] = "true"
-                try:
-                    result = agent.resume(thread_id, user_reply, reply_type)
-                finally:
-                    # 환경 변수 복원
-                    os.environ.pop("NO_INPUT_MODE", None)
+                # docs_agent는 이미 API 모드로 설정됨
+                result = agent.resume(thread_id, user_reply, reply_type)
                 
                 # result가 None인 경우 처리
                 if result is None:

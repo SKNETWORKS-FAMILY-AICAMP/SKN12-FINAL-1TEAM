@@ -463,14 +463,70 @@ const ChatScreen = () => {
         }
         
         // Handle completed data from resume endpoint
-        if (data.data?.final_doc) {
+        if (data.data?.violation_blocked) {
+          // 규정 위반으로 파일 생성이 차단된 경우
+          botResponseContent += '\n\n⚠️ 분석은 완료되었지만 규정 위반으로 파일 생성이 차단되었습니다.';
+          
+          // 위반 상세 정보가 있으면 추가
+          if (data.data?.violation_details && data.data.violation_details.length > 0) {
+            botResponseContent += '\n\n📋 위반 내용:';
+            data.data.violation_details.forEach((violation, index) => {
+              botResponseContent += `\n${index + 1}. ${violation}`;
+            });
+          }
+          
+          // 분석된 데이터 표시
+          if (data.data?.filled_data) {
+            botResponseContent += '\n\n📝 분석된 데이터:';
+            Object.entries(data.data.filled_data).forEach(([key, value]) => {
+              if (value) {
+                botResponseContent += `\n- ${key}: ${value}`;
+              }
+            });
+          }
+        } else if (data.data?.final_doc) {
           botResponseContent += '\n\n📄 생성된 문서가 저장되었습니다.';
           if (data.data.final_doc) {
             botResponseContent += `\n💾 파일 위치: ${data.data.final_doc}`;
           }
         }
       } else {
-        botResponseContent = `❌ 오류 발생: ${data.error || data.message}`;
+        // 오류 메시지 처리 - response, error, message 순서로 확인
+        const errorMsg = data.response || data.error || data.message || '알 수 없는 오류가 발생했습니다.';
+        
+        // 사용자가 종료를 선택한 경우
+        if (data.data?.error_type === 'user_terminated') {
+          botResponseContent = '👋 문서 작성이 종료되었습니다. 새로운 작업을 시작해주세요.';
+          // 세션 정리
+          sessionStorage.removeItem(`thread_${sessionId}`);
+          sessionStorage.removeItem(`interrupt_type_${sessionId}`);
+        }
+        // 규정 위반 관련 추가 정보가 있으면 포함
+        else if (data.data?.error_type === 'policy_violation') {
+          botResponseContent = `❌ ${errorMsg}`;
+          
+          // 위반 상세 정보가 있으면 추가
+          if (data.data?.violation_details && data.data.violation_details.length > 0) {
+            botResponseContent += '\n\n📋 위반 내용:';
+            data.data.violation_details.forEach((violation, index) => {
+              botResponseContent += `\n${index + 1}. ${violation}`;
+            });
+          } else if (data.data?.violation) {
+            botResponseContent += `\n\n📋 위반 내용:\n${data.data.violation}`;
+          }
+          
+          // 입력한 데이터가 있으면 표시
+          if (data.data?.filled_data) {
+            botResponseContent += '\n\n📝 입력한 데이터:';
+            Object.entries(data.data.filled_data).forEach(([key, value]) => {
+              if (value) {
+                botResponseContent += `\n- ${key}: ${value}`;
+              }
+            });
+          }
+        } else {
+          botResponseContent = `❌ ${errorMsg}`;
+        }
       }
 
       const botMessage = {
@@ -483,6 +539,12 @@ const ChatScreen = () => {
       const finalMessages = [...newMessages, botMessage];
       setMessages(finalMessages);
       saveMessageToHistory(finalMessages);
+
+      // 성공적으로 완료된 경우 thread_id 정리 (규정 위반 여부와 관계없이)
+      if (data.success && !data.requires_interrupt) {
+        sessionStorage.removeItem(`thread_${sessionId}`);
+        sessionStorage.removeItem(`interrupt_type_${sessionId}`);
+      }
 
       // RouterAgent가 자동으로 처리하므로 에이전트 확인 불필요
 

@@ -47,16 +47,18 @@ class State(TypedDict):
 class CreateDocumentAgent:
     """통합 문서 작성 에이전트 - 분류부터 생성까지"""
     
-    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0.7):
+    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0.7, api_mode: bool = False):
         """
         CreateDocumentAgent 초기화
         
         Args:
             model_name: 기본 LLM 모델명
             temperature: LLM 온도 설정
+            api_mode: API 모드 활성화 여부. True일 경우 input() 대신 인터럽트 정보 반환
         """
         self.model_name = model_name
         self.temperature = temperature
+        self.api_mode = api_mode or os.getenv("NO_INPUT_MODE", "false").lower() == "true"
         
         # LLM 초기화
         self.llm = ChatOpenAI(
@@ -614,6 +616,7 @@ class CreateDocumentAgent:
                 print("[SUCCESS] 규정 위반 없음 - 파싱 단계로 진행")
             else:
                 print(f"[WARNING] 규정 위반 사항 발견: {violation_result[:100]}...")
+                print("[INFO] 규정 위반이 있지만 분석은 계속 진행합니다...")
             
         except Exception as e:
             print(f"[ERROR] 규정 검사 중 오류 발생: {e}")
@@ -731,15 +734,33 @@ class CreateDocumentAgent:
     def create_choan_document(self, state: State) -> State:
         """
         파싱된 데이터를 기반으로 초안 문서를 생성하고 docx 파일로 저장합니다.
+        규정 위반이 있는 경우 파일 생성을 차단합니다.
         
         Args:
-            state (State): doc_type, filled_data 필드 포함
+            state (State): doc_type, filled_data, violation 필드 포함
         
         Returns:
             State: final_doc 필드 업데이트된 상태 (파일 경로 또는 None)
         """
         doc_type = state["doc_type"]
         filled_data = state["filled_data"]
+        violation = state.get("violation", "")
+        
+        # API 모드에서 규정 위반이 있는 경우 파일 생성 차단
+        if self.api_mode and self._is_actual_violation(violation):
+            print("\n[ALERT] 규정 위반으로 인해 파일 생성이 차단되었습니다! (API 모드)")
+            print("[INFO] 분석은 완료되었지만 규정 위반으로 문서 파일은 생성되지 않습니다.")
+            
+            # 위반 내용 표시
+            actual_violations = self._parse_violations(violation)
+            if actual_violations:
+                print("\n[위반 내용]")
+                for i, v in enumerate(actual_violations, 1):
+                    print(f"{i}. {v}")
+            
+            state["final_doc"] = None
+            state["violation_blocked"] = True
+            return state
         
         # 문서 타입에 따른 템플릿 파일 매핑
         template_mapping = {
@@ -1091,6 +1112,7 @@ class CreateDocumentAgent:
     def policy_check_router(self, state: State) -> str:
         """
         규정 검사 결과에 따라 다음 노드를 결정합니다.
+        API 모드에서는 규정 위반이 있어도 분석을 계속 진행합니다.
         
         Args:
             state (State): violation 필드 포함
@@ -1100,13 +1122,21 @@ class CreateDocumentAgent:
         """
         violation = state.get("violation", "")
         
-        # 실제 위반 사항이 있는지 검사
-        if self._is_actual_violation(violation):
-            print(f"[WARNING] 규정 위반 발견 - inform_violation으로 이동")
-            return "inform_violation"
-        else:
-            print(f"[SUCCESS] 규정 위반 없음 - parse_user_input으로 이동")
+        if self.api_mode:
+            # API 모드에서는 항상 분석 계속
+            if self._is_actual_violation(violation):
+                print(f"[WARNING] 규정 위반이 발견되었지만 분석을 계속합니다 (API 모드)")
+            else:
+                print(f"[SUCCESS] 규정 위반 없음 - parse_user_input으로 이동")
             return "parse_user_input"
+        else:
+            # 콘솔 모드에서는 기존대로 동작
+            if self._is_actual_violation(violation):
+                print(f"[WARNING] 규정 위반 발견 - inform_violation으로 이동")
+                return "inform_violation"
+            else:
+                print(f"[SUCCESS] 규정 위반 없음 - parse_user_input으로 이동")
+                return "parse_user_input"
     
     def parse_router(self, state: State) -> str:
         """
@@ -1331,13 +1361,90 @@ class CreateDocumentAgent:
                 
                 return {"success": True, "result": result, "thread_id": thread_id}
             else:
-                # 인터럽트로 중단된 경우 - 대화형 처리 시작
+                # 인터럽트로 중단된 경우
                 print(f"\n🔔 인터럽트 발생 - 스레드 ID: {thread_id}")
-                return self._handle_interactive_mode(thread_id)
+                if self.api_mode:
+                    # API 모드일 경우 인터럽트 정보 반환
+                    return self._handle_api_interrupt(thread_id, result)
+                else:
+                    # 콘솔 모드일 경우 기존 대화형 처리
+                    return self._handle_interactive_mode(thread_id)
                 
         except Exception as e:
             print(f"\n[ERROR] 실행 중 오류: {e}")
             return {"success": False, "error": str(e)}
+    
+    def _handle_api_interrupt(self, thread_id: str, current_result: dict = None):
+        """
+        API 모드에서 인터럽트 처리
+        
+        Args:
+            thread_id (str): 스레드 ID
+            current_result (dict): 현재 워크플로우 결과
+        
+        Returns:
+            dict: 인터럽트 정보 (interrupted, thread_id, next_node, doc_type 등 포함)
+        """
+        current_state = self.app.get_state({"configurable": {"thread_id": thread_id}})
+        next_node = current_state.next[0] if current_state.next else None
+        
+        # 현재 상태에서 모든 정보 추출 (원본과 동일하게)
+        state_values = current_state.values
+        doc_type = state_values.get("doc_type")
+        
+        # 전체 state 정보를 포함하여 누락 방지
+        interrupt_info = {
+            "success": False,
+            "interrupted": True,
+            "thread_id": thread_id,
+            "next_node": next_node,
+            "doc_type": doc_type,
+            "state_info": {
+                # 모든 state 필드 포함
+                "messages": [msg.content if hasattr(msg, 'content') else str(msg) for msg in state_values.get("messages", [])],
+                "template_content": state_values.get("template_content"),
+                "filled_data": state_values.get("filled_data", {}),
+                "violation": state_values.get("violation"),
+                "final_doc": state_values.get("final_doc"),
+                "retry_count": state_values.get("retry_count", 0),
+                "restart_classification": state_values.get("restart_classification"),
+                "classification_retry_count": state_values.get("classification_retry_count"),
+                "classification_failed": state_values.get("classification_failed"),
+                "skip_verification": state_values.get("skip_verification"),
+                "end_process": state_values.get("end_process"),
+                "parse_retry_count": state_values.get("parse_retry_count"),
+                "parse_failed": state_values.get("parse_failed"),
+                "user_reply": state_values.get("user_reply"),
+                "verification_reply": state_values.get("verification_reply"),
+                "verification_result": state_values.get("verification_result"),
+                "user_content": state_values.get("user_content"),
+                "skip_ask_fields": state_values.get("skip_ask_fields")
+            }
+        }
+        
+        # 노드별 프롬프트 설정 (원본 로직 유지)
+        if next_node == "receive_verification_input":
+            interrupt_info["prompt"] = f"분류된 문서 타입: {doc_type}\n\n위 분류 결과가 올바른가요?"
+            interrupt_info["prompt_type"] = "verification"
+        elif next_node == "receive_manual_doc_type_input":
+            interrupt_info["prompt"] = "문서 타입을 선택해주세요."
+            interrupt_info["prompt_type"] = "manual_selection"
+            interrupt_info["options"] = [
+                {"value": "1", "label": "영업방문 결과보고서"},
+                {"value": "2", "label": "제품설명회 시행 신청서"},
+                {"value": "3", "label": "제품설명회 시행 결과보고서"},
+                {"value": "4", "label": "종료"}
+            ]
+        elif next_node == "receive_user_input":
+            # 필요한 필드 정보 포함
+            template_info = self.doc_prompts.get(doc_type, {})
+            interrupt_info["prompt"] = template_info.get("input_prompt", "필요한 정보를 입력해주세요.")
+            interrupt_info["prompt_type"] = "field_input"
+            interrupt_info["required_fields"] = template_info.get("required_fields", [])
+            # 템플릿 정보도 포함
+            interrupt_info["template_content"] = state_values.get("template_content")
+        
+        return interrupt_info
     
     def _handle_interactive_mode(self, thread_id: str):
         """
@@ -1423,39 +1530,101 @@ class CreateDocumentAgent:
             current_messages.append(new_message)
             self.app.update_state(config, {"messages": current_messages})
             
-            # 워크플로우 재개 - stream을 사용하여 단계별로 진행
-            final_result = None
-            for chunk in self.app.stream(None, config):
-                print(f"🔄 처리 중: {list(chunk.keys())}")
-                if chunk:
-                    final_result = list(chunk.values())[-1]  # 마지막 결과 저장
-            
-            # 최종 상태 확인
-            if final_result:
-                violation_text = final_result.get("violation", "")
-                has_no_violation = not self._is_actual_violation(violation_text)
-                
-                if has_no_violation and final_result.get("filled_data") and final_result.get("final_doc"):
-                    print("\n" + "="*50)
-                    print("📄 문서 생성 완료!")
-                    print("="*50)
+            # 워크플로우 재개 - API 모드 체크
+            if self.api_mode:
+                # API 모드에서는 invoke 사용하여 한 번에 처리
+                try:
+                    final_result = self.app.invoke(None, config)
                     
-                    result_json = json.dumps(final_result["filled_data"], indent=2, ensure_ascii=False)
-                    print(result_json)
-                    print(f"\n📁 생성된 문서: {final_result['final_doc']}")
+                    # 또 다른 인터럽트 확인
+                    current_state_after = self.app.get_state(config)
+                    if current_state_after.next:
+                        return self._handle_api_interrupt(thread_id, final_result)
                     
-                    return {"success": True, "result": final_result}
+                    # 종료 처리 확인
+                    if final_result.get("end_process"):
+                        return {
+                            "success": False,
+                            "result": final_result,
+                            "thread_id": thread_id,
+                            "error_type": "user_terminated",
+                            "message": "사용자가 종료를 선택했습니다.",
+                            "end_process": True
+                        }
+                    
+                    # 성공 또는 실패 처리
+                    violation_text = final_result.get("violation", "")
+                    has_violation = self._is_actual_violation(violation_text)
+                    
+                    # API 모드에서는 규정 위반이 있어도 분석이 완료되면 성공으로 처리
+                    if final_result.get("filled_data"):
+                        if has_violation:
+                            # 규정 위반이 있지만 분석은 완료됨
+                            actual_violations = self._parse_violations(violation_text)
+                            return {
+                                "success": True,  # 분석은 성공했으므로 True
+                                "result": final_result,
+                                "thread_id": thread_id,
+                                "filled_data": final_result.get("filled_data"),
+                                "final_doc": final_result.get("final_doc"),  # 파일 생성이 차단되면 None
+                                "violation": violation_text,
+                                "violation_details": actual_violations,
+                                "violation_blocked": final_result.get("violation_blocked", False)
+                            }
+                        else:
+                            # 규정 위반 없이 성공
+                            return {
+                                "success": True, 
+                                "result": final_result,
+                                "thread_id": thread_id,
+                                "filled_data": final_result.get("filled_data"),
+                                "final_doc": final_result.get("final_doc")
+                            }
+                    else:
+                        # 분석 자체가 실패한 경우
+                        return {
+                            "success": False, 
+                            "result": final_result,
+                            "thread_id": thread_id,
+                            "error_type": "processing_error"
+                        }
+                        
+                except Exception as e:
+                    return {"success": False, "error": str(e), "thread_id": thread_id}
             else:
-                # 중간 인터럽트 상황도 처리
-                current_state_after = self.app.get_state(config)
-                if current_state_after.next:  # 다음 실행할 노드가 있으면 인터럽트 상황
-                    next_node = current_state_after.next[0] if current_state_after.next else None
-                    print(f"🔔 다음 인터럽트 대기 중 - 다음 노드: {next_node}")
-                    return {"success": False, "interrupted": True, "thread_id": thread_id, "next_node": next_node}
+                # 기존 콘솔 모드 처리 - stream 사용
+                final_result = None
+                for chunk in self.app.stream(None, config):
+                    print(f"🔄 처리 중: {list(chunk.keys())}")
+                    if chunk:
+                        final_result = list(chunk.values())[-1]  # 마지막 결과 저장
+                
+                # 최종 상태 확인
+                if final_result:
+                    violation_text = final_result.get("violation", "")
+                    has_no_violation = not self._is_actual_violation(violation_text)
+                    
+                    if has_no_violation and final_result.get("filled_data") and final_result.get("final_doc"):
+                        print("\n" + "="*50)
+                        print("📄 문서 생성 완료!")
+                        print("="*50)
+                        
+                        result_json = json.dumps(final_result["filled_data"], indent=2, ensure_ascii=False)
+                        print(result_json)
+                        print(f"\n📁 생성된 문서: {final_result['final_doc']}")
+                        
+                        return {"success": True, "result": final_result}
                 else:
-                    print("\n[ERROR] 문서 생성 실패")
-                    print(f"최종 결과: {final_result}")
-                    return {"success": False, "result": final_result}
+                    # 중간 인터럽트 상황도 처리
+                    current_state_after = self.app.get_state(config)
+                    if current_state_after.next:  # 다음 실행할 노드가 있으면 인터럽트 상황
+                        next_node = current_state_after.next[0] if current_state_after.next else None
+                        print(f"🔔 다음 인터럽트 대기 중 - 다음 노드: {next_node}")
+                        return {"success": False, "interrupted": True, "thread_id": thread_id, "next_node": next_node}
+                    else:
+                        print("\n[ERROR] 문서 생성 실패")
+                        print(f"최종 결과: {final_result}")
+                        return {"success": False, "result": final_result}
                 
         except Exception as e:
             print(f"\n[ERROR] 재개 중 오류: {e}")
