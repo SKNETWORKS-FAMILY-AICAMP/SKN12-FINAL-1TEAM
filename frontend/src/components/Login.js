@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loginUser, verifyToken } from '../services/api';
-import './LoginPage.css';
+import './Login.css';
 
-const LoginPage = ({ onLogin }) => {
+const Login = ({ onLogin }) => {
   const navigate = useNavigate();
   const [loginData, setLoginData] = useState({
     email: '',
@@ -164,4 +164,4 @@ const LoginPage = ({ onLogin }) => {
   );
 };
 
-export default LoginPage; 
+export default Login; 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { getDocuments } from '../services/api';
-import './SearchPage.css';
+import './Search.css';
 
-const SearchPage = () => {
+const Search = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -12,6 +12,40 @@ const SearchPage = () => {
   useEffect(() => {
     fetchDocuments();
   }, []);
+
+  // 내부/외부 구분 로직
+  const determineClassification = (docType, docTitle) => {
+    // 외부 문서 키워드들
+    const externalKeywords = [
+      '계약서', '협약서', '제휴', '파트너십', '외부', '고객', '공급업체',
+      'vendor', 'supplier', 'contract', 'agreement', 'partnership'
+    ];
+    
+    // 내부 문서 키워드들
+    const internalKeywords = [
+      '규정', '정책', '매뉴얼', '가이드라인', '절차', '내규', '운영규정',
+      'policy', 'manual', 'guideline', 'procedure', 'regulation'
+    ];
+    
+    const searchText = (docTitle + ' ' + docType).toLowerCase();
+    
+    // 외부 키워드가 포함되어 있으면 외부
+    for (const keyword of externalKeywords) {
+      if (searchText.includes(keyword.toLowerCase())) {
+        return '외부';
+      }
+    }
+    
+    // 내부 키워드가 포함되어 있으면 내부
+    for (const keyword of internalKeywords) {
+      if (searchText.includes(keyword.toLowerCase())) {
+        return '내부';
+      }
+    }
+    
+    // 기본값은 내부
+    return '내부';
+  };
 
   const fetchDocuments = async () => {
     setIsLoading(true);
@@ -24,10 +58,9 @@ const SearchPage = () => {
       const formattedDocuments = documents.map(doc => ({
         id: doc.doc_id,
         documentName: doc.doc_title,
-        classification: '내부', // 기본값
-        author: doc.uploader_name || `직원 ID: ${doc.uploader_id}`, // 이름이 있으면 이름, 없으면 ID
+        classification: determineClassification(doc.doc_type, doc.doc_title),
+        author: '관리자', // 임시로 관리자로 표시
         creationDate: new Date(doc.created_at).toLocaleDateString('ko-KR'),
-        aiSummary: doc.doc_type || '문서',
         docType: doc.doc_type,
         filePath: doc.file_path
       }));
@@ -53,7 +86,7 @@ const SearchPage = () => {
         <h1>내/외부 문서 검색</h1>
       </div>
 
-      <div className="search-container">
+      <div className="document-search-container">
         <form onSubmit={handleSearch} className="search-form">
           <div className="search-input-group">
             <div className="search-input-wrapper">
@@ -100,13 +133,12 @@ const SearchPage = () => {
                   <th>내/외부 구분</th>
                   <th>작성자</th>
                   <th>작성일</th>
-                  <th>AI 요약</th>
                 </tr>
               </thead>
               <tbody>
                 {searchResults.length === 0 && !isLoading && !error ? (
                   <tr>
-                    <td colSpan="5" className="no-results">
+                    <td colSpan="4" className="no-results">
                       업로드된 문서가 없습니다.
                     </td>
                   </tr>
@@ -121,7 +153,6 @@ const SearchPage = () => {
                       </td>
                       <td>{result.author}</td>
                       <td>{result.creationDate}</td>
-                      <td>{result.aiSummary}</td>
                     </tr>
                   ))
                 )}
@@ -134,4 +165,4 @@ const SearchPage = () => {
   );
 };
 
-export default SearchPage; 
+export default Search; 

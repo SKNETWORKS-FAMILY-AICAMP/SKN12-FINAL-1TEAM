@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { registerEmployee, getEmployees, uploadDocument } from '../services/api';
-import './AdminPage.css';
+import './Admin.css';
 
-const AdminPage = ({ currentUser }) => {
+const Admin = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState('employees');
   const [employees, setEmployees] = useState([]);
   const [newEmployee, setNewEmployee] = useState({ 
@@ -373,4 +373,4 @@ const AdminPage = ({ currentUser }) => {
   );
 };
 
-export default AdminPage; 
+export default Admin; 

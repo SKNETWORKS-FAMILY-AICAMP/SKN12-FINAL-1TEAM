@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import SettingsModal from './SettingsModal';
-import NotificationModal from './NotificationModal';
+import Setting from './Setting';
+import Notification from './Notification';
 import UserModal from './UserModal';
 import './Sidebar.css';
 
@@ -47,8 +47,8 @@ const Sidebar = ({ sidebarVisible, setSidebarVisible, currentUser, onLogout }) =
     { path: '/search', icon: '🔍', label: '검색' },
     { path: '/chat', icon: '💬', label: '채팅' },
     { path: '/docs', icon: '📄', label: '문서 생성' },
-    { path: '/client', icon: '👥', label: '사용자 관리' },
-    { path: '/employee-performance', icon: '📊', label: '직원 실적 분석' },
+    { path: '/client', icon: '👥', label: '고객 관리' },
+    { path: '/employee-performance', icon: '👤', label: '직원 실적 분석' },
     { path: '/admin', icon: '⚙️', label: '시스템 관리' },
   ];
 
@@ -217,14 +217,14 @@ const Sidebar = ({ sidebarVisible, setSidebarVisible, currentUser, onLogout }) =
         </div>
       </div>
 
-      <SettingsModal 
+      <Setting 
         isOpen={isSettingsOpen} 
         onClose={handleCloseSettings}
         onLogout={onLogout}
         currentUser={currentUser}
       />
       
-      <NotificationModal 
+      <Notification 
         isOpen={isNotificationModalOpen}
         onClose={() => setIsNotificationModalOpen(false)}
         notifications={notifications}

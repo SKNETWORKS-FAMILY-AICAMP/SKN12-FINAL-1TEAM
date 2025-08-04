@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import './DocsPage.css';
+import './ClientAnalysis.css';
 
-const DocsPage = () => {
-  const [selectedDocument, setSelectedDocument] = useState('제품 설명회 결과 보고서');
-  const [userMessage, setUserMessage] = useState('오늘 00 약국에서 00제품 설명회를 진행했어, 관련해서 결과 보고서를 작성해줘.');
-  const [aiResponse, setAiResponse] = useState('네, 오늘 예정되어 있던 00 약국의 00 제품 설명회 정보와 고객 정보를 참고하여 결과 보고서 작성해 보겠습니다.');
+const ClientAnalysis = () => {
+  const [selectedAnalysis, setSelectedAnalysis] = useState('ABC회사 분석 결과 보고서');
+  const [userMessage, setUserMessage] = useState('ABC회사에 등급을 데이터로 분석해 주세요, 관련 분석 보고서 중심해줘.');
+  const [aiResponse, setAiResponse] = useState('네, ABC 회사의 등급과 관련 분석을 고객의 등급 기준마다 분석하여 결과 보고서를 작성해 보겠습니다.');
   const [inputMessage, setInputMessage] = useState('');
-
-  const existingDocuments = [];
+  
+  const existingAnalyses = [
+    'ABC회사_분석결과보고서_20...',
+    'SSS회사_분석결과보고서_20...',
+    '000회사_분석결과보고서_20...'
+  ];
 
   const handleSendMessage = () => {
     if (inputMessage.trim()) {
@@ -23,47 +27,47 @@ const DocsPage = () => {
   };
 
   return (
-    <div className="docs-page">
+    <div className="client-page">
       {/* Left Sidebar */}
-      <div className="docs-sidebar">
-        <h2>문서 생성</h2>
+      <div className="client-sidebar">
+        <h2>고객 분석</h2>
         
-        <button className="new-doc-btn">
+        <button className="new-analysis-btn">
           <span className="plus-icon">+</span>
-          새로운 문서 생성
+          새로운 고객 분석
         </button>
 
-        <div className="existing-docs">
-          <h3>기존 문서</h3>
-          {existingDocuments.length > 0 ? (
-            existingDocuments.map((doc, index) => (
-              <div key={index} className="doc-item">
-                <span className="doc-icon">💬</span>
-                <span className="doc-name">{doc}</span>
-                <span className="doc-arrow">›</span>
+        <div className="existing-analyses">
+          <h3>기존 분석</h3>
+          {existingAnalyses.length > 0 ? (
+            existingAnalyses.map((analysis, index) => (
+              <div key={index} className="analysis-item">
+                <span className="analysis-icon">💬</span>
+                <span className="analysis-name">{analysis}</span>
+                <span className="analysis-arrow">›</span>
               </div>
             ))
           ) : (
-            <div className="no-docs">
-              <p>기존 문서가 없습니다.</p>
+            <div className="no-analyses">
+              <p>기존 분석이 없습니다.</p>
             </div>
           )}
         </div>
       </div>
 
       {/* Center Content Area */}
-      <div className="docs-main">
-        <div className="document-content">
-          <h1>{selectedDocument}</h1>
-          <div className="document-body">
-            {/* 문서 내용이 여기에 표시됩니다 */}
+      <div className="client-main">
+        <div className="analysis-content">
+          <h1>{selectedAnalysis}</h1>
+          <div className="analysis-body">
+            {/* 분석 내용이 여기에 표시됩니다 */}
           </div>
         </div>
       </div>
 
       {/* Right Panel - AI Assistant */}
-      <div className="docs-ai-panel">
-        <h2>문서 생성 요청</h2>
+      <div className="client-ai-panel">
+        <h2>고객 분석 요청</h2>
         
         <div className="chat-container">
           {/* User Message */}
@@ -94,7 +98,7 @@ const DocsPage = () => {
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="질문을 입력해주세요"
+            placeholder="메시지를 입력해주세요"
             className="message-input"
           />
           <button 
@@ -109,4 +113,4 @@ const DocsPage = () => {
   );
 };
 
-export default DocsPage; 
+export default ClientAnalysis; 

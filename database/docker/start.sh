@@ -11,6 +11,7 @@ echo "  - PYTHONPATH: $PYTHONPATH"
 echo "  - /app/.env 존재 여부:"
 ls -la /app/.env || echo "  ❌ /app/.env 없음"
 
+
 until python -c "
 import sys
 import os

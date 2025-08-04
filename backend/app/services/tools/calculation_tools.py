@@ -38,12 +38,12 @@ class PerformanceCalculationTools:
         }
     
     @staticmethod
-    def calculate_enhanced_trend_analysis(amounts: List[float]) -> Dict[str, Any]:
-        """트렌드 분석"""
+    def calculate_growth_analysis(amounts: List[float]) -> Dict[str, Any]:
+        """성장률 분석"""
         if len(amounts) < 2:
             return {
-                "trend": "데이터 부족",
-                "trend_strength": "없음",
+                "growth_trend": "데이터 부족",
+                "growth_strength": "없음",
                 "r_squared": 0.0,
                 "slope": 0.0,
                 "mean": 0.0,
@@ -84,25 +84,25 @@ class PerformanceCalculationTools:
             else:
                 r_squared = 1 - (ss_res / ss_tot)
             
-            # 트렌드 분류
+            # 성장률 분류
             slope_val = float(slope)
             y_mean_val = float(y_mean)
             
             if abs(slope_val) < y_mean_val * 0.01:  # 평균의 1% 미만
-                trend = "안정"
-                trend_strength = "낮음"
+                growth_trend = "안정"
+                growth_strength = "낮음"
             elif slope_val > y_mean_val * 0.05:  # 평균의 5% 이상 증가
-                trend = "강한 상승"
-                trend_strength = "높음"
+                growth_trend = "강한 성장"
+                growth_strength = "높음"
             elif slope_val > 0:
-                trend = "상승"
-                trend_strength = "보통"
+                growth_trend = "성장"
+                growth_strength = "보통"
             elif slope_val < -y_mean_val * 0.05:  # 평균의 5% 이상 감소
-                trend = "강한 하락"
-                trend_strength = "높음"
+                growth_trend = "강한 감소"
+                growth_strength = "높음"
             else:
-                trend = "하락"
-                trend_strength = "보통"
+                growth_trend = "감소"
+                growth_strength = "보통"
             
             # 안정성 분석 (분산 분석 통합)
             amounts_array = np.array(amounts)
@@ -123,8 +123,8 @@ class PerformanceCalculationTools:
                 stability = "매우 불안정"
             
             return {
-                "trend": trend,
-                "trend_strength": trend_strength,
+                "growth_trend": growth_trend,
+                "growth_strength": growth_strength,
                 "r_squared": float(r_squared),
                 "slope": float(slope),
                 "intercept": float(intercept),
@@ -132,20 +132,20 @@ class PerformanceCalculationTools:
                 "stability": stability,
                 "coefficient_of_variation": float(cv),
                 "std_deviation": std_dev,
-                "analysis": f"{trend} 트렌드, 변동성 {cv:.1f}% ({stability})"
+                "analysis": f"{growth_trend} 성장률, 변동성 {cv:.1f}% ({stability})"
             }
             
         except Exception as e:
             return {
-                "trend": "분석 실패",
-                "trend_strength": "없음",
+                "growth_trend": "분석 실패",
+                "growth_strength": "없음",
                 "r_squared": 0.0,
                 "slope": 0.0,
                 "mean": 0.0,
                 "stability": "분석 불가",
                 "coefficient_of_variation": 0.0,
                 "std_deviation": 0.0,
-                "analysis": f"트렌드 분석 중 오류: {e}"
+                "analysis": f"성장률 분석 중 오류: {e}"
             }
     
     @staticmethod

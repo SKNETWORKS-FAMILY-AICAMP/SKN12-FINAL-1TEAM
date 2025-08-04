@@ -24,10 +24,14 @@ body {
   margin-top: 50px;
   background-color: #fff;
   transition: margin-left 0.3s ease;
+  padding: 0; /* 패딩 완전 제거 */
+  width: calc(100vw - 250px); /* 전체 화면 너비에서 사이드바 너비를 뺀 값 */
+  overflow-x: hidden; /* 가로 스크롤 방지 */
 }
 
 .main-content.sidebar-hidden {
   margin-left: 0;
+  width: 100vw; /* 사이드바가 숨겨졌을 때는 전체 화면 너비 */
 }
 
 /* 로딩 화면 스타일 */

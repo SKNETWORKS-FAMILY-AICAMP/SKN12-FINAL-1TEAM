@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import './SchedulePage.css';
+import './Schedule.css';
 
-const SchedulePage = () => {
+const Schedule = () => {
   const [schedules, setSchedules] = useState([
     {
       id: 1,
@@ -175,4 +175,4 @@ const SchedulePage = () => {
   );
 };
 
-export default SchedulePage; 
+export default Schedule; 

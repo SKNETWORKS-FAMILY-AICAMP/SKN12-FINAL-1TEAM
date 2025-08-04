@@ -1,7 +1,7 @@
 import React from 'react';
-import './NotificationModal.css';
+import './Notification.css';
 
-function NotificationModal({ isOpen, onClose, notifications = [] }) {
+function Notification({ isOpen, onClose, notifications = [] }) {
   if (!isOpen) return null;
 
   const handleOverlayClick = (e) => {
@@ -49,4 +49,4 @@ function NotificationModal({ isOpen, onClose, notifications = [] }) {
   );
 }
 
-export default NotificationModal; 
+export default Notification; 

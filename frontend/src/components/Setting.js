@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import './SettingsModal.css';
+import './Setting.css';
 
-const SettingsModal = ({ isOpen, onClose, onLogout, currentUser }) => {
+const Setting = ({ isOpen, onClose, onLogout, currentUser }) => {
   const [notifications, setNotifications] = useState(true);
   const [theme, setTheme] = useState('light');
 
@@ -124,4 +124,4 @@ const SettingsModal = ({ isOpen, onClose, onLogout, currentUser }) => {
   );
 };
 
-export default SettingsModal; 
+export default Setting; 

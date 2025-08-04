@@ -1,7 +1,8 @@
 from app.models.documents import Document
+from app.models.employees import Employee
 from app.services.db import SessionLocal
 from app.schemas.document import DocumentBase
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 
 def save_document(doc_meta: DocumentBase) -> Document:
@@ -18,8 +19,8 @@ def save_document(doc_meta: DocumentBase) -> Document:
 def get_documents() -> List[dict]:
     db = SessionLocal()
     try:
-        # relationship을 사용해서 직원 정보와 함께 가져오기
-        documents = db.query(Document).all()
+        # joinedload를 사용해서 직원 정보를 명시적으로 로드
+        documents = db.query(Document).options(joinedload(Document.uploader)).all()
         
         # 딕셔너리 형태로 변환
         return [
@@ -41,7 +42,8 @@ def get_documents() -> List[dict]:
 def get_document_by_id(doc_id: int) -> Optional[dict]:
     db = SessionLocal()
     try:
-        doc = db.query(Document).filter(Document.doc_id == doc_id).first()
+        # joinedload를 사용해서 직원 정보를 명시적으로 로드
+        doc = db.query(Document).options(joinedload(Document.uploader)).filter(Document.doc_id == doc_id).first()
         
         if doc:
             return {

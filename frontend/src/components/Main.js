@@ -1,7 +1,7 @@
 import React from 'react';
-import './Dashboard.css';
+import './Main.css';
 
-const Dashboard = ({ currentUser }) => {
+const Main = ({ currentUser }) => {
   const isAdmin = currentUser?.role === 'admin';
 
   // 관리자용 요약 카드
@@ -156,4 +156,4 @@ const Dashboard = ({ currentUser }) => {
   );
 };
 
-export default Dashboard; 
+export default Main; 
