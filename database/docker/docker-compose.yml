@@ -37,13 +37,8 @@ services:
       # OpenAI 설정
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      # 개발 중에는 로컬 파일을 마운트 (빌드 없이 즉시 반영)
-      - ../app:/app/app
-      - ../migrations:/app/migrations
+      # 환경 변수 파일만 마운트
       - ./.env:/app/.env
-      # 캐시 볼륨 (로컬 마운트 이후에 마운트)
-      - model_cache:/root/.cache/huggingface
-      - pip_cache:/root/.cache/pip
     depends_on:
       postgres:
         condition: service_started
@@ -199,6 +194,4 @@ networks:
     driver: bridge 
 
 volumes:
-  pgdata:
-  model_cache:  # 모델 캐시를 위한 볼륨 
-  pip_cache:  # pip 캐시를 위한 볼륨 
+  pgdata: 
