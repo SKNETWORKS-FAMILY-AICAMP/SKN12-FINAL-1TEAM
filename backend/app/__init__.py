@@ -1,1 +1,1 @@
-# NaruTalk AI [EMOJI] [EMOJI] [EMOJI] 
+# NaruTalk AI
