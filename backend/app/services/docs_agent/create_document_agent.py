@@ -371,9 +371,35 @@ class CreateDocumentAgent:
             print(f"❌ 유효하지 않은 선택: '{user_selection}'")
             print("올바른 번호(1-4) 또는 정확한 문서명을 입력해주세요.")
             print("예시: '1' 또는 '영업방문 결과보고서'")
-            # doc_type을 None으로 설정하여 라우터에서 다시 선택하게 함
-            state["doc_type"] = None
+            print("🔚 문서 타입 선택 실패로 인해 에이전트를 종료합니다.")
+            # 선택 실패 시 에이전트 종료
+            state["end_process"] = True
             return state
+
+    def receive_user_input(self, state: State) -> State:
+        """
+        외부에서 입력을 받아 재개되는 노드
+        
+        Args:
+            state (State): user_reply 필드 포함
+        
+        Returns:
+            State: messages에 새 메시지 추가, user_reply를 None으로 초기화
+        """
+        user_reply = state.get("user_reply", "")
+        
+        if user_reply:
+            print(f"📝 사용자 입력 수신됨: {user_reply[:50]}...")
+            # 사용자 입력을 메시지에 추가
+            if state.get("messages") is None:
+                state["messages"] = []
+            state["messages"].append(HumanMessage(content=user_reply))
+            # user_reply 플래그 제거
+            state["user_reply"] = None
+        else:
+            print("⚠️ 사용자 입력이 없습니다.")
+            
+        return state
 
     def parse_user_input(self, state: State) -> State:
         """
@@ -535,7 +561,7 @@ class CreateDocumentAgent:
         
         print(f"\n🚨 규정 위반 사항 발견!")
         print("=" * 60)
-        
+    
         # check_policy_violation 결과를 직접 출력
         print("📝 규정 위반 검토 결과:")
         print(violation)
@@ -551,7 +577,6 @@ class CreateDocumentAgent:
         
         return state
     
-
     def create_choan_document(self, state: State) -> State:
         """
         파싱된 데이터를 기반으로 초안 문서를 생성하고 docx 파일로 저장합니다.
@@ -850,13 +875,19 @@ class CreateDocumentAgent:
             state (State): verification_result, skip_ask_fields 필드 포함
         
         Returns:
-            str: "check_user_input_policy", "process_manual_doc_type_selection", "process_verification_response" 중 하나
+            str: "receive_user_input", "check_user_input_policy", "process_manual_doc_type_selection", "process_verification_response" 중 하나
         """
         verification_result = state.get("verification_result", "")
+        skip_ask_fields = state.get("skip_ask_fields", False)
         
         if verification_result == "긍정":
-            print("🚀 분류 결과 승인 - check_user_input_policy로 이동")
-            return "check_user_input_policy"
+            # skip_ask_fields가 True면 이미 내용이 있으므로 바로 규정 검사로
+            if skip_ask_fields:
+                print("🚀 분류 결과 승인 + 내용 있음 - 바로 check_user_input_policy로 이동")
+                return "check_user_input_policy"
+            else:
+                print("🚀 분류 결과 승인 - receive_user_input로 이동")
+                return "receive_user_input"
         elif verification_result == "부정":
             return "process_manual_doc_type_selection"  # 수동 선택으로
         else:
@@ -872,15 +903,20 @@ class CreateDocumentAgent:
             state (State): end_process, messages, doc_type 필드 포함
         
         Returns:
-            str: "check_user_input_policy", "process_manual_doc_type_selection", "END" 중 하나
+            str: "receive_user_input", "check_user_input_policy", "process_manual_doc_type_selection", "END" 중 하나
         """
         if state.get("end_process"):
             return "END"
         
         # 이미 문서 타입이 선택된 상태인지 확인
         if state.get("doc_type"):
-            print(f"📝 문서 타입 이미 선택됨: {state['doc_type']} - 사용자 입력을 문서 내용으로 처리")
-            return "check_user_input_policy"
+            skip_ask_fields = state.get("skip_ask_fields", False)
+            if skip_ask_fields:
+                print(f"📝 문서 타입 이미 선택됨 + 내용 있음: {state['doc_type']} - 바로 check_user_input_policy로 이동")
+                return "check_user_input_policy"
+            else:
+                print(f"📝 문서 타입 이미 선택됨: {state['doc_type']} - receive_user_input로 이동")
+                return "receive_user_input"
         
         user_selection = ""
         if state.get("messages"):
@@ -899,22 +935,29 @@ class CreateDocumentAgent:
         }
         
         selected_doc_type = doc_type_mapping.get(user_selection)
+        skip_ask_fields = state.get("skip_ask_fields", False)
         
         if selected_doc_type == "종료":
             return "END"
         elif selected_doc_type:
-            print("🚀 문서 타입 선택 완료 - check_user_input_policy로 이동")
-            return "check_user_input_policy"
+            skip_ask_fields = state.get("skip_ask_fields", False)
+            if skip_ask_fields:
+                print("🚀 문서 타입 선택 완료 + 내용 있음 - 바로 check_user_input_policy로 이동")
+                return "check_user_input_policy"
+            else:
+                print("🚀 문서 타입 선택 완료 - receive_user_input로 이동")
+                return "receive_user_input"
         else:
             print(f"❌ 유효하지 않은 문서 타입 선택: '{user_selection}'")
-            print("⚠️ 다음 중에서 정확히 선택해주세요:")
+            print("⚠️ 다음 중에서 정확히 선택해야 합니다:")
             print("  - 번호: 1, 2, 3, 4")
             print("  - 또는 정확한 문서명:")
             print("    * 영업방문 결과보고서")
             print("    * 제품설명회 시행 신청서")
             print("    * 제품설명회 시행 결과보고서")
             print("    * 종료")
-            return "process_manual_doc_type_selection"
+            print("🔚 문서 타입 선택 실패로 인해 에이전트를 종료합니다.")
+            return "END"
 
 
     def policy_check_router(self, state: State) -> str:
@@ -981,10 +1024,11 @@ class CreateDocumentAgent:
         graph.add_node("validate_doc_type", self.validate_doc_type)                          # 2️⃣ 분류된 문서 타입이 지원 문서인지 검증 (실패 시 수동 선택으로 이동)
         graph.add_node("process_verification_response", self.process_verification_response)  # 3️⃣ 사용자 검증 응답을 LLM으로 분석 (긍정/부정 판단)
         graph.add_node("process_manual_doc_type_selection", self.process_manual_doc_type_selection)  # 4️⃣ 사용자가 선택한 문서 타입 처리 및 템플릿 설정
-        graph.add_node("check_user_input_policy", self.check_user_input_policy)              # 5️⃣ 사용자 입력 텍스트로 규정 위반 검사 (LLM+OpenSearch)
-        graph.add_node("parse_user_input", self.parse_user_input)                            # 6️⃣ 사용자 입력을 LLM으로 파싱하여 구조화된 JSON 데이터로 변환
-        graph.add_node("inform_violation", self.inform_violation)                            # 7️⃣ 규정 위반 발견 시 위반 내용 안내 및 프로세스 종료
-        graph.add_node("create_choan_document", self.create_choan_document)                  # 8️⃣ 파싱된 데이터로 DOCX 템플릿 기반 최종 문서 생성 및 저장
+        graph.add_node("receive_user_input", self.receive_user_input)                        # 5️⃣ 사용자 입력 수신
+        graph.add_node("check_user_input_policy", self.check_user_input_policy)              # 6️⃣ 사용자 입력 텍스트로 규정 위반 검사 (LLM+OpenSearch)
+        graph.add_node("parse_user_input", self.parse_user_input)                            # 7️⃣ 사용자 입력을 LLM으로 파싱하여 구조화된 JSON 데이터로 변환
+        graph.add_node("inform_violation", self.inform_violation)                            # 8️⃣ 규정 위반 발견 시 위반 내용 안내 및 프로세스 종료
+        graph.add_node("create_choan_document", self.create_choan_document)                  # 9️⃣ 파싱된 데이터로 DOCX 템플릿 기반 최종 문서 생성 및 저장
 
         # 흐름 연결
         graph.set_entry_point("classify_doc_type")
@@ -1007,7 +1051,8 @@ class CreateDocumentAgent:
             "process_verification_response",
             self.verification_response_router,
             {
-                "check_user_input_policy": "check_user_input_policy",  # 긍정: 바로 규정 검사
+                "receive_user_input": "receive_user_input",  # 긍정 + 내용 없음: 사용자 입력 수신
+                "check_user_input_policy": "check_user_input_policy",  # 긍정 + 내용 있음: 바로 규정 검사
                 "process_manual_doc_type_selection": "process_manual_doc_type_selection",  # 부정: 수동 선택
                 "process_verification_response": "process_verification_response"  # 불명확: 다시 검증
             }
@@ -1018,11 +1063,15 @@ class CreateDocumentAgent:
             "process_manual_doc_type_selection",
             self.manual_doc_type_router,
             {
-                "check_user_input_policy": "check_user_input_policy",  # 유효한 선택: 바로 규정 검사
+                "receive_user_input": "receive_user_input",  # 유효한 선택 + 내용 없음: 사용자 입력 수신
+                "check_user_input_policy": "check_user_input_policy",  # 유효한 선택 + 내용 있음: 바로 규정 검사
                 "process_manual_doc_type_selection": "process_manual_doc_type_selection",  # 유효하지 않은 선택
                 "END": END  # 종료 선택
             }
         )
+        
+        # receive_user_input에서 check_user_input_policy로 연결
+        graph.add_edge("receive_user_input", "check_user_input_policy")
         
         # 규정 검사 결과에 따른 분기
         graph.add_conditional_edges(
@@ -1057,7 +1106,7 @@ class CreateDocumentAgent:
             interrupt_before=[
                 "process_verification_response",      # 분류 검증용 인터럽트
                 "process_manual_doc_type_selection",  # 수동 선택용 인터럽트
-                "check_user_input_policy"             # 사용자 입력용 인터럽트
+                "receive_user_input"                  # 사용자 입력 수신용 인터럽트
             ]
         )
     
@@ -1197,7 +1246,8 @@ class CreateDocumentAgent:
                     print("=" * 60)
                     print("\n위 번호(1-4) 또는 문서명을 직접 입력해주세요.")
                     input_type = "verification_reply"  # 수동 선택도 verification_reply 사용
-                elif next_node == "check_user_input_policy":
+                elif next_node == "receive_user_input":
+                    # 문서 작성을 위한 필수 항목 안내
                     template_content = current_state.values.get("template_content", "")
                     if template_content:
                         print("\n📝 다음 항목들을 입력해주세요:")
