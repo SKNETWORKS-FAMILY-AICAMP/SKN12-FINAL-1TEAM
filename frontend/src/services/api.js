@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:8010';
+const API_BASE_URL = '';
 
 // API 요청을 위한 기본 설정
 const apiRequest = async (endpoint, options = {}) => {
@@ -181,7 +181,21 @@ export const uploadDocument = async (file, docTitle) => {
 
 // 문서 목록 조회
 export const getDocuments = async () => {
-  return await apiRequest('/documents/', {
+  return await apiRequest('/api/documents/', {
+    method: 'GET',
+  });
+};
+
+// 문서 상세 조회
+export const getDocumentDetail = async (docId) => {
+  return await apiRequest(`/api/documents/${docId}`, {
+    method: 'GET',
+  });
+};
+
+// 문서 내용 조회
+export const getDocumentContent = async (docId) => {
+  return await apiRequest(`/api/documents/${docId}/content`, {
     method: 'GET',
   });
 }; 

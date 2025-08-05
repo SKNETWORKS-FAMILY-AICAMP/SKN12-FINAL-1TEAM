@@ -115,10 +115,10 @@ if __name__ == "__main__":
     import uvicorn
     print("\n" + "="*60)
     print("[FastAPI Server]")
-    print("Running at: http://localhost:8010")
-    print("API Docs: http://localhost:8010/docs")
-    print("API Routes: http://localhost:8010/api-routes")
-    print("Health Check: http://localhost:8010/health")
+    print("Running at: http://localhost:8000")
+    print("API Docs: http://localhost:8000/docs")
+    print("API Routes: http://localhost:8000/api-routes")
+    print("Health Check: http://localhost:8000/health")
     print("Stop: Ctrl+C")
     print("="*60 + "\n")
     
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8010,
+        port=8000,
         reload=False,  # reload 비활성화
         log_level="info"
     )

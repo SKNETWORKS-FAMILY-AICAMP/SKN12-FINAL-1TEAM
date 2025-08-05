@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Form
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 import asyncio
@@ -9,6 +9,8 @@ from datetime import datetime
 import sqlite3
 import json
 import uuid
+import os
+import mimetypes
 
 # 경로 설정
 backend_dir = Path(__file__).parent.parent.parent
@@ -537,6 +539,36 @@ async def initial_agent_select(req: SelectionRequest):
             "error": str(e)
         }
 
+@router.post("/user/login")
+async def login(username: str = Form(...), password: str = Form(...)):
+    """사용자 로그인 엔드포인트"""
+    try:
+        # 간단한 로그인 로직 (실제로는 데이터베이스에서 확인해야 함)
+        if username == "admin@example.com" and password == "admin123456":
+            return {
+                "success": True,
+                "message": "로그인 성공",
+                "user": {
+                    "username": username,
+                    "role": "admin",
+                    "employee_id": "1"
+                },
+                "token": "dummy_token_12345"  # 실제로는 JWT 토큰 생성
+            }
+        else:
+            raise HTTPException(status_code=401, detail="잘못된 사용자명 또는 비밀번호")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"로그인 처리 중 오류 발생: {str(e)}")
+
+@router.get("/user/me")
+async def get_current_user():
+    """현재 사용자 정보 조회"""
+    return {
+        "username": "admin@example.com",
+        "role": "admin",
+        "employee_id": "1"
+    }
+
 @router.get("/test")
 async def test():
     """테스트 엔드포인트"""
@@ -793,3 +825,155 @@ async def multi_task_chat(req: QueryRequest):
             "response": error_message,
             "error": str(e)
         }
+
+# 문서 내용 읽기 함수
+def read_document_content(file_path: str) -> Dict[str, Any]:
+    """문서 파일의 내용을 읽어옵니다."""
+    try:
+        # 파일 경로가 상대 경로인 경우 절대 경로로 변환
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(backend_dir, file_path)
+        
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"파일을 찾을 수 없습니다: {file_path}")
+        
+        # 파일 타입 확인
+        file_extension = os.path.splitext(file_path)[1].lower()
+        
+        # 텍스트 파일 처리
+        if file_extension in ['.txt', '.md']:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return {
+                "content": content,
+                "content_type": "text",
+                "file_size": len(content)
+            }
+        
+        # PDF 파일 처리
+        elif file_extension == '.pdf':
+            try:
+                import PyPDF2
+                with open(file_path, 'rb') as f:
+                    pdf_reader = PyPDF2.PdfReader(f)
+                    content = ""
+                    for page in pdf_reader.pages:
+                        content += page.extract_text() + "\n"
+                return {
+                    "content": content,
+                    "content_type": "pdf",
+                    "file_size": len(content),
+                    "page_count": len(pdf_reader.pages)
+                }
+            except ImportError:
+                return {
+                    "content": "PDF 파일을 읽기 위해 PyPDF2가 필요합니다.",
+                    "content_type": "pdf",
+                    "error": "PyPDF2 not installed"
+                }
+        
+        # DOCX 파일 처리
+        elif file_extension == '.docx':
+            try:
+                from docx import Document
+                doc = Document(file_path)
+                content = ""
+                for paragraph in doc.paragraphs:
+                    content += paragraph.text + "\n"
+                return {
+                    "content": content,
+                    "content_type": "docx",
+                    "file_size": len(content)
+                }
+            except ImportError:
+                return {
+                    "content": "DOCX 파일을 읽기 위해 python-docx가 필요합니다.",
+                    "content_type": "docx",
+                    "error": "python-docx not installed"
+                }
+        
+        # 기타 파일 타입
+        else:
+            return {
+                "content": f"지원하지 않는 파일 형식입니다: {file_extension}",
+                "content_type": "unknown",
+                "error": f"Unsupported file type: {file_extension}"
+            }
+            
+    except Exception as e:
+        return {
+            "content": f"파일을 읽는 중 오류가 발생했습니다: {str(e)}",
+            "content_type": "error",
+            "error": str(e)
+        }
+
+# 문서 관련 API 엔드포인트들
+@router.get("/documents/")
+async def get_documents():
+    """문서 목록 조회"""
+    try:
+        # 실제로는 데이터베이스에서 조회해야 함
+        # 임시로 더미 데이터 반환
+        return [
+            {
+                "doc_id": 1,
+                "doc_title": "샘플 문서",
+                "doc_type": "pdf",
+                "uploader_id": 1,
+                "file_path": "documents/sample.pdf",
+                "version": "1.0",
+                "created_at": "2024-01-01T12:00:00Z"
+            },
+            {
+                "doc_id": 2,
+                "doc_title": "테스트 문서",
+                "doc_type": "docx",
+                "uploader_id": 1,
+                "file_path": "documents/test.docx",
+                "version": "1.0",
+                "created_at": "2024-01-01T12:00:00Z"
+            }
+        ]
+    except Exception as e:
+        logger.error(f"문서 목록 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail="문서 목록을 불러오는데 실패했습니다.")
+
+@router.get("/documents/{doc_id}")
+async def get_document_detail(doc_id: int):
+    """문서 상세 정보 조회"""
+    try:
+        # 실제로는 데이터베이스에서 조회해야 함
+        # 임시로 더미 데이터 반환
+        document = {
+            "doc_id": doc_id,
+            "doc_title": f"문서 {doc_id}",
+            "doc_type": "pdf",
+            "uploader_id": 1,
+            "file_path": f"documents/document_{doc_id}.pdf",
+            "version": "1.0",
+            "created_at": "2024-01-01T12:00:00Z"
+        }
+        return document
+    except Exception as e:
+        logger.error(f"문서 상세 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail="문서 정보를 불러오는데 실패했습니다.")
+
+@router.get("/documents/{doc_id}/content")
+async def get_document_content(doc_id: int):
+    """문서 내용 조회"""
+    try:
+        # 실제로는 데이터베이스에서 문서 정보를 조회해야 함
+        # 임시로 더미 파일 경로 사용
+        file_path = f"documents/document_{doc_id}.pdf"
+        
+        # 문서 내용 읽기
+        content_result = read_document_content(file_path)
+        
+        return {
+            "doc_id": doc_id,
+            "file_path": file_path,
+            **content_result
+        }
+    except Exception as e:
+        logger.error(f"문서 내용 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail="문서 내용을 불러오는데 실패했습니다.")

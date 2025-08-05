@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDocuments } from '../services/api';
+import { getDocuments, getDocumentDetail, getDocumentContent } from '../services/api';
 import './Search.css';
 
 const Search = () => {
@@ -7,6 +7,10 @@ const Search = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
 
   // 컴포넌트 마운트 시 문서 목록 가져오기
   useEffect(() => {
@@ -80,6 +84,41 @@ const Search = () => {
     console.log('Searching for:', searchQuery);
   };
 
+  // 문서 상세 조회
+  const handleDocumentClick = async (docId) => {
+    setDetailLoading(true);
+    setDetailError('');
+    setIsDetailModalOpen(true);
+    
+    try {
+      // 문서 상세 정보와 내용을 함께 가져오기
+      const [documentDetail, documentContent] = await Promise.all([
+        getDocumentDetail(docId),
+        getDocumentContent(docId)
+      ]);
+      
+      // 문서 상세 정보와 내용을 합치기
+      const fullDocument = {
+        ...documentDetail,
+        ...documentContent
+      };
+      
+      setSelectedDocument(fullDocument);
+    } catch (error) {
+      console.error('문서 상세 조회 실패:', error);
+      setDetailError('문서 상세 정보를 불러오는데 실패했습니다.');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  // 모달 닫기
+  const handleCloseModal = () => {
+    setIsDetailModalOpen(false);
+    setSelectedDocument(null);
+    setDetailError('');
+  };
+
   return (
     <div className="search-page">
       <div className="search-header">
@@ -144,7 +183,12 @@ const Search = () => {
                   </tr>
                 ) : (
                   searchResults.map((result) => (
-                    <tr key={result.id}>
+                    <tr 
+                      key={result.id} 
+                      onClick={() => handleDocumentClick(result.id)}
+                      style={{ cursor: 'pointer' }}
+                      className="document-row"
+                    >
                       <td>{result.documentName}</td>
                       <td>
                         <span className={`classification-tag ${result.classification === '내부' ? 'internal' : 'external'}`}>
@@ -161,6 +205,83 @@ const Search = () => {
           </div>
         </div>
       </div>
+
+      {/* 문서 상세 조회 모달 */}
+      {isDetailModalOpen && (
+        <div className="modal-overlay" onClick={handleCloseModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>문서 상세 정보</h2>
+              <button className="modal-close" onClick={handleCloseModal}>
+                ✕
+              </button>
+            </div>
+            
+            <div className="modal-body">
+              {detailLoading && (
+                <div className="loading-message">
+                  문서 정보를 불러오는 중...
+                </div>
+              )}
+              
+              {detailError && (
+                <div className="error-message">
+                  {detailError}
+                </div>
+              )}
+              
+              {selectedDocument && !detailLoading && (
+                <div className="document-detail">
+                  <div className="detail-item">
+                    <label>문서 ID:</label>
+                    <span>{selectedDocument.doc_id}</span>
+                  </div>
+                  <div className="detail-item">
+                    <label>문서명:</label>
+                    <span>{selectedDocument.doc_title}</span>
+                  </div>
+                  <div className="detail-item">
+                    <label>문서 타입:</label>
+                    <span>{selectedDocument.doc_type}</span>
+                  </div>
+                  <div className="detail-item">
+                    <label>파일 경로:</label>
+                    <span>{selectedDocument.file_path}</span>
+                  </div>
+                  <div className="detail-item">
+                    <label>업로드 시간:</label>
+                    <span>{new Date(selectedDocument.created_at).toLocaleString('ko-KR')}</span>
+                  </div>
+                  {selectedDocument.uploader_id && (
+                    <div className="detail-item">
+                      <label>업로더 ID:</label>
+                      <span>{selectedDocument.uploader_id}</span>
+                    </div>
+                  )}
+                  
+                  {/* 문서 내용 표시 */}
+                  {selectedDocument.content && (
+                    <div className="detail-item document-content">
+                      <label>문서 내용:</label>
+                      <div className="content-display">
+                        <pre>{selectedDocument.content}</pre>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* 문서 내용이 없는 경우 */}
+                  {!selectedDocument.content && selectedDocument.error && (
+                    <div className="detail-item">
+                      <label>오류:</label>
+                      <span className="error-text">{selectedDocument.error}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

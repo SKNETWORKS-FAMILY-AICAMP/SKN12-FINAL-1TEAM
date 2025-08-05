@@ -164,9 +164,9 @@ def main():
     print("\n7️⃣ 서버 시작 중...")
     print("=" * 60)
     print("📌 서버 정보:")
-    print("   🌐 주소: http://localhost:8010")
-    print("   📚 API 문서: http://localhost:8010/docs") 
-    print("   🔍 헬스 체크: http://localhost:8010/health")
+    print("   🌐 주소: http://localhost:8000")
+    print("   📚 API 문서: http://localhost:8000/docs") 
+    print("   🔍 헬스 체크: http://localhost:8000/health")
     print("   ⏹️  중지: Ctrl+C")
     print("=" * 60)
     
@@ -184,7 +184,7 @@ def main():
         uvicorn.run(
             "app.main:app",
             host="0.0.0.0",
-            port=8010,
+            port=8000,
             reload=True,
             reload_dirs=[str(backend_path)],
             log_level="info"
