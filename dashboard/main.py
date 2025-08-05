@@ -31,6 +31,8 @@ if 'access_token' not in st.session_state:
     st.session_state.access_token = None
 if 'current_user' not in st.session_state:
     st.session_state.current_user = None
+if 'login_time' not in st.session_state:
+    st.session_state.login_time = None
 
 def check_api_connection():
     """API 연결 상태 확인"""
@@ -69,11 +71,40 @@ def get_current_user_info(token: str):
     except:
         return None
 
+def validate_token(token: str):
+    """토큰 유효성 검증"""
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.get(f"{API_BASE_URL}/user/me", headers=headers, timeout=5)
+        return response.status_code == 200
+    except:
+        return False
+
+def check_session_validity():
+    """세션 유효성 확인 및 자동 로그아웃 처리"""
+    if not st.session_state.authenticated or not st.session_state.access_token:
+        return False
+    
+    # 로그인 시간 확인 (24시간 제한)
+    if st.session_state.login_time:
+        login_time = datetime.fromisoformat(st.session_state.login_time)
+        if datetime.now() - login_time > timedelta(hours=24):
+            logout_user()
+            return False
+    
+    # 토큰 유효성 확인
+    if not validate_token(st.session_state.access_token):
+        logout_user()
+        return False
+    
+    return True
+
 def logout_user():
     """사용자 로그아웃"""
     st.session_state.authenticated = False
     st.session_state.access_token = None
     st.session_state.current_user = None
+    st.session_state.login_time = None
 
 def get_dashboard_stats(days: int = 30):
     """대시보드 통계 조회"""
@@ -196,6 +227,7 @@ def show_login_page():
                     st.session_state.authenticated = True
                     st.session_state.access_token = token
                     st.session_state.current_user = user_info
+                    st.session_state.login_time = datetime.now().isoformat()
                     st.success("로그인 성공!")
                     st.rerun()
                 else:
@@ -391,11 +423,35 @@ def show_init_admin_section():
 
 def show_dashboard():
     """대시보드 메인 페이지"""
+    # 세션 유효성 재확인
+    if not check_session_validity():
+        st.error("세션이 만료되었습니다. 다시 로그인해주세요.")
+        logout_user()
+        st.rerun()
+        return
+    
     # 헤더에 사용자 정보 표시
     if st.session_state.current_user:
         user_info = st.session_state.current_user
+        
+        # 로그인 시간 표시
+        login_time_str = ""
+        if st.session_state.login_time:
+            login_time = datetime.fromisoformat(st.session_state.login_time)
+            login_time_str = login_time.strftime("%Y-%m-%d %H:%M")
+        
         st.sidebar.markdown(f"**👤 {user_info.get('name', '관리자')}**")
         st.sidebar.markdown(f"📧 {user_info.get('email', '')}")
+        if login_time_str:
+            st.sidebar.markdown(f"🕐 로그인: {login_time_str}")
+        
+        # 세션 상태 표시
+        if st.session_state.login_time:
+            login_time = datetime.fromisoformat(st.session_state.login_time)
+            elapsed_time = datetime.now() - login_time
+            hours = int(elapsed_time.total_seconds() // 3600)
+            minutes = int((elapsed_time.total_seconds() % 3600) // 60)
+            st.sidebar.markdown(f"⏱️ 세션 시간: {hours}시간 {minutes}분")
         
         if st.sidebar.button("🚪 로그아웃"):
             logout_user()
@@ -877,7 +933,12 @@ def show_settings():
             st.info("통계 데이터 내보내기 기능은 API를 통해 구현됩니다.")
 
 if __name__ == "__main__":
-    if not st.session_state.authenticated:
-        show_login_page()
+    # 세션 유효성 확인
+    if st.session_state.authenticated:
+        if not check_session_validity():
+            st.warning("세션이 만료되었습니다. 다시 로그인해주세요.")
+            show_login_page()
+        else:
+            show_dashboard()
     else:
-        show_dashboard() 
+        show_login_page() 

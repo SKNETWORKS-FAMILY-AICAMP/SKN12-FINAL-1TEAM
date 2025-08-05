@@ -146,7 +146,7 @@ def extract_text_and_table(file_bytes: bytes, filename: str):
     
     return text, table_data, is_table_file
 
-def process_single_document(file: UploadFile, uploader_id: int, version: str = None) -> Union[DocumentInfo, TableUploadResult]:
+async def process_single_document(file: UploadFile, uploader_id: int, version: str = None) -> Union[DocumentInfo, TableUploadResult]:
     """
     단일 문서를 처리하는 공통 함수
     
@@ -196,7 +196,7 @@ def process_single_document(file: UploadFile, uploader_id: int, version: str = N
         
         # 3. Text2SQL 분류기로 처리 (document_id와 uploader_id 전달)
         try:
-            result = text2sql_classifier.classify_table_with_text2sql(
+            result = await text2sql_classifier.classify_table_with_text2sql(
                 table_data=table_data,
                 table_description=doc_title,
                 document_id=doc.doc_id,
@@ -277,7 +277,7 @@ def process_single_document(file: UploadFile, uploader_id: int, version: str = N
 
 
 @router.post("/documents/upload", response_model=Union[DocumentInfo, TableUploadResult])
-def upload_document(file: UploadFile = File(...), doc_title: str = Form(None), uploader_id: int = Form(...), version: str = Form(None), user=Depends(get_current_user)):
+async def upload_document(file: UploadFile = File(...), doc_title: str = Form(None), uploader_id: int = Form(...), version: str = Form(None), user=Depends(get_current_user)):
     """
     문서를 업로드하고 자동으로 타입을 분석하여 저장합니다.
     
@@ -295,13 +295,13 @@ def upload_document(file: UploadFile = File(...), doc_title: str = Form(None), u
         HTTPException: 파일 크기 초과, 지원하지 않는 형식, 처리 오류 등
     """
     try:
-        return process_single_document(file, uploader_id, version)
+        return await process_single_document(file, uploader_id, version)
     except Exception as e:
         logger.error(f"문서 업로드 실패: {e}")
         raise HTTPException(status_code=500, detail=f"문서 업로드 중 오류가 발생했습니다: {str(e)}")
 
 @router.post("/documents/upload/batch", response_model=BatchUploadResult)
-def upload_documents_batch(files: List[UploadFile] = File(...), uploader_id: int = Form(...), version: str = Form(None), user=Depends(get_current_user)):
+async def upload_documents_batch(files: List[UploadFile] = File(...), uploader_id: int = Form(...), version: str = Form(None), user=Depends(get_current_user)):
     """
     여러 문서를 한 번에 업로드합니다.
     
@@ -336,7 +336,7 @@ def upload_documents_batch(files: List[UploadFile] = File(...), uploader_id: int
                     session.execute(text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"))
                     
                     # 파일 처리 (세션 전달)
-                    result = process_single_document_with_session(file, uploader_id, version, session)
+                    result = await process_single_document_with_session(file, uploader_id, version, session)
                     results.append(result)
                     successful_uploads += 1
                     logger.info(f"배치 업로드 성공: {file.filename}")
@@ -366,7 +366,7 @@ def upload_documents_batch(files: List[UploadFile] = File(...), uploader_id: int
         errors=errors
     )
 
-def process_single_document_with_session(file: UploadFile, uploader_id: int, version: str = None, session: Session = None) -> Union[DocumentInfo, TableUploadResult]:
+async def process_single_document_with_session(file: UploadFile, uploader_id: int, version: str = None, session: Session = None) -> Union[DocumentInfo, TableUploadResult]:
     """
     세션을 받아서 단일 문서를 처리하는 함수 (트랜잭션 격리용)
     """
@@ -408,7 +408,7 @@ def process_single_document_with_session(file: UploadFile, uploader_id: int, ver
         
         # Text2SQL 분류기로 처리 (세션 전달)
         try:
-            result = text2sql_classifier.classify_table_with_text2sql(
+            result = await text2sql_classifier.classify_table_with_text2sql(
                 table_data=table_data,
                 table_description=doc_title,
                 document_id=db_doc.doc_id,

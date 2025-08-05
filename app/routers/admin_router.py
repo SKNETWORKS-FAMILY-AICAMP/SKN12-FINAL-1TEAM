@@ -9,6 +9,7 @@ from app.routers.user_router import get_current_admin_user
 from app.services.external.opensearch_service import DOCUMENT_INDEX_NAME
 from app.config import settings
 from app.services.external.opensearch_client import opensearch_client
+import asyncio
 
 
 router = APIRouter()
@@ -128,4 +129,6 @@ def cleanup_corrupted_documents(admin: EmployeeInfo = Depends(get_current_admin_
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"깨진 문서 정리 중 오류 발생: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"깨진 문서 정리 중 오류 발생: {str(e)}")
+
+ 

@@ -69,10 +69,12 @@ class VectorSimilarityService:
                     continue
                 
                 # 텍스트 생성 (설명 + 컬럼 + 샘플 데이터)
-                text_content = f"{info['description']} 컬럼: {', '.join(info['columns'])} 샘플: {', '.join(info['sample_data'])}"
+                # sample_data의 모든 값을 문자열로 변환
+                sample_data_str = [str(item) for item in info['sample_data']]
+                text_content = f"{info['description']} 컬럼: {', '.join(info['columns'])} 샘플: {', '.join(sample_data_str)}"
                 
                 # OpenAI 임베딩 생성
-                embedding = await openai_service.get_embedding(text_content)
+                embedding = openai_service.create_embedding(text_content)
                 
                 # 벡터 저장
                 table_desc = TableDescription(
@@ -102,7 +104,7 @@ class VectorSimilarityService:
             columns_text = ", ".join(columns)
             
             # OpenAI 임베딩 생성
-            query_embedding = await openai_service.get_embedding(columns_text)
+            query_embedding = openai_service.create_embedding(columns_text)
             
             # 벡터 유사도 검색 (임계값 이상인 모든 테이블)
             query = text("""
@@ -287,7 +289,7 @@ class VectorSimilarityService:
                 columns_text += sample_text
             
             # OpenAI 임베딩 생성
-            query_embedding = await openai_service.get_embedding(columns_text)
+            query_embedding = openai_service.create_embedding(columns_text)
             
             # 벡터 유사도 검색 (코사인 유사도)
             query = text("""

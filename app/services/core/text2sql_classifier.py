@@ -105,7 +105,7 @@ class Text2SQLTableClassifier:
         finally:
             session.close()
     
-    def classify_table_with_text2sql(self, table_data: List[Dict[str, Any]], table_description: str = "", document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
+    async def classify_table_with_text2sql(self, table_data: List[Dict[str, Any]], table_description: str = "", document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Text2SQL을 사용하여 테이블 분류 및 SQL 생성
         """
@@ -129,7 +129,7 @@ class Text2SQLTableClassifier:
             sample_data = table_data[:3] if len(table_data) >= 3 else table_data
             
             # 2. Text2SQL 분류 수행
-            classification_result = self._perform_text2sql_classification(
+            classification_result = await self._perform_text2sql_classification(
                 columns=columns,
                 sample_data=sample_data,
                 table_description=table_description
@@ -186,7 +186,7 @@ class Text2SQLTableClassifier:
                 'confidence': 0.0
             }
     
-    def _perform_text2sql_classification(self, columns: List[str], sample_data: List[Dict], table_description: str) -> Dict[str, Any]:
+    async def _perform_text2sql_classification(self, columns: List[str], sample_data: List[Dict], table_description: str) -> Dict[str, Any]:
         """
         LLM을 사용한 Text2SQL 분류 수행
         """
@@ -201,7 +201,7 @@ class Text2SQLTableClassifier:
         
         try:
             # LLM 기반 분류 수행
-            llm_result = self._perform_llm_classification(columns, sample_data, table_description)
+            llm_result = await self._perform_llm_classification(columns, sample_data, table_description)
             
             if llm_result['success']:
                 return llm_result
@@ -254,14 +254,22 @@ class Text2SQLTableClassifier:
                     
                     if result and 'target_tables' in result:
                         logger.info(f"다중 테이블 LLM 분류 완료: {result.get('target_tables')}")
-                        return {
-                            'success': True,
-                            'target_tables': result.get('target_tables', []),
-                            'confidence': result.get('confidence', 0.0),
-                            'method': 'multi_table_llm',
-                            'table_mappings': multi_table_result['table_mappings'],
-                            'dependency_analysis': multi_table_result['dependency_analysis']
-                        }
+                        
+                        # 가장 높은 신뢰도의 테이블을 주요 타겟으로 선택
+                        target_tables = result.get('target_tables', [])
+                        if target_tables:
+                            best_table = max(target_tables, key=lambda x: x.get('confidence', 0.0))
+                            
+                            return {
+                                'success': True,
+                                'target_table': best_table.get('table_name'),
+                                'confidence': best_table.get('confidence', 0.0),
+                                'reasoning': best_table.get('reasoning', ''),
+                                'column_mapping': best_table.get('column_mapping', {}),
+                                'method': 'multi_table_llm',
+                                'table_mappings': multi_table_result['table_mappings'],
+                                'dependency_analysis': multi_table_result['dependency_analysis']
+                            }
             
             # 2단계: 기존 단일 테이블 분류 시도 (호환성 유지)
             logger.info("다중 테이블 분석 실패, 단일 테이블 분류 시도")

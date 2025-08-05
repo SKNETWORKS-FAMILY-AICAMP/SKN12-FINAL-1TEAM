@@ -53,24 +53,12 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("⚠️ Search Pipeline 초기화 실패 - 기본 검색 모드로 동작")
     
-    # 벡터 데이터베이스 초기화
-    logger.info("🔧 벡터 데이터베이스 초기화 중...")
-    try:
-        from app.services.core.vector_similarity_service import vector_similarity_service
-        from app.services.utils.db import SessionLocal
-        
-        # 데이터베이스 세션 생성
-        session = SessionLocal()
-        
-        # 벡터 데이터베이스 초기화
-        import asyncio
-        asyncio.run(vector_similarity_service.initialize_table_descriptions(session))
-        
-        session.close()
-        logger.info("✅ 벡터 데이터베이스 초기화 완료")
-    except Exception as e:
-        logger.error(f"❌ 벡터 데이터베이스 초기화 실패: {e}")
-        logger.warning("⚠️ 벡터 유사도 검색 기능이 제한적으로 동작할 수 있습니다")
+    # 벡터 데이터베이스 초기화 (수동으로 처리)
+    logger.info("🔧 벡터 데이터베이스 초기화 건너뛰기...")
+    logger.info("💡 벡터 데이터베이스 초기화는 수동으로 진행하세요:")
+    logger.info("   1. 데이터베이스 마이그레이션: docker exec -it fastapi-app alembic upgrade head")
+    logger.info("   2. 벡터 초기화: docker exec -it fastapi-app python /app/app/scripts/init_vector_db.py")
+    logger.info("⚠️ 벡터 유사도 검색 기능이 제한적으로 동작할 수 있습니다")
     
     # 모델 로딩을 비동기로 처리 (앱 시작을 차단하지 않음)
     logger.info("🤖 AI 모델 로딩을 백그라운드에서 시작...")
