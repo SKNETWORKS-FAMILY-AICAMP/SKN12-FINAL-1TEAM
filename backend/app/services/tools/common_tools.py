@@ -48,15 +48,23 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
         
         print(f"📋 LLM 문구 추출 결과: {extracted_text}")
         
-        # JSON 파싱
+        # JSON 파싱 - 코드 블록 제거 처리
         try:
-            if extracted_text.startswith('[') and extracted_text.endswith(']'):
-                policy_phrases = json.loads(extracted_text)
+            # JSON 코드 블록 제거 (```json ... ``` 형태)
+            clean_text = extracted_text
+            if clean_text.startswith('```json'):
+                clean_text = clean_text.replace('```json', '').replace('```', '').strip()
+            elif clean_text.startswith('```'):
+                clean_text = clean_text.replace('```', '').strip()
+            
+            if clean_text.startswith('[') and clean_text.endswith(']'):
+                policy_phrases = json.loads(clean_text)
             else:
                 # JSON 형태가 아닌 경우 빈 리스트로 처리
+                print(f"⚠️ JSON 형태가 아닌 응답: {clean_text[:100]}...")
                 policy_phrases = []
-        except json.JSONDecodeError:
-            print("⚠️ JSON 파싱 실패, 빈 리스트로 처리")
+        except json.JSONDecodeError as e:
+            print(f"⚠️ JSON 파싱 실패: {e}, 원본 텍스트: {extracted_text[:200]}...")
             policy_phrases = []
         
         if not policy_phrases:
@@ -95,7 +103,7 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
                         # 3단계: LLM을 사용해 추출된 규정 정보와 비교하여 위반 여부 판단
                         violation_result = _check_phrase_against_regulations(phrase, search_results, llm)
                         if violation_result != "OK":
-                            violations.append(f"{phrase}: {violation_result}")
+                            violations.append(violation_result)
                     else:
                         print(f"⚠️ API 응답 실패 ({phrase}): {api_result}")
                         violations.append(f"{phrase}: API 응답 오류")
@@ -119,7 +127,7 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
                 actual_violations.append(violation)
         
         if actual_violations:
-            return " | ".join(actual_violations)
+            return "\n\n".join(actual_violations)
         else:
             return "OK"
             
@@ -157,12 +165,17 @@ def _check_phrase_against_regulations(phrase: str, search_results: list, llm: Ch
 다음 문구가 제공된 회사 규정을 위반하는지 분석해주세요.
 
 분석 기준:
-1. 명확하게 규정 위반이 있는지 확인
-2. 위반 문제가 있어보이는 것이 아닌 명확하게 규정을 위반한것만 문제로 판단
+1. 명확한 규정 위반이 있는지 확인
+2. 잠재적 위험이나 주의가 필요한 사항이 있는지 확인
+3. 규정에 명시되지 않았더라도 일반적인 컴플라이언스 관점에서 문제가 될 수 있는지 확인
 
 응답 형식:
-- 위반이나 문제가 없으면: "OK"
-- 문제가 있으면: 구체적인 위반 내용을 간단히 설명
+- 위반이나 문제가 없을시 반드시 "OK"만 출력하세요. 어떠한 추가 텍스트도 출력하지 마세요.
+- 문제가 있을시 반드시 다음 정확한 형식으로만 출력해주세요. 콜론(:)을 하이픈(-)으로 바꾸지 마세요:
+
+**사용자 입력** : [사용자가 입력한 해당 문구]
+**위반 규정** : [위반된 구체적인 규정명과 조항]
+**위반 사유** : [왜 위반인지에 대한 자세한 설명]
             """),
             ("human", "확인할 문구: {phrase}\n\n관련 규정 정보:\n{regulations}")
         ])
@@ -173,7 +186,7 @@ def _check_phrase_against_regulations(phrase: str, search_results: list, llm: Ch
         ))
         
         result = response.content.strip()
-        print(f"🔍 '{phrase}' 규정 검사 결과: {result[:100]}{'...' if len(result) > 100 else ''}")
+        print(f"🔍 '{phrase}' 규정 검사 결과: {result}{'...' if len(result) > 100 else ''}")
         
         return result
         
@@ -238,11 +251,10 @@ def convert_structured_to_natural_text(structured_data: Annotated[str, "JSON 형
 def separate_document_type_and_content(user_input: Annotated[str, "사용자가 입력한 텍스트"]) -> str:
     """사용자 입력에서 문서 양식 분류와 관련된 내용과 문서 양식에 들어갈 내용을 분리합니다."""
     
-    try:
-        llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
-        
-        separation_prompt = ChatPromptTemplate.from_messages([
-            ("system", """
+    llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
+    
+    separation_prompt = ChatPromptTemplate.from_messages([
+        ("system", """
 사용자가 입력한 텍스트를 분석하여 문서 양식 분류와 관련된 내용과 실제 문서에 들어갈 내용을 분리해주세요.
 
 분리 기준:
@@ -251,54 +263,47 @@ def separate_document_type_and_content(user_input: Annotated[str, "사용자가 
 
 응답 형식은 JSON으로 반환해주세요:
 {{
-    "document_type": "문서 양식 분류 관련 내용",
-    "content": "문서에 들어갈 실제 내용"
+"document_type": "문서 양식 분류 관련 내용",
+"content": "문서에 들어갈 실제 내용"
 }}
 
 예시:
 입력: "제품설명회 계획서를 작성할거야. 25년 7월 25일에 제품설명회가 시행되며..."
 출력: {{
-    "document_type": "제품설명회 계획서를 작성할거야",
-    "content": "25년 7월 25일에 제품설명회가 시행되며..."
+"document_type": "제품설명회 계획서를 작성할거야",
+"content": "25년 7월 25일에 제품설명회가 시행되며..."
 }}
 
 만약 문서 양식 분류 부분이 명확하지 않다면 document_type을 빈 문자열로, 
 문서 내용이 없다면 content를 빈 문자열로 설정해주세요.
-            """),
-            ("human", "{user_input}")
-        ])
-        
-        response = llm.invoke(separation_prompt.format_messages(user_input=user_input))
-        result = response.content.strip()
-        
-        print(f"📋 문서 분류 및 내용 분리 결과: {result}")
-        
-        # JSON 코드 블록 제거 (```json ... ``` 형태)
-        if result.startswith('```json'):
-            result = result.replace('```json', '').replace('```', '').strip()
-        elif result.startswith('```'):
-            result = result.replace('```', '').strip()
-        
-        # JSON 파싱 검증
-        try:
-            parsed = json.loads(result)
-            if 'document_type' in parsed and 'content' in parsed:
-                return result
-            else:
-                print("⚠️ 필수 키가 누락된 응답")
-                return json.dumps({
-                    "document_type": "",
-                    "content": user_input
-                }, ensure_ascii=False)
-        except json.JSONDecodeError:
-            print("⚠️ JSON 파싱 실패")
+        """),
+        ("human", "{user_input}")
+    ])
+    
+    response = llm.invoke(separation_prompt.format_messages(user_input=user_input))
+    result = response.content.strip()
+    
+    print(f"📋 문서 분류 및 내용 분리 결과: {result}")
+    
+    # JSON 코드 블록 제거 (```json ... ``` 형태)
+    if result.startswith('```json'):
+        result = result.replace('```json', '').replace('```', '').strip()
+    elif result.startswith('```'):
+        result = result.replace('```', '').strip()
+    
+    # JSON 파싱 검증
+    try:
+        parsed = json.loads(result)
+        if 'document_type' in parsed and 'content' in parsed:
+            return result
+        else:
+            print("⚠️ 필수 키가 누락된 응답")
             return json.dumps({
                 "document_type": "",
                 "content": user_input
             }, ensure_ascii=False)
-        
-    except Exception as e:
-        print(f"❌ 문서 분류 및 내용 분리 중 오류 발생: {e}")
+    except json.JSONDecodeError:
+        print("⚠️ JSON 파싱 실패")
         return json.dumps({
             "document_type": "",
             "content": user_input
