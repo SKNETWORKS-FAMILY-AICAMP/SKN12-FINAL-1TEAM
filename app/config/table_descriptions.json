@@ -1,0 +1,38 @@
+{
+  "employee_info": {
+    "description": "직원 인사 정보 테이블. 직원의 기본 정보, 조직 정보, 급여 정보를 관리합니다. 문서 업로드로 자동 생성 가능하며, 승인 시스템을 통해 관리됩니다. employees 테이블과 연결되어 계정 정보와 연동됩니다. 주요 컬럼: name(직원 실명, 필수), employee_number(사번, 고유값), team(소속 팀), position(직급), business_unit(사업부), branch(지점), contact_number(연락처), base_salary(기본급), incentive_pay(인센티브), avg_monthly_budget(월 평균 예산), latest_evaluation(최근 평가), responsibilities(책임업무), is_auto_created(자동 생성 여부), approval_status(승인 상태). 필수 컬럼: name.",
+    "columns": ["name", "employee_number", "team", "position", "business_unit", "branch", "contact_number", "base_salary", "incentive_pay", "avg_monthly_budget", "latest_evaluation", "responsibilities", "is_auto_created", "approval_status"],
+    "required_columns": ["name"],
+    "sample_data": ["김철수", "1004", "영업팀", "대리", "제약사업부", "강남지점", "010-1234-5678", "3000000", "500000", "1000000", "A", "고객 관리", true, "pending"]
+  },
+  "customers": {
+    "description": "고객(의료기관) 정보 테이블. 의료기관의 기본 정보, 위치 정보, 담당자 정보를 관리합니다. 문서 업로드로 자동 생성 가능하며, 승인 시스템을 통해 관리됩니다. 고객명+주소 조합으로 유니크 제약이 있습니다. 주요 컬럼: customer_name(고객명/기관명, 필수), address(고객 주소), doctor_name(담당 의사명), total_patients(총 환자 수), customer_grade(고객 등급 A/B/C/VIP), notes(고객 관련 특이사항), is_auto_created(자동 생성 여부), approval_status(승인 상태), is_deleted(논리적 삭제 상태). 필수 컬럼: customer_name.",
+    "columns": ["customer_name", "address", "doctor_name", "total_patients", "customer_grade", "notes", "is_auto_created", "approval_status", "is_deleted"],
+    "required_columns": ["customer_name"],
+    "sample_data": ["미라클신경과의원", "강서구 화곡동", "김의사", "150", "A", "VIP 고객", true, "pending", false]
+  },
+  "products": {
+    "description": "제품 정보 테이블. 제품의 기본 정보, 분류 정보, 상태 정보를 관리합니다. 문서 업로드로 자동 생성 가능하며, 승인 시스템을 통해 관리됩니다. 제품 카테고리별로 분류되어 관리됩니다. 주요 컬럼: product_name(제품명, 필수), description(제품 설명), category(제품 카테고리 의약품/의료기기/건강기능식품), is_active(제품 활성화 상태), is_auto_created(자동 생성 여부), approval_status(승인 상태). 필수 컬럼: product_name.",
+    "columns": ["product_name", "description", "category", "is_active", "is_auto_created", "approval_status"],
+    "required_columns": ["product_name"],
+    "sample_data": ["폭세틴", "항우울제", "의약품", true, true, "pending"]
+  },
+  "sales_records": {
+    "description": "매출 기록 테이블. 매출 발생 정보, 금액, 날짜, 관련 엔티티 정보를 관리합니다. employee_info, customers, products 테이블에 의존하며, 외래키로 연결됩니다. 매출 분석 및 실적 추적에 사용됩니다. 주요 컬럼: sale_amount(매출 금액, 소수점 2자리, 필수), sale_date(매출 발생 날짜, 필수), employee_id(매출 담당 직원 ID), customer_id(매출 발생 고객 ID), product_id(판매된 제품 ID). 필수 컬럼: sale_amount, sale_date.",
+    "columns": ["sale_amount", "sale_date", "employee_id", "customer_id", "product_id"],
+    "required_columns": ["sale_amount", "sale_date"],
+    "sample_data": ["5000000", "2024-01-15", "1", "1", "1"]
+  },
+  "interaction_logs": {
+    "description": "상호작용 로그 테이블. 직원과 고객 간의 상호작용 기록을 관리합니다. employee_info, customers 테이블에 의존하며, 감정 분석 및 준법 위험도 평가 결과를 포함합니다. 고객 관계 관리(CRM)에 활용됩니다. 주요 컬럼: employee_id(상호작용한 직원 ID, 필수), customer_id(상호작용한 고객 ID, 필수), interaction_type(상호작용 유형 방문/전화/이메일/미팅), summary(상호작용 요약), sentiment(감정 분석 결과 positive/negative/neutral), compliance_risk(준법 위험도 평가 low/medium/high), interacted_at(상호작용 발생 일시). 필수 컬럼: employee_id, customer_id.",
+    "columns": ["employee_id", "customer_id", "interaction_type", "summary", "sentiment", "compliance_risk", "interacted_at"],
+    "required_columns": ["employee_id", "customer_id"],
+    "sample_data": ["1", "1", "방문", "제품 소개", "positive", "low", "2024-01-15"]
+  },
+  "assignment_map": {
+    "description": "직원-고객 배정 관계 테이블. 직원과 고객 간의 담당 관계를 관리합니다. employee_info, customers 테이블에 의존하며, 직원-고객 조합으로 유니크 제약이 있습니다. 영업 담당자 배정 및 관리에 사용됩니다. 주요 컬럼: employee_id(배정된 직원 ID, 필수), customer_id(배정된 고객 ID, 필수). 필수 컬럼: employee_id, customer_id.",
+    "columns": ["employee_id", "customer_id"],
+    "required_columns": ["employee_id", "customer_id"],
+    "sample_data": ["1", "1"]
+  }
+} 

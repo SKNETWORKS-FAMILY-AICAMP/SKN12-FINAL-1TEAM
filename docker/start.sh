@@ -7,7 +7,7 @@ echo "🚀 애플리케이션 시작 중..."
 echo "📦 pip 업그레이드 중..."
 pip install --upgrade pip
 echo "📦 ML 라이브러리 설치 확인 중..."
-pip install -r /app/requirements-ml.txt
+pip install -r /app/requirements-ml.txt --progress-bar on
 echo "✅ ML 라이브러리 설치 완료"
 
 # PostgreSQL 연결 대기

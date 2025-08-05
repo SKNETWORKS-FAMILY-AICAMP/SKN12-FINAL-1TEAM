@@ -1,5 +1,5 @@
 from . import Base
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -35,12 +35,19 @@ class EmployeeInfo(Base):
     # 업무 정보
     responsibilities = Column(String)  # 책임업무/담당업무
     
+    # 승인 시스템 필드
+    is_auto_created = Column(Boolean, default=False)  # 자동 생성 여부
+    approval_status = Column(String, default='pending')  # 승인 상태 (pending, approved, rejected)
+    approved_by = Column(Integer, ForeignKey("employees.employee_id"), nullable=True)  # 승인자 ID
+    approved_at = Column(DateTime, nullable=True)  # 승인 일시
+    approval_notes = Column(String)  # 승인/거부 메모
+    
     # 시스템 정보
     created_at = Column(DateTime, default=func.now())  # 인사 정보 생성 일시
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())  # 인사 정보 수정 일시
     
     # 관계 설정 (선택적)
-    employee = relationship("Employee", back_populates="employee_info")
+    employee = relationship("Employee", back_populates="employee_info", foreign_keys=[employee_id])
     
     def __repr__(self):
         return f"<EmployeeInfo(name='{self.name}', team='{self.team}', position='{self.position}')>" 

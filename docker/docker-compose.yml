@@ -59,7 +59,7 @@ services:
       - app-network
 
   postgres:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
     container_name: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -69,6 +69,7 @@ services:
       - "5432:5432"
     volumes:
       - ./pgdata:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
     networks:
       - app-network
 

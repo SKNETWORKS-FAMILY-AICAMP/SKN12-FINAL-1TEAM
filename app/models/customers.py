@@ -1,5 +1,5 @@
 from . import Base
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, func, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, func, UniqueConstraint, ForeignKey
 
 class Customer(Base):
     """고객(의료기관) 정보를 관리하는 테이블"""
@@ -23,6 +23,13 @@ class Customer(Base):
     
     # 기타 정보
     notes = Column(String)  # 고객 관련 특이사항 및 메모
+    
+    # 승인 시스템 필드
+    is_auto_created = Column(Boolean, default=False)  # 자동 생성 여부
+    approval_status = Column(String, default='pending')  # 승인 상태 (pending, approved, rejected)
+    approved_by = Column(Integer, ForeignKey("employees.employee_id"), nullable=True)  # 승인자 ID
+    approved_at = Column(DateTime, nullable=True)  # 승인 일시
+    approval_notes = Column(String)  # 승인/거부 메모
     
     # Soft Delete 관련 필드
     is_deleted = Column(Boolean, default=False)  # 논리적 삭제 상태 (기본값: 삭제되지 않음)

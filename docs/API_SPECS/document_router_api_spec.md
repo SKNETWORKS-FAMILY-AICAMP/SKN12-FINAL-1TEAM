@@ -47,29 +47,28 @@ version: string (선택사항, 문서 버전)
   "uploader_id": 1,
   "file_path": "documents/sample.pdf",
   "version": "1.0",
-  "created_at": "2024-01-01T12:00:00Z",
-  "analysis": {
-    "text_length": 1500,
-    "chunks_count": 5,
-    "entities_found": ["회사명", "날짜"],
-    "summary": "문서 요약..."
-  }
+  "created_at": "2024-01-01T12:00:00Z"
 }
 ```
 
-#### 응답 (데이터 파일)
+#### 응답 (데이터 파일 - Text2SQL 분류)
 ```json
 {
-  "doc_title": "데이터 파일",
-  "doc_type": "csv",
+  "doc_title": "매출 데이터",
+  "doc_type": "text2sql_sales_records",
   "uploader_id": 1,
   "version": "1.0",
   "created_at": "2024-01-01T12:00:00Z",
-  "message": "데이터 파일이 성공적으로 업로드되었습니다.",
+  "message": "Text2SQL 분류 완료: sales_records 테이블로 분류됨 (문서 ID: 1)",
   "analysis": {
-    "row_count": 100,
-    "column_count": 5,
-    "data_preview": [...]
+    "target_table": "sales_records",
+    "confidence": 0.95,
+    "reasoning": "매출 관련 컬럼들이 포함되어 있어 sales_records 테이블로 분류",
+    "column_mapping": {
+      "매출": "sales_amount",
+      "날짜": "sale_date"
+    },
+    "doc_id": 1
   }
 }
 ```
@@ -86,7 +85,75 @@ curl -X POST "http://localhost:8010/documents/upload" \
 
 ---
 
-### 2. 문서 목록 조회
+### 2. 배치 문서 업로드
+**POST** `/documents/upload/batch`
+
+#### 헤더
+```
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+#### 요청 본문 (Form Data)
+```
+files: File[] (업로드할 파일들)
+uploader_id: integer (업로더 ID)
+version: string (선택사항, 문서 버전)
+```
+
+#### 응답
+```json
+{
+  "total_files": 3,
+  "successful_uploads": 2,
+  "failed_uploads": 1,
+  "results": [
+    {
+      "doc_id": 1,
+      "doc_title": "문서1",
+      "doc_type": "pdf",
+      "uploader_id": 1,
+      "file_path": "documents/doc1.pdf",
+      "version": "1.0",
+      "created_at": "2024-01-01T12:00:00Z"
+    },
+    {
+      "doc_title": "매출 데이터",
+      "doc_type": "text2sql_sales_records",
+      "uploader_id": 1,
+      "version": "1.0",
+      "created_at": "2024-01-01T12:00:00Z",
+      "message": "Text2SQL 분류 완료: sales_records 테이블로 분류됨",
+      "analysis": {
+        "target_table": "sales_records",
+        "confidence": 0.95,
+        "doc_id": 2
+      }
+    }
+  ],
+  "errors": [
+    {
+      "filename": "invalid.txt",
+      "error": "지원하지 않는 파일 형식입니다: .txt"
+    }
+  ]
+}
+```
+
+#### 사용 예시
+```bash
+curl -X POST "http://localhost:8010/documents/upload/batch" \
+  -H "Authorization: Bearer <access_token>" \
+  -F "files=@doc1.pdf" \
+  -F "files=@doc2.pdf" \
+  -F "files=@data.csv" \
+  -F "uploader_id=1" \
+  -F "version=1.0"
+```
+
+---
+
+### 3. 문서 목록 조회
 **GET** `/documents/`
 
 #### 헤더
@@ -108,8 +175,8 @@ Authorization: Bearer <access_token>
   },
   {
     "doc_id": 2,
-    "doc_title": "데이터 파일",
-    "doc_type": "csv",
+    "doc_title": "매출 데이터",
+    "doc_type": "text2sql_sales_records",
     "uploader_id": 1,
     "file_path": "documents/data.csv",
     "version": "1.0",
@@ -126,7 +193,7 @@ curl -X GET "http://localhost:8010/documents/" \
 
 ---
 
-### 3. 특정 문서 조회
+### 4. 특정 문서 조회
 **GET** `/documents/{doc_id}`
 
 #### 헤더
@@ -155,7 +222,7 @@ curl -X GET "http://localhost:8010/documents/1" \
 
 ---
 
-### 4. 문서 삭제 (관리자만)
+### 5. 문서 삭제 (관리자만)
 **DELETE** `/documents/{doc_id}`
 
 #### 헤더
@@ -201,6 +268,12 @@ curl -X DELETE "http://localhost:8010/documents/1" \
 - 문서 요약 생성
 - 관계 분석
 
+### Text2SQL 분류
+- **테이블 파일 자동 분류**: CSV, Excel 파일을 자동으로 적절한 데이터베이스 테이블로 분류
+- **신뢰도 점수**: 분류 정확도를 0.0-1.0 범위로 제공
+- **컬럼 매핑**: 원본 컬럼명과 데이터베이스 컬럼명 매핑 정보 제공
+- **분류 근거**: 분류 결정에 대한 설명 제공
+
 ---
 
 ## 에러 응답
@@ -214,7 +287,7 @@ curl -X DELETE "http://localhost:8010/documents/1" \
 
 ```json
 {
-  "detail": "파일 크기가 너무 큽니다."
+  "detail": "파일 크기가 너무 큽니다. 최대 10MB까지 업로드 가능합니다."
 }
 ```
 
@@ -235,7 +308,7 @@ curl -X DELETE "http://localhost:8010/documents/1" \
 ### 404 Not Found
 ```json
 {
-  "detail": "문서를 찾을 수 없습니다."
+  "detail": "Document not found"
 }
 ```
 
@@ -257,6 +330,9 @@ curl -X DELETE "http://localhost:8010/documents/1" \
 - **CSV**: 100MB 이하
 - **Excel**: 50MB 이하
 
+### 시스템 제한
+- **최대 파일 크기**: 10MB (모든 파일 형식)
+
 ---
 
 ## 문서 분석 기능
@@ -271,6 +347,7 @@ curl -X DELETE "http://localhost:8010/documents/1" \
 - 행/열 수 계산
 - 데이터 미리보기
 - 스키마 분석
+- Text2SQL 자동 분류
 
 ---
 
@@ -280,4 +357,5 @@ curl -X DELETE "http://localhost:8010/documents/1" \
 2. **파일 크기**: 권장 크기 제한 준수
 3. **권한**: 문서 삭제는 관리자만 가능
 4. **백업**: 중요한 문서는 별도 백업 권장
-5. **보안**: 민감한 정보가 포함된 문서 주의 
+5. **보안**: 민감한 정보가 포함된 문서 주의
+6. **Text2SQL 분류**: 테이블 파일은 자동으로 적절한 데이터베이스 테이블로 분류됨 

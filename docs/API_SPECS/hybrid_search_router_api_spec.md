@@ -159,18 +159,13 @@ Authorization: Bearer <access_token>
 #### 응답
 ```json
 {
-  "total_searches": 150,
-  "average_search_time": 0.12,
-  "success_rate": 0.98,
-  "popular_queries": [
-    "매출 현황",
-    "직원 정보",
-    "고객 데이터"
-  ],
-  "search_types": {
-    "table_only": 30,
-    "text_only": 45,
-    "hybrid": 75
+  "success": true,
+  "message": "하이브리드 검색 통계 조회 완료",
+  "stats": {
+    "opensearch": {
+      "total_documents": 0,
+      "indexed_documents": 0
+    }
   }
 }
 ```
@@ -291,4 +286,5 @@ curl -X GET "http://localhost:8010/search/hybrid/stats" \
 2. **결과 정렬**: 유사도 점수 기준 내림차순
 3. **캐싱**: 자주 사용되는 쿼리는 캐시됨
 4. **실시간**: 최신 데이터 반영
-5. **보안**: 인증된 사용자만 접근 가능 
+5. **보안**: 인증된 사용자만 접근 가능
+6. **HTTP 메서드**: POST와 GET 모두 지원 (동일한 기능) 

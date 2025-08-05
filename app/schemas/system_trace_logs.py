@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import datetime
 
 class SystemTraceLogBase(BaseModel):
-    message_id: int
+    message_id: Optional[int] = None
     event_type: str
     log_data: dict
     latency_ms: Optional[int] = None
@@ -11,6 +11,6 @@ class SystemTraceLogBase(BaseModel):
 
 class SystemTraceLogInfo(SystemTraceLogBase):
     trace_id: int
-
+    
     class Config:
         from_attributes = True 

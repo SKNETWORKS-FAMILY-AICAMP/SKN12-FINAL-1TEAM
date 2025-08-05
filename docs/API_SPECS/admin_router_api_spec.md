@@ -117,7 +117,7 @@ Authorization: Bearer <admin_token>
 ```json
 {
   "success": true,
-  "message": "깨진 문서 정리 완료",
+  "message": "깨진 문서 데이터 정리 완료: 5개 청크 삭제됨",
   "deleted_count": 5
 }
 ```
@@ -132,6 +132,13 @@ curl -X DELETE "http://localhost:8010/admin/cleanup-corrupted-documents" \
 - OpenSearch에서 깨진 텍스트가 포함된 문서 청크들을 삭제
 - 시스템 성능 향상 및 데이터 무결성 보장
 - 관리자만 접근 가능
+- 삭제된 청크 수 반환
+
+#### 삭제 대상 패턴
+- "ߩ+)]N" - 실제 결과에서 발견된 패턴
+- "\\u6M~g~l" - 유니코드 깨짐 패턴
+- "zi'$&3" - 바이너리 깨짐 패턴
+- "xml]O0" - XML 파싱 오류 패턴
 
 ---
 
@@ -174,6 +181,12 @@ curl -X DELETE "http://localhost:8010/admin/cleanup-corrupted-documents" \
 ```json
 {
   "detail": "관리자 계정 생성 중 오류 발생: <error_message>"
+}
+```
+
+```json
+{
+  "detail": "OpenSearch 클라이언트가 초기화되지 않았습니다."
 }
 ```
 
@@ -231,10 +244,27 @@ curl -X POST "http://localhost:8010/admin/register-employee" \
 
 ---
 
+## 시스템 관리 기능
+
+### 깨진 문서 정리
+- **목적**: OpenSearch에서 깨진 텍스트 청크 제거
+- **대상**: 특정 패턴이 포함된 문서 청크
+- **권한**: 관리자만 실행 가능
+- **안전성**: 삭제 전 백업 권장
+
+### 정리 프로세스
+1. 깨진 텍스트 패턴 정의
+2. OpenSearch에서 패턴 검색
+3. 해당 청크들 삭제
+4. 삭제된 개수 반환
+
+---
+
 ## 주의사항
 
 1. **초기 관리자 생성**: 시스템 최초 실행 시에만 사용
 2. **관리자 권한**: 대부분의 기능은 admin 역할이 필요
 3. **데이터 백업**: 깨진 문서 정리 전에 데이터 백업 권장
 4. **보안**: 관리자 계정 정보를 안전하게 보관
-5. **토큰 관리**: 관리자 토큰의 안전한 보관 및 사용 
+5. **토큰 관리**: 관리자 토큰의 안전한 보관 및 사용
+6. **문서 정리**: 깨진 문서 정리는 신중하게 실행 

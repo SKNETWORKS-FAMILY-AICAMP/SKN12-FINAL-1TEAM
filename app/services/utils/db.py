@@ -14,4 +14,20 @@ def get_db():
     try:
         yield db
     finally:
-        db.close() 
+        db.close()
+
+def get_db_with_transaction():
+    """트랜잭션 관리가 포함된 데이터베이스 세션"""
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+def create_db_session():
+    """새로운 데이터베이스 세션 생성 (컨텍스트 매니저용)"""
+    return SessionLocal() 

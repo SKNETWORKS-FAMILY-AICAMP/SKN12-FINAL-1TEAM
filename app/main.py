@@ -9,6 +9,8 @@ from app.routers.admin_router import router as admin_router
 from app.routers.qa_router import router as qa_router
 from app.routers.hybrid_search_router import router as hybrid_search_router
 from app.routers.chat_history_router import router as chat_history_router
+from app.routers.dashboard_router import router as dashboard_router
+from app.routers.approval_router import router as approval_router
 from fastapi import FastAPI
 from app.services.external.opensearch_service import initialize_search_pipeline
 
@@ -51,8 +53,27 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("⚠️ Search Pipeline 초기화 실패 - 기본 검색 모드로 동작")
     
-    # 모델 로딩 스레드 시작
-    logger.info("🤖 AI 모델 로딩 스레드 시작...")
+    # 벡터 데이터베이스 초기화
+    logger.info("🔧 벡터 데이터베이스 초기화 중...")
+    try:
+        from app.services.core.vector_similarity_service import vector_similarity_service
+        from app.services.utils.db import SessionLocal
+        
+        # 데이터베이스 세션 생성
+        session = SessionLocal()
+        
+        # 벡터 데이터베이스 초기화
+        import asyncio
+        asyncio.run(vector_similarity_service.initialize_table_descriptions(session))
+        
+        session.close()
+        logger.info("✅ 벡터 데이터베이스 초기화 완료")
+    except Exception as e:
+        logger.error(f"❌ 벡터 데이터베이스 초기화 실패: {e}")
+        logger.warning("⚠️ 벡터 유사도 검색 기능이 제한적으로 동작할 수 있습니다")
+    
+    # 모델 로딩을 비동기로 처리 (앱 시작을 차단하지 않음)
+    logger.info("🤖 AI 모델 로딩을 백그라운드에서 시작...")
     def load_models():
         try:
             from app.services.external.opensearch_client import opensearch_client
@@ -75,10 +96,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"❌ 모델 사전 로딩 중 오류: {e}")
     
-    # 모델 로딩 스레드 생성 및 시작
-    model_loading_thread = threading.Thread(target=load_models)
+    # 모델 로딩 스레드 생성 및 시작 (데몬 스레드로 설정하여 앱 종료 시 함께 종료)
+    model_loading_thread = threading.Thread(target=load_models, daemon=True)
     model_loading_thread.start()
-    logger.info("✅ 모델 로딩 스레드 시작")
+    logger.info("✅ 모델 로딩 스레드가 백그라운드에서 시작되었습니다")
     
     logger.info("🎉 모든 시스템 초기화 완료")
     
@@ -95,6 +116,8 @@ app.include_router(admin_router, prefix="/admin", tags=["Admin"])
 app.include_router(qa_router, prefix="/qa", tags=["QA"])
 app.include_router(hybrid_search_router, prefix="", tags=["Hybrid Search"])
 app.include_router(chat_history_router, prefix="", tags=["Chat History"])
+app.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
+app.include_router(approval_router, prefix="/approval", tags=["Approval"])
 
 @app.get("/")
 def root():

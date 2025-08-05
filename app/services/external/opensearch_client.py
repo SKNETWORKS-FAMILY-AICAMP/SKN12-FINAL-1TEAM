@@ -24,9 +24,12 @@ class OpenSearchClient:
         # 클라이언트 생성
         self.client = self._create_client_with_retry(max_retries, timeout)
         
-        # 모델 미리 로드 (백그라운드에서)
+        # 모델 미리 로드 (백그라운드에서 비동기로)
         if self.client:
-            self._preload_models()
+            import threading
+            preload_thread = threading.Thread(target=self._preload_models, daemon=True)
+            preload_thread.start()
+            logger.info("🚀 모델 사전 로딩이 백그라운드에서 시작되었습니다")
 
     def _preload_models(self):
         """모델들을 미리 로드합니다 (백그라운드에서)"""

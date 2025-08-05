@@ -4,14 +4,14 @@
 채팅 세션 및 대화 기록을 관리하는 API입니다. 사용자의 채팅 세션 생성, 메시지 저장, 대화 기록 조회 등의 기능을 제공합니다.
 
 ## 기본 정보
-- **Base URL**: `/chat`
+- **Base URL**: `/api/chat-history`
 - **Content-Type**: `application/json`
 - **인증**: JWT 토큰 기반
 
 ## API 엔드포인트
 
 ### 1. 메시지 저장
-**POST** `/chat/messages`
+**POST** `/api/chat-history/save-message`
 
 #### 헤더
 ```
@@ -23,296 +23,344 @@ Content-Type: application/json
 ```json
 {
   "session_id": "session_123",
-  "employee_id": 1,
   "role": "user",
   "message_text": "안녕하세요, 매출 현황을 알려주세요.",
-  "expires_at": "2024-12-31T23:59:59Z"
+  "employee_id": 1
 }
 ```
 
 #### 파라미터 설명
 - **session_id**: 채팅 세션 ID (문자열)
-- **employee_id**: 직원 ID (정수)
 - **role**: 메시지 역할 ("user" 또는 "assistant")
 - **message_text**: 메시지 내용 (텍스트)
-- **expires_at**: 만료 시간 (선택사항, ISO 8601 형식)
+- **employee_id**: 직원 ID (정수)
 
 #### 응답
 ```json
 {
+  "success": true,
   "message_id": "msg_456",
-  "session_id": "session_123",
-  "employee_id": 1,
-  "role": "user",
-  "message_text": "안녕하세요, 매출 현황을 알려주세요.",
-  "expires_at": "2024-12-31T23:59:59Z",
-  "created_at": "2024-01-01T12:00:00Z"
-}
-```
-
-#### 사용 예시
-```bash
-curl -X POST "http://localhost:8010/chat/messages" \
-  -H "Authorization: Bearer <access_token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "session_123",
-    "employee_id": 1,
-    "role": "user",
-    "message_text": "안녕하세요, 매출 현황을 알려주세요.",
-    "expires_at": "2024-12-31T23:59:59Z"
-  }'
-```
-
----
-
-### 2. 대화 기록 조회
-**GET** `/chat/messages/{session_id}`
-
-#### 헤더
-```
-Authorization: Bearer <access_token>
-```
-
-#### 응답
-```json
-[
-  {
-    "message_id": "msg_456",
-    "session_id": "session_123",
-    "employee_id": 1,
-    "role": "user",
-    "message_text": "안녕하세요, 매출 현황을 알려주세요.",
-    "expires_at": "2024-12-31T23:59:59Z",
-    "created_at": "2024-01-01T12:00:00Z"
-  },
-  {
-    "message_id": "msg_457",
-    "session_id": "session_123",
-    "employee_id": 1,
-    "role": "assistant",
-    "message_text": "2024년 매출은 15% 증가했습니다.",
-    "expires_at": "2024-12-31T23:59:59Z",
-    "created_at": "2024-01-01T12:01:00Z"
-  }
-]
-```
-
-#### 사용 예시
-```bash
-curl -X GET "http://localhost:8010/chat/messages/session_123" \
-  -H "Authorization: Bearer <access_token>"
-```
-
----
-
-### 3. 세션 정보 조회
-**GET** `/chat/sessions/{session_id}`
-
-#### 헤더
-```
-Authorization: Bearer <access_token>
-```
-
-#### 응답
-```json
-{
-  "session_id": "session_123",
-  "employee_id": 1,
-  "session_title": "매출 현황 문의",
-  "created_at": "2024-01-01T12:00:00Z",
-  "last_activity": "2024-01-01T12:01:00Z",
-  "is_archived": false,
-  "archived_at": null
-}
-```
-
-#### 사용 예시
-```bash
-curl -X GET "http://localhost:8010/chat/sessions/session_123" \
-  -H "Authorization: Bearer <access_token>"
-```
-
----
-
-### 4. 사용자 세션 목록 조회
-**GET** `/chat/sessions/user/{employee_id}`
-
-#### 헤더
-```
-Authorization: Bearer <access_token>
-```
-
-#### 응답
-```json
-[
-  {
-    "session_id": "session_123",
-    "employee_id": 1,
-    "session_title": "매출 현황 문의",
-    "created_at": "2024-01-01T12:00:00Z",
-    "last_activity": "2024-01-01T12:01:00Z",
-    "is_archived": false,
-    "archived_at": null
-  },
-  {
-    "session_id": "session_124",
-    "employee_id": 1,
-    "session_title": "직원 정보 문의",
-    "created_at": "2024-01-01T13:00:00Z",
-    "last_activity": "2024-01-01T13:05:00Z",
-    "is_archived": false,
-    "archived_at": null
-  }
-]
-```
-
-#### 사용 예시
-```bash
-curl -X GET "http://localhost:8010/chat/sessions/user/1" \
-  -H "Authorization: Bearer <access_token>"
-```
-
----
-
-### 5. 세션 제목 업데이트
-**PUT** `/chat/sessions/{session_id}/title`
-
-#### 헤더
-```
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-#### 요청 본문
-```json
-{
-  "session_title": "업데이트된 세션 제목"
-}
-```
-
-#### 응답
-```json
-{
-  "session_id": "session_123",
-  "employee_id": 1,
-  "session_title": "업데이트된 세션 제목",
-  "created_at": "2024-01-01T12:00:00Z",
-  "last_activity": "2024-01-01T12:01:00Z",
-  "is_archived": false,
-  "archived_at": null
-}
-```
-
-#### 사용 예시
-```bash
-curl -X PUT "http://localhost:8010/chat/sessions/session_123/title" \
-  -H "Authorization: Bearer <access_token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_title": "업데이트된 세션 제목"
-  }'
-```
-
----
-
-### 6. 세션 보관
-**POST** `/chat/sessions/{session_id}/archive`
-
-#### 헤더
-```
-Authorization: Bearer <access_token>
-```
-
-#### 응답
-```json
-{
-  "session_id": "session_123",
-  "employee_id": 1,
-  "session_title": "매출 현황 문의",
-  "created_at": "2024-01-01T12:00:00Z",
-  "last_activity": "2024-01-01T12:01:00Z",
-  "is_archived": true,
-  "archived_at": "2024-01-01T14:00:00Z"
-}
-```
-
-#### 사용 예시
-```bash
-curl -X POST "http://localhost:8010/chat/sessions/session_123/archive" \
-  -H "Authorization: Bearer <access_token>"
-```
-
----
-
-### 7. 세션 복원
-**POST** `/chat/sessions/{session_id}/restore`
-
-#### 헤더
-```
-Authorization: Bearer <access_token>
-```
-
-#### 응답
-```json
-{
-  "session_id": "session_123",
-  "employee_id": 1,
-  "session_title": "매출 현황 문의",
-  "created_at": "2024-01-01T12:00:00Z",
-  "last_activity": "2024-01-01T12:01:00Z",
-  "is_archived": false,
-  "archived_at": null
-}
-```
-
-#### 사용 예시
-```bash
-curl -X POST "http://localhost:8010/chat/sessions/session_123/restore" \
-  -H "Authorization: Bearer <access_token>"
-```
-
----
-
-### 8. 세션 삭제
-**DELETE** `/chat/sessions/{session_id}`
-
-#### 헤더
-```
-Authorization: Bearer <access_token>
-```
-
-#### 응답
-```json
-{
-  "message": "세션이 성공적으로 삭제되었습니다.",
-  "session_id": "session_123"
-}
-```
-
-#### 사용 예시
-```bash
-curl -X DELETE "http://localhost:8010/chat/sessions/session_123" \
-  -H "Authorization: Bearer <access_token>"
-```
-
----
-
-### 9. 시스템 상태 확인
-**GET** `/chat/health`
-
-#### 응답
-```json
-{
-  "status": "healthy",
-  "message": "채팅 시스템이 정상 작동 중입니다.",
   "timestamp": "2024-01-01T12:00:00Z"
 }
 ```
 
 #### 사용 예시
 ```bash
-curl -X GET "http://localhost:8010/chat/health"
+curl -X POST "http://localhost:8010/api/chat-history/save-message" \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "session_123",
+    "role": "user",
+    "message_text": "안녕하세요, 매출 현황을 알려주세요.",
+    "employee_id": 1
+  }'
+```
+
+---
+
+### 2. 대화 기록 조회
+**POST** `/api/chat-history/get-history`
+
+#### 헤더
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+#### 요청 본문
+```json
+{
+  "session_id": "session_123",
+  "limit": 50,
+  "offset": 0
+}
+```
+
+#### 파라미터 설명
+- **session_id**: 채팅 세션 ID (문자열)
+- **limit**: 조회할 메시지 수 (선택사항, 기본값: 50)
+- **offset**: 건너뛸 메시지 수 (선택사항, 기본값: 0)
+
+#### 응답
+```json
+{
+  "success": true,
+  "messages": [
+    {
+      "message_id": "msg_456",
+      "timestamp": "2024-01-01T12:00:00Z",
+      "role": "user",
+      "content": "안녕하세요, 매출 현황을 알려주세요."
+    },
+    {
+      "message_id": "msg_457",
+      "timestamp": "2024-01-01T12:01:00Z",
+      "role": "assistant",
+      "content": "2024년 매출은 15% 증가했습니다."
+    }
+  ],
+  "count": 2
+}
+```
+
+#### 사용 예시
+```bash
+curl -X POST "http://localhost:8010/api/chat-history/get-history" \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "session_123",
+    "limit": 50,
+    "offset": 0
+  }'
+```
+
+---
+
+### 3. 세션 정보 조회
+**POST** `/api/chat-history/get-session-info`
+
+#### 헤더
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+#### 요청 본문
+```json
+{
+  "session_id": "session_123"
+}
+```
+
+#### 응답
+```json
+{
+  "success": true,
+  "session": {
+    "session_id": "session_123",
+    "session_title": "매출 현황 문의",
+    "created_at": "2024-01-01T12:00:00Z",
+    "last_activity": "2024-01-01T12:01:00Z",
+    "message_count": 2,
+    "is_archived": false,
+    "archived_at": null
+  }
+}
+```
+
+#### 사용 예시
+```bash
+curl -X POST "http://localhost:8010/api/chat-history/get-session-info" \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "session_123"
+  }'
+```
+
+---
+
+### 4. 사용자 세션 목록 조회
+**GET** `/api/chat-history/sessions/{employee_id}`
+
+#### 헤더
+```
+Authorization: Bearer <access_token>
+```
+
+#### 쿼리 파라미터
+- **include_archived**: 아카이브된 세션 포함 여부 (기본값: false)
+- **limit**: 조회할 세션 수 (기본값: 50)
+- **offset**: 건너뛸 세션 수 (기본값: 0)
+
+#### 응답
+```json
+{
+  "success": true,
+  "sessions": [
+    {
+      "session_id": "session_123",
+      "session_title": "매출 현황 문의",
+      "created_at": "2024-01-01T12:00:00Z",
+      "last_activity": "2024-01-01T12:01:00Z",
+      "message_count": 2,
+      "is_archived": false,
+      "archived_at": null
+    },
+    {
+      "session_id": "session_124",
+      "session_title": "직원 정보 문의",
+      "created_at": "2024-01-01T13:00:00Z",
+      "last_activity": "2024-01-01T13:05:00Z",
+      "message_count": 3,
+      "is_archived": false,
+      "archived_at": null
+    }
+  ],
+  "count": 2,
+  "total_count": 5
+}
+```
+
+#### 사용 예시
+```bash
+curl -X GET "http://localhost:8010/api/chat-history/sessions/1?include_archived=false&limit=50&offset=0" \
+  -H "Authorization: Bearer <access_token>"
+```
+
+---
+
+### 5. 세션 제목 업데이트
+**PUT** `/api/chat-history/session/{session_id}/title`
+
+#### 헤더
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+#### 요청 본문
+```json
+{
+  "title": "업데이트된 세션 제목"
+}
+```
+
+#### 응답
+```json
+{
+  "success": true,
+  "message": "Session title updated successfully"
+}
+```
+
+#### 사용 예시
+```bash
+curl -X PUT "http://localhost:8010/api/chat-history/session/session_123/title" \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "업데이트된 세션 제목"
+  }'
+```
+
+---
+
+### 6. 세션 보관
+**POST** `/api/chat-history/session/{session_id}/archive`
+
+#### 헤더
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+#### 요청 본문
+```json
+{
+  "employee_id": 1
+}
+```
+
+#### 응답
+```json
+{
+  "success": true,
+  "message": "Session archived successfully"
+}
+```
+
+#### 사용 예시
+```bash
+curl -X POST "http://localhost:8010/api/chat-history/session/session_123/archive" \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employee_id": 1
+  }'
+```
+
+---
+
+### 7. 세션 복원
+**POST** `/api/chat-history/session/{session_id}/restore`
+
+#### 헤더
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+#### 요청 본문
+```json
+{
+  "employee_id": 1
+}
+```
+
+#### 응답
+```json
+{
+  "success": true,
+  "message": "Session restored successfully"
+}
+```
+
+#### 사용 예시
+```bash
+curl -X POST "http://localhost:8010/api/chat-history/session/session_123/restore" \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employee_id": 1
+  }'
+```
+
+---
+
+### 8. 세션 삭제
+**DELETE** `/api/chat-history/session/{session_id}`
+
+#### 헤더
+```
+Authorization: Bearer <access_token>
+```
+
+#### 쿼리 파라미터
+- **employee_id**: 직원 ID (필수)
+
+#### 응답
+```json
+{
+  "success": true,
+  "message": "Session deleted successfully"
+}
+```
+
+#### 사용 예시
+```bash
+curl -X DELETE "http://localhost:8010/api/chat-history/session/session_123?employee_id=1" \
+  -H "Authorization: Bearer <access_token>"
+```
+
+---
+
+### 9. 시스템 상태 확인
+**GET** `/api/chat-history/health`
+
+#### 응답
+```json
+{
+  "status": "healthy",
+  "service": "chat-history-api"
+}
+```
+
+#### 사용 예시
+```bash
+curl -X GET "http://localhost:8010/api/chat-history/health"
 ```
 
 ---
@@ -351,7 +399,13 @@ curl -X GET "http://localhost:8010/chat/health"
 ### 400 Bad Request
 ```json
 {
-  "detail": "메시지 텍스트가 비어있습니다."
+  "detail": "Session is already archived"
+}
+```
+
+```json
+{
+  "detail": "Session is not archived"
 }
 ```
 
@@ -365,7 +419,7 @@ curl -X GET "http://localhost:8010/chat/health"
 ### 404 Not Found
 ```json
 {
-  "detail": "세션을 찾을 수 없습니다."
+  "detail": "Session not found"
 }
 ```
 
@@ -378,23 +432,11 @@ curl -X GET "http://localhost:8010/chat/health"
 
 ---
 
-## 데이터 만료 정책
-
-### 메시지 만료
-- **expires_at**: 메시지 만료 시간 설정
-- **자동 삭제**: 만료된 메시지는 자동 삭제
-- **보존 기간**: 기본 30일
-
-### 세션 만료
-- **비활성 세션**: 90일 후 자동 보관
-- **보관 세션**: 1년 후 자동 삭제
-
----
-
 ## 주의사항
 
-1. **메시지 순서**: created_at 기준으로 정렬
+1. **메시지 순서**: timestamp 기준으로 정렬
 2. **세션 고유성**: session_id는 고유해야 함
 3. **권한 확인**: 자신의 세션만 접근 가능
-4. **데이터 보존**: 중요한 대화는 별도 백업
-5. **성능**: 대용량 메시지는 청킹 처리 
+4. **데이터 보존**: 중요한 대화는 별도 백업 권장
+5. **성능**: 대용량 메시지는 청킹 처리
+6. **URL 경로**: 모든 엔드포인트는 `/api/chat-history` 접두사 사용 

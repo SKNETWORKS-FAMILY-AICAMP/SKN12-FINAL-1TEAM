@@ -37,83 +37,6 @@ class DocumentAnalyzer:
             "text": [".txt", ".docx", ".pdf"],
             "table": [".csv", ".xlsx", ".xls"]
         }
-        
-        # 테이블 문서 패턴
-        self.table_patterns = {
-            "performance_data": {
-                "keywords": [
-                    "담당자", "거래처명", "품목", "매출액", "합계", "년월"
-                ],
-                "column_patterns": [
-                    r"담\s*당\s*자", r"ID", r"품\s*목", r"\d{6}", r"합\s*계"
-                ]
-            },
-            "customer_info": {
-                "keywords": [
-                    "거래처ID", "월", "매출", "월방문횟수", "사용 예산", "총환자수"
-                ],
-                "column_patterns": [
-                    r"거래처\s*ID", r"월", r"매\s*출", r"월\s*방문\s*횟수", r"사용\s*예산", r"총\s*환자\s*수"
-                ]
-            },
-            "hr_data": {
-                "keywords": [
-                    "사번", "성명", "부서", "직급", "사업부", "지점", "연락처", 
-                    "월평균사용예산", "최근 평가", "기본급", "성과급", "책임업무", "ID", "PW"
-                ],
-                "column_patterns": [
-                    r"사\s*번", r"성\s*명", r"부\s*서", r"직\s*급", r"사업\s*부", r"지\s*점", r"연락\s*처",
-                    r"월평균사용예산", r"최근\s*평가", r"기본급", r"성과급", r"책임\s*업무", r"ID", r"PW"
-                ]
-            },
-            # "branch_target": {
-            #     "keywords": [
-            #         "지점", "지사", "영업소", "목표", "계획", "예산", "KPI",
-            #         "매출목표", "판매목표", "실적목표", "달성목표", "분기목표",
-            #         "branch", "office", "target", "goal", "plan", "budget"
-            #     ],
-            #     "column_patterns": [
-            #         r"지\s*점", r"지\s*사", r"영업\s*소", r"목\s*표",
-            #         r"계\s*획", r"예\s*산", r"KPI", r"매출\s*목표",
-            #         r"판매\s*목표", r"실적\s*목표", r"달성\s*목표", r"분기\s*목표"
-            #     ]
-            # }
-        }
-        
-        # 텍스트 문서 패턴
-        self.text_patterns = {
-            "regulation": {
-                "keywords": [
-                    "규정", "규칙", "지침", "정책", "가이드라인", "행동강령",
-                    "제1장", "제2장", "제1조", "제2조", "목적", "정의", "준수",
-                    "금지", "의무", "책임", "처벌", "위반", "조치",
-                    "regulation", "policy", "guideline", "code", "rule"
-                ],
-                "structure_patterns": [
-                    r"제\d+장\s*[^\n]+",  # 제1장 총칙
-                    r"제\d+조\s*\[[^\]]+\]",  # 제1조[목적]
-                    r"①\s*[^\n]+",  # ① 첫 번째 항목
-                    r"②\s*[^\n]+",  # ② 두 번째 항목
-                    r"본\s*규정", r"본\s*지침", r"본\s*정책"
-                ]
-            },
-            "report": {
-                "keywords": [
-                    "보고서", "리포트", "분석", "현황", "결과", "통계",
-                    "시장", "업계", "성과", "실적", "전망", "계획",
-                    "report", "analysis", "status", "result", "statistics"
-                ],
-                "structure_patterns": [
-                    r"\d+\.\s*[^\n]+",  # 1. 제목
-                    r"[A-Z]\.\s*[^\n]+",  # A. 제목
-                    r"[가-힣]\.\s*[^\n]+",  # 가. 제목
-                    r"##\s*[^\n]+",  # ## 제목
-                    r"#\s*[^\n]+",  # # 제목
-                    r"[^\n]+\n[-=]{3,}",  # 제목\n--- 또는 ===
-                    r"결\s*론", r"요\s*약", r"서\s*론", r"본\s*론"
-                ]
-            }
-        }
     
     def analyze_document(self, text: str, filename: str) -> str:
         """
@@ -290,38 +213,6 @@ class DocumentAnalyzer:
         # 기본값 반환
         logger.warning(f"LLM 응답에서 문서 타입을 찾을 수 없음: {response}")
         return DocumentType.REPORT.value
-    
-    def _calculate_score(self, text: str, patterns: dict, weights: dict) -> float:
-        """공통 점수 계산 메서드"""
-        score = 0.0
-        
-        for pattern_type, weight in weights.items():
-            if pattern_type in patterns:
-                matches = 0
-                for pattern in patterns[pattern_type]:
-                    if isinstance(pattern, str):  # 키워드
-                        if pattern.lower() in text.lower():
-                            matches += 1
-                    else:  # 정규식 패턴
-                        if re.search(pattern, text, re.IGNORECASE):
-                            matches += 1
-                
-                pattern_score = matches / len(patterns[pattern_type])
-                score += pattern_score * weight
-        
-        return score
-    
-    def _calculate_table_score(self, text: str, table_type: str) -> float:
-        """테이블 문서 타입별 점수 계산 (기존 키워드 기반 - 백업용)"""
-        patterns = self.table_patterns[table_type]
-        weights = {"keywords": 0.6, "column_patterns": 0.4}
-        return self._calculate_score(text, patterns, weights)
-    
-    def _calculate_text_score(self, text: str, text_type: str) -> float:
-        """텍스트 문서 타입별 점수 계산 (기존 키워드 기반 - 백업용)"""
-        patterns = self.text_patterns[text_type]
-        weights = {"keywords": 0.5, "structure_patterns": 0.5}
-        return self._calculate_score(text, patterns, weights)
     
     def get_chunking_type(self, document_type: str) -> str:
         """

@@ -10,12 +10,15 @@ from typing import List, Dict, Any, Optional, Callable
 from contextlib import contextmanager
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 from datetime import datetime, timezone
 from decimal import Decimal
 
 # 공통 OpenAI 서비스 import
 from app.services.external.openai_service import openai_service
 from app.services.utils.customer_utils import extract_address_from_name, extract_address_and_clean_name
+from app.services.core.dashboard_service import DashboardService
+from app.services.core.vector_similarity_service import vector_similarity_service
 
 # 모델 import
 from app.models.employees import Employee
@@ -36,6 +39,7 @@ class Text2SQLTableClassifier:
     def __init__(self, db_session_factory: Optional[Callable] = None):
         """초기화"""
         self.db_session_factory = db_session_factory
+        self.dashboard_service = None  # 나중에 초기화
         
         # 데이터베이스 테이블 설명 (LLM 프롬프트용)
         self.table_descriptions = {
@@ -91,6 +95,8 @@ class Text2SQLTableClassifier:
             
         session = self.db_session_factory()
         try:
+            # 트랜잭션 격리 레벨 설정으로 락 경합 방지
+            session.execute(text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"))
             yield session
             session.commit()
         except Exception:
@@ -99,7 +105,7 @@ class Text2SQLTableClassifier:
         finally:
             session.close()
     
-    def classify_table_with_text2sql(self, table_data: List[Dict[str, Any]], table_description: str = "") -> Dict[str, Any]:
+    def classify_table_with_text2sql(self, table_data: List[Dict[str, Any]], table_description: str = "", document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Text2SQL을 사용하여 테이블 분류 및 SQL 생성
         """
@@ -112,6 +118,12 @@ class Text2SQLTableClassifier:
             }
         
         try:
+            # DashboardService 초기화
+            if self.db_session_factory:
+                with self._get_db_session() as session:
+                    if session:
+                        self.dashboard_service = DashboardService(session)
+            
             # 1. 테이블 구조 분석
             columns = list(table_data[0].keys()) if table_data else []
             sample_data = table_data[:3] if len(table_data) >= 3 else table_data
@@ -132,7 +144,9 @@ class Text2SQLTableClassifier:
                 insertion_result = self._insert_data_to_target_table(
                     table_data=table_data,
                     target_table=target_table,
-                    column_mapping=column_mapping
+                    column_mapping=column_mapping,
+                    document_id=document_id,
+                    uploader_id=uploader_id
                 )
                 
                 if insertion_result['success']:
@@ -143,7 +157,10 @@ class Text2SQLTableClassifier:
                         'reasoning': classification_result['reasoning'],
                         'column_mapping': column_mapping,
                         'processed_count': insertion_result['processed_count'],
-                        'message': f"Text2SQL 분류 완료: {target_table} 테이블에 {insertion_result['processed_count']}건 저장"
+                        'created_count': insertion_result.get('created_count', 0),
+                        'updated_count': insertion_result.get('updated_count', 0),
+                        'skipped_count': insertion_result.get('skipped_count', 0),
+                        'message': f"Text2SQL 분류 완료: {target_table} 테이블에 {insertion_result['processed_count']}건 저장 (문서 ID: {document_id})"
                     }
                 else:
                     return {
@@ -201,13 +218,76 @@ class Text2SQLTableClassifier:
                 'confidence': 0.0
             }
     
-    def _perform_llm_classification(self, columns: List[str], sample_data: List[Dict], table_description: str) -> Dict[str, Any]:
-        """LLM을 사용한 테이블 분류"""
+    async def _perform_llm_classification(self, columns: List[str], sample_data: List[Dict], table_description: str) -> Dict[str, Any]:
+        """LLM을 사용한 테이블 분류 (다중 테이블 분석과 조합)"""
         try:
-            # LLM 프롬프트 생성
+            # 1단계: 다중 테이블 분석 시도
+            async with self._get_db_session() as session:
+                multi_table_result = await vector_similarity_service.analyze_multi_table_capability(
+                    session, columns, sample_data
+                )
+                
+                if multi_table_result['success'] and multi_table_result['table_mappings']:
+                    logger.info(f"다중 테이블 분석 성공: {len(multi_table_result['table_mappings'])}개 테이블 발견")
+                    
+                    # 가장 유사도가 높은 테이블을 주요 타겟으로 선택
+                    best_mapping = max(multi_table_result['table_mappings'], 
+                                     key=lambda x: x['similarity'])
+                    
+                    # 효율적인 LLM 프롬프트 구성
+                    prompt = self._create_enhanced_llm_prompt(
+                        columns, sample_data, table_description, multi_table_result
+                    )
+                    
+                    # OpenAI API 호출
+                    messages = [
+                        {"role": "system", "content": "당신은 Excel 테이블 데이터를 분석하여 여러 데이터베이스 테이블에 데이터를 생성할 수 있는지 판단하는 전문가입니다."},
+                        {"role": "user", "content": prompt}
+                    ]
+                    
+                    result = openai_service.create_json_completion(
+                        messages=messages,
+                        model="gpt-3.5-turbo",
+                        max_tokens=1500,
+                        temperature=0.1
+                    )
+                    
+                    if result and 'target_tables' in result:
+                        logger.info(f"다중 테이블 LLM 분류 완료: {result.get('target_tables')}")
+                        return {
+                            'success': True,
+                            'target_tables': result.get('target_tables', []),
+                            'confidence': result.get('confidence', 0.0),
+                            'method': 'multi_table_llm',
+                            'table_mappings': multi_table_result['table_mappings'],
+                            'dependency_analysis': multi_table_result['dependency_analysis']
+                        }
+            
+            # 2단계: 기존 단일 테이블 분류 시도 (호환성 유지)
+            logger.info("다중 테이블 분석 실패, 단일 테이블 분류 시도")
+            
+            # 기존 벡터 유사도 검색
+            async with self._get_db_session() as session:
+                table_name, similarity = await vector_similarity_service.find_similar_table(session, columns, sample_data)
+                
+                if table_name and similarity > 0.7:  # 70% 이상 유사한 경우
+                    logger.info(f"벡터 유사도 기반 분류 성공: {table_name} (유사도: {similarity:.3f})")
+                    
+                    # 컬럼 매핑 찾기
+                    column_mapping = await vector_similarity_service.find_column_mapping(session, table_name, columns)
+                    
+                    return {
+                        'success': True,
+                        'target_table': table_name,
+                        'confidence': similarity,
+                        'method': 'vector_similarity',
+                        'column_mapping': column_mapping
+                    }
+            
+            # 3단계: 기존 LLM 분류 시도
+            logger.info("기존 LLM 분류 시도")
             prompt = self._create_llm_classification_prompt(columns, sample_data, table_description)
             
-            # OpenAI API 호출
             messages = [
                 {"role": "system", "content": "당신은 Excel 테이블 데이터를 분석하여 적절한 데이터베이스 테이블을 선택하고 컬럼 매핑을 제공하는 전문가입니다."},
                 {"role": "user", "content": prompt}
@@ -256,6 +336,7 @@ class Text2SQLTableClassifier:
                 'target_table': result.get('target_table'),
                 'confidence': result.get('confidence', 0.0),
                 'reasoning': result.get('reasoning', ''),
+                'method': 'llm',
                 'column_mapping': normalized_mapping
             }
             
@@ -268,6 +349,62 @@ class Text2SQLTableClassifier:
                 'confidence': 0.0
             }
     
+    def _create_enhanced_llm_prompt(self, columns: List[str], sample_data: List[Dict], 
+                                   table_description: str, multi_table_result: Dict[str, Any]) -> str:
+        """다중 테이블 분석을 위한 향상된 LLM 프롬프트 생성"""
+        prompt = f"""
+업로드된 Excel 파일의 컬럼들을 분석하여 어떤 데이터베이스 테이블들에 데이터를 생성할 수 있는지 판단해주세요.
+
+## 업로드된 컬럼들:
+{', '.join(columns)}
+
+## 샘플 데이터:
+{json.dumps(sample_data[:3], ensure_ascii=False, indent=2) if sample_data else '없음'}
+
+## 문서 설명:
+{table_description if table_description else '없음'}
+
+## 관련성이 높은 테이블들 (벡터 유사도 기반 선별):
+"""
+        
+        for i, table_info in enumerate(multi_table_result['prompt_info']['relevant_tables'], 1):
+            prompt += f"""
+{i}. {table_info['table_name']} (유사도: {table_info['similarity']:.3f})
+   - 설명: {table_info['description']}
+   - 매핑된 컬럼: {', '.join(table_info['mapped_columns']) if table_info['mapped_columns'] else '없음'}
+   - 매핑되지 않은 컬럼: {', '.join(table_info['unmapped_columns']) if table_info['unmapped_columns'] else '없음'}
+"""
+        
+        prompt += f"""
+## 테이블 의존성 분석:
+- 독립 테이블: {', '.join(multi_table_result['dependency_analysis']['primary_tables'])}
+- 의존 테이블: {', '.join(multi_table_result['dependency_analysis']['dependent_tables'])}
+- 권장 생성 순서: {', '.join(multi_table_result['dependency_analysis']['creation_order'])}
+
+## 분석 요청사항:
+1. 업로드된 컬럼들로 어떤 테이블들에 데이터를 생성할 수 있는지 판단
+2. 각 테이블별로 어떤 컬럼들이 매핑되는지 확인
+3. 테이블 간의 의존성을 고려하여 생성 가능성을 평가
+4. 데이터 생성이 불가능한 테이블은 제외
+
+## 응답 형식:
+{{
+    "target_tables": [
+        {{
+            "table_name": "테이블명",
+            "confidence": 0.0-1.0,
+            "column_mapping": {{"테이블컬럼": "업로드컬럼"}},
+            "reasoning": "이 테이블을 선택한 이유"
+        }}
+    ],
+    "confidence": 0.0-1.0,
+    "reasoning": "전체 분석 결과에 대한 설명"
+}}
+
+JSON 형식으로 응답해주세요.
+"""
+        return prompt
+
     def _create_llm_classification_prompt(self, columns: List[str], sample_data: List[Dict], table_description: str) -> str:
         """LLM 분류를 위한 프롬프트 생성"""
         return f"""
@@ -332,17 +469,17 @@ JSON 형식으로 응답:
     
 
     
-    def _insert_data_to_target_table(self, table_data: List[Dict[str, Any]], target_table: str, column_mapping: Dict[str, str]) -> Dict[str, Any]:
+    def _insert_data_to_target_table(self, table_data: List[Dict[str, Any]], target_table: str, column_mapping: Dict[str, str], document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
         """대상 테이블에 데이터 삽입"""
         try:
             if target_table == 'employee_info':
-                return self._execute_with_session(lambda session: self._insert_employee_info(table_data, session, column_mapping))
+                return self._execute_with_session(lambda session: self._insert_employee_info(table_data, session, column_mapping, document_id, uploader_id))
             elif target_table == 'customers':
-                return self._execute_with_session(lambda session: self._insert_customers(table_data, session, column_mapping))
+                return self._execute_with_session(lambda session: self._insert_customers(table_data, session, column_mapping, document_id, uploader_id))
             elif target_table == 'sales_records':
-                return self._execute_with_session(lambda session: self._insert_sales_records(table_data, session, column_mapping))
+                return self._execute_with_session(lambda session: self._insert_sales_records(table_data, session, column_mapping, document_id, uploader_id))
             elif target_table == 'products':
-                return self._execute_with_session(lambda session: self._insert_products(table_data, session, column_mapping))
+                return self._execute_with_session(lambda session: self._insert_products(table_data, session, column_mapping, document_id, uploader_id))
             elif target_table == 'interaction_logs':
                 return self._execute_with_session(lambda session: self._insert_interaction_logs(table_data, session, column_mapping))
             elif target_table == 'assignment_map':
@@ -387,10 +524,16 @@ JSON 형식으로 응답:
     
     # === 데이터 삽입 메서드들 ===
     
-    def _insert_employee_info(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str]) -> Dict[str, Any]:
+    def _insert_employee_info(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str], document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
         """직원 인사 정보 삽입 (사번으로만 조회)"""
         processed_count = 0
         skipped_count = 0
+        created_count = 0
+        updated_count = 0
+        
+        # 대시보드 서비스 초기화
+        if not self.dashboard_service:
+            self.dashboard_service = DashboardService(session)
         
         try:
             for row in table_data:
@@ -402,6 +545,15 @@ JSON 형식으로 응답:
                 if not employee_number or employee_number == 'nan':
                     logger.warning(f"사번이 없거나 유효하지 않은 행 건너뜀: {row}")
                     skipped_count += 1
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='employee',
+                        action='skipped',
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"사번이 없거나 유효하지 않음: {row}",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                     continue
                 
                 # 이름 추출
@@ -410,6 +562,15 @@ JSON 형식으로 응답:
                 if not name:
                     logger.warning(f"이름을 찾을 수 없는 행 건너뜀: {row}")
                     skipped_count += 1
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='employee',
+                        action='skipped',
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"이름을 찾을 수 없음: {row}",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                     continue
                 
                 # 사번으로만 기존 직원 확인
@@ -420,19 +581,46 @@ JSON 형식으로 응답:
                 if existing_employee:
                     # 업데이트
                     self._update_employee_info(existing_employee, row, column_mapping)
+                    updated_count += 1
                     logger.info(f"직원 정보 업데이트: {name} (사번: {employee_number})")
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='employee',
+                        action='updated',
+                        entity_id=existing_employee.employee_info_id,
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"직원 정보 업데이트: {name} (사번: {employee_number})",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                 else:
-                    # 새 직원 등록
+                    # 새 직원 등록 (자동 생성)
                     new_employee = self._create_employee_info(row, column_mapping)
+                    new_employee.is_auto_created = True  # 자동 생성 표시
+                    new_employee.approval_status = 'pending'  # 승인 대기 상태
                     session.add(new_employee)
-                    logger.info(f"새 직원 등록: {name} (사번: {employee_number})")
+                    session.flush()  # ID 생성
+                    created_count += 1
+                    logger.info(f"새 직원 자동 생성: {name} (사번: {employee_number})")
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='employee',
+                        action='created',
+                        entity_id=new_employee.employee_info_id,
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"새 직원 자동 생성: {name} (사번: {employee_number})",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                 
                 processed_count += 1
             
             return {
                 'success': True,
-                'message': f'직원 인사 정보 삽입 완료: {processed_count}명 처리됨, {skipped_count}명 건너뜀',
+                'message': f'직원 인사 정보 삽입 완료: {processed_count}명 처리됨, {created_count}명 생성, {updated_count}명 업데이트, {skipped_count}명 건너뜀',
                 'processed_count': processed_count,
+                'created_count': created_count,
+                'updated_count': updated_count,
                 'skipped_count': skipped_count
             }
             
@@ -443,6 +631,14 @@ JSON 형식으로 응답:
     def _create_employee_info(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> EmployeeInfo:
         """직원 정보 객체 생성"""
         employee_data = {}
+        
+        # EmployeeInfo 모델의 유효한 필드들
+        valid_fields = {
+            'name', 'employee_number', 'team', 'position', 'business_unit', 'branch',
+            'contact_number', 'base_salary', 'incentive_pay', 'avg_monthly_budget',
+            'latest_evaluation', 'responsibilities', 'is_auto_created', 'approval_status',
+            'approved_by', 'approved_at', 'approval_notes'
+        }
         
         # 매핑된 컬럼에서 데이터 추출
         for db_field, source_column in column_mapping.items():
@@ -456,7 +652,15 @@ JSON 형식으로 응답:
                     except:
                         value = None
                 
-                employee_data[db_field] = value
+                # employee_name을 name으로 매핑
+                if db_field == 'employee_name':
+                    employee_data['name'] = value
+                elif db_field in valid_fields:
+                    # EmployeeInfo 모델에 존재하는 필드만 허용
+                    employee_data[db_field] = value
+                else:
+                    # EmployeeInfo 모델에 존재하지 않는 필드는 무시
+                    logger.debug(f"EmployeeInfo에 존재하지 않는 필드 무시: {db_field}")
         
         return EmployeeInfo(**employee_data)
     
@@ -475,10 +679,16 @@ JSON 형식으로 응답:
                 
                 setattr(employee, db_field, value)
     
-    def _insert_customers(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str]) -> Dict[str, Any]:
+    def _insert_customers(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str], document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
         """고객 데이터 삽입"""
         processed_count = 0
         skipped_count = 0
+        created_count = 0
+        updated_count = 0
+        
+        # 대시보드 서비스 초기화
+        if not self.dashboard_service:
+            self.dashboard_service = DashboardService(session)
         
         # 중복 제거를 위한 메모리 추적
         processed_customers = set()  # (customer_name, address) 조합 추적
@@ -493,6 +703,15 @@ JSON 형식으로 응답:
                 
                 if not customer_name:
                     logger.warning(f"고객명을 찾을 수 없는 행 건너뜀: {row}")
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='customer',
+                        action='skipped',
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"고객명을 찾을 수 없음: {row}",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                     continue
                 
                 # 임시 고객 객체 생성하여 address 추출
@@ -509,6 +728,15 @@ JSON 형식으로 응답:
                     customer_updates[customer_key].append(row)
                     skipped_count += 1
                     logger.info(f"중복 고객 건너뜀: {customer_name} ({address})")
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='customer',
+                        action='skipped',
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"중복 고객 건너뜀: {customer_name} ({address})",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                 else:
                     # 새로운 고객
                     processed_customers.add(customer_key)
@@ -527,19 +755,46 @@ JSON 형식으로 응답:
                 if existing_customer:
                     # 기존 고객 업데이트
                     self._update_customer(existing_customer, row, column_mapping)
+                    updated_count += 1
                     logger.info(f"고객 정보 업데이트: {customer_name} ({address})")
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='customer',
+                        action='updated',
+                        entity_id=existing_customer.customer_id,
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"고객 정보 업데이트: {customer_name} ({address})",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                 else:
-                    # 새 고객 등록
+                    # 새 고객 등록 (자동 생성)
                     new_customer = self._create_customer(row, column_mapping)
+                    new_customer.is_auto_created = True  # 자동 생성 표시
+                    new_customer.approval_status = 'pending'  # 승인 대기 상태
                     session.add(new_customer)
-                    logger.info(f"새 고객 등록: {customer_name} ({address})")
+                    session.flush()  # ID 생성
+                    created_count += 1
+                    logger.info(f"새 고객 자동 생성: {customer_name} ({address})")
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='customer',
+                        action='created',
+                        entity_id=new_customer.customer_id,
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"새 고객 자동 생성: {customer_name} ({address})",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                 
                 processed_count += 1
             
             return {
                 'success': True,
-                'message': f'고객 정보 삽입 완료: {processed_count}명 처리됨, {skipped_count}명 중복 건너뜀',
+                'message': f'고객 정보 삽입 완료: {processed_count}명 처리됨, {created_count}명 생성, {updated_count}명 업데이트, {skipped_count}명 중복 건너뜀',
                 'processed_count': processed_count,
+                'created_count': created_count,
+                'updated_count': updated_count,
                 'skipped_count': skipped_count
             }
             
@@ -572,7 +827,7 @@ JSON 형식으로 응답:
             customer_name = customer_data.get('customer_name', '')
             if customer_name:
                 # customer_name에서 주소 추출하고 깔끔한 이름으로 정리
-                clean_name, address = self._extract_address_and_clean_name(customer_name)  # (이름, 주소) 순서로 받기
+                clean_name, address = extract_address_and_clean_name(customer_name)  # (이름, 주소) 순서로 받기
                 if address:
                     customer_data['address'] = address
                     customer_data['customer_name'] = clean_name  # 주소 부분 제거된 깔끔한 이름
@@ -580,7 +835,10 @@ JSON 형식으로 응답:
                     if 'address' not in column_mapping:
                         column_mapping['address'] = 'customer_name(추출)'
         
-        return Customer(**customer_data)
+        customer = Customer(**customer_data)
+        customer.is_auto_created = True  # 자동 생성 표시
+        customer.approval_status = 'pending'  # 승인 대기 상태
+        return customer
     
 
     
@@ -611,10 +869,15 @@ JSON 형식으로 응답:
                     if 'address' not in column_mapping:
                         column_mapping['address'] = 'customer_name(추출)'
     
-    def _insert_sales_records(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str]) -> Dict[str, Any]:
+    def _insert_sales_records(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str], document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
         """매출 데이터 삽입"""
         processed_count = 0
         skipped_count = 0
+        created_count = 0
+        
+        # 대시보드 서비스 초기화
+        if not self.dashboard_service:
+            self.dashboard_service = DashboardService(session)
         
         try:
             # 월별 매출 데이터인지 확인
@@ -659,24 +922,25 @@ JSON 형식으로 응답:
                     skipped_count += 1
                     continue
                 
-                # 직원 ID 찾기 (사번으로만 조회)
+                # 직원 ID 찾기
                 employee_id = None
                 employee_name = ""
                 
-                # 사번으로만 찾기
                 if 'employee_number' in column_mapping and row.get(column_mapping['employee_number']):
                     employee_number = str(row[column_mapping['employee_number']]).strip()
                     if employee_number and employee_number != 'nan':
-                        # 사번으로 employee_info에서 찾기
-                        employee_info = session.query(EmployeeInfo).filter(
-                            EmployeeInfo.employee_number == employee_number
-                        ).first()
-                        if employee_info and employee_info.employee_info_id:
-                            employee_id = employee_info.employee_info_id
-                            employee_name = employee_info.name
-                            logger.info(f"✅ 사번으로 직원 조회 성공: {employee_name} (사번: {employee_number}, ID: {employee_id})")
+                        # get_or_create로 직원 ID 가져오기 (조회 + 생성 모두 처리)
+                        employee_id = self._get_or_create_employee_id(session, row, column_mapping)
+                        if employee_id:
+                            # 직원 이름 가져오기
+                            employee_info = session.query(EmployeeInfo).filter(
+                                EmployeeInfo.employee_info_id == employee_id
+                            ).first()
+                            if employee_info:
+                                employee_name = employee_info.name
+                                logger.info(f"✅ 직원 처리 완료: {employee_name} (사번: {employee_number}, ID: {employee_id})")
                         else:
-                            logger.warning(f"사번으로 직원을 찾을 수 없음: {employee_number}")
+                            logger.warning(f"직원 ID를 가져올 수 없음: {employee_number}")
                     else:
                         logger.warning(f"유효하지 않은 사번: {employee_number}")
                 else:
@@ -687,7 +951,7 @@ JSON 형식으로 응답:
                     else:
                         logger.warning(f"사번 컬럼 매핑 없음: {column_mapping}")
                 
-                # 사번이 없거나 직원을 찾을 수 없는 경우 해당 행 건너뛰기
+                # 직원 ID를 찾을 수 없는 경우 해당 행 건너뛰기
                 if not employee_id:
                     logger.warning(f"직원 ID를 찾을 수 없는 행 건너뜀: {row}")
                     skipped_count += 1
@@ -727,7 +991,20 @@ JSON 형식으로 응답:
                     sale_date=sale_date
                 )
                 session.add(new_sales_record)
+                session.flush()  # ID 생성
+                created_count += 1
                 processed_count += 1
+                
+                # 로깅
+                self.dashboard_service.log_auto_create_activity(
+                    entity_type='sales_record',
+                    action='created',
+                    entity_id=new_sales_record.record_id,
+                    document_id=document_id,
+                    uploader_id=uploader_id,
+                    message=f"매출 기록 생성: {employee_name} → {sale_amount}원 ({sale_date})",
+                    details={'row_data': row, 'column_mapping': column_mapping}
+                )
             
             session.commit()
             
@@ -735,7 +1012,8 @@ JSON 형식으로 응답:
                 'success': True,
                 'message': f'매출 기록 삽입 완료: {processed_count}건 처리됨, {skipped_count}건 건너뜀',
                 'processed_count': processed_count,
-                'skipped_count': skipped_count
+                'skipped_count': skipped_count,
+                'created_count': created_count
             }
             
         except SQLAlchemyError as e:
@@ -751,7 +1029,7 @@ JSON 형식으로 응답:
         logger.info(f"🔍 고객 조회 시작: 원본 고객명 = '{customer_name}'")
         
         # 고객명에서 주소 추출
-        parsed_customer_name, parsed_address = self._extract_address_and_clean_name(customer_name)
+        parsed_customer_name, parsed_address = extract_address_and_clean_name(customer_name)
         logger.info(f"🔍 파싱 결과: 고객명 = '{parsed_customer_name}', 주소 = '{parsed_address}'")
         
         # 고객명과 주소로 정확히 조회
@@ -833,6 +1111,73 @@ JSON 형식으로 응답:
                 session.rollback()
                 return None
 
+    def _get_or_create_employee_id(self, session: Session, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
+        """직원 ID를 안전하게 가져오거나 생성 (사번으로 정확히 특정)"""
+        if 'employee_number' not in column_mapping or not row.get(column_mapping['employee_number']):
+            return None
+            
+        employee_number = str(row[column_mapping['employee_number']]).strip()
+        logger.info(f"🔍 직원 조회 시작: 사번 = '{employee_number}'")
+        
+        # 사번으로 정확히 조회
+        employee_info = session.query(EmployeeInfo).filter(
+            EmployeeInfo.employee_number == employee_number
+        ).first()
+        
+        if employee_info:
+            logger.info(f"✅ 직원 조회 성공: 직원 ID = {employee_info.employee_info_id}, 이름 = '{employee_info.name}'")
+            return employee_info.employee_info_id
+        else:
+            logger.warning(f"❌ 직원 조회 실패: 사번 '{employee_number}' 직원을 찾을 수 없음")
+        
+        # 직원이 없으면 자동 생성
+        logger.info(f"🔍 새 직원 생성 시도 - 사번='{employee_number}'")
+        
+        # 직원 생성 전에 한 번 더 확인 (동시성 문제 방지)
+        employee_info = session.query(EmployeeInfo).filter(
+            EmployeeInfo.employee_number == employee_number
+        ).first()
+        
+        if employee_info:
+            logger.info(f"✅ 동시성 체크: 기존 직원 발견 - 직원 ID = {employee_info.employee_info_id}")
+            return employee_info.employee_info_id
+        
+        # 새 직원 생성 시도
+        try:
+            new_employee = self._create_employee_info(row, column_mapping)
+            new_employee.is_auto_created = True  # 자동 생성 표시
+            new_employee.approval_status = 'pending'  # 승인 대기 상태
+            logger.info(f"🔍 생성할 직원 정보: 이름='{new_employee.name}', 사번='{new_employee.employee_number}'")
+            session.add(new_employee)
+            session.flush()  # ID 생성
+            employee_id = new_employee.employee_info_id
+            logger.info(f"✅ 새 직원 자동 생성: '{new_employee.name}' (ID: {employee_id})")
+            return employee_id
+            
+        except Exception as e:
+            # 중복 제약 조건 위반 시 기존 직원 찾기
+            if "duplicate key value violates unique constraint" in str(e) or "unique constraint" in str(e).lower():
+                logger.warning(f"⚠️ 직원 중복 발견, 기존 직원 찾기: '{employee_number}'")
+                
+                # 세션 롤백 후 재조회
+                session.rollback()
+                
+                # 다시 조회 시도
+                employee_info = session.query(EmployeeInfo).filter(
+                    EmployeeInfo.employee_number == employee_number
+                ).first()
+                
+                if employee_info:
+                    logger.info(f"✅ 중복 직원 사용: '{employee_info.name}' (ID: {employee_info.employee_info_id})")
+                    return employee_info.employee_info_id
+                else:
+                    logger.error(f"❌ 중복 직원을 찾을 수 없음: '{employee_number}'")
+                    return None
+            else:
+                logger.error(f"❌ 직원 생성 중 예상치 못한 오류: {e}")
+                session.rollback()
+                return None
+
     def _get_or_create_product_id(self, session: Session, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
         """제품 ID를 안전하게 가져오거나 생성 (정확한 제품명으로만 조회)"""
         if 'product_name' not in column_mapping or not row.get(column_mapping['product_name']):
@@ -899,10 +1244,16 @@ JSON 형식으로 응답:
                 session.rollback()
                 return None
     
-    def _insert_products(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str]) -> Dict[str, Any]:
+    def _insert_products(self, table_data: List[Dict[str, Any]], session: Session, column_mapping: Dict[str, str], document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
         """제품 데이터 삽입"""
         processed_count = 0
         skipped_count = 0
+        created_count = 0
+        updated_count = 0
+        
+        # 대시보드 서비스 초기화
+        if not self.dashboard_service:
+            self.dashboard_service = DashboardService(session)
         
         try:
             for row in table_data:
@@ -911,6 +1262,16 @@ JSON 형식으로 응답:
                 
                 if not product_name:
                     logger.warning(f"제품명을 찾을 수 없는 행 건너뜀: {row}")
+                    skipped_count += 1
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='product',
+                        action='skipped',
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"제품명을 찾을 수 없음: {row}",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                     continue
                 
                 # 기존 제품 확인
@@ -921,12 +1282,37 @@ JSON 형식으로 응답:
                 if existing_product:
                     # 업데이트
                     self._update_product(existing_product, row, column_mapping)
+                    updated_count += 1
                     logger.info(f"제품 정보 업데이트: {product_name}")
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='product',
+                        action='updated',
+                        entity_id=existing_product.product_id,
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"제품 정보 업데이트: {product_name}",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                 else:
-                    # 새 제품 등록
+                    # 새 제품 등록 (자동 생성)
                     new_product = self._create_product(row, column_mapping)
+                    new_product.is_auto_created = True  # 자동 생성 표시
+                    new_product.approval_status = 'pending'  # 승인 대기 상태
                     session.add(new_product)
-                    logger.info(f"새 제품 등록: {product_name}")
+                    session.flush()  # ID 생성
+                    created_count += 1
+                    logger.info(f"새 제품 자동 생성: {product_name}")
+                    # 로깅
+                    self.dashboard_service.log_auto_create_activity(
+                        entity_type='product',
+                        action='created',
+                        entity_id=new_product.product_id,
+                        document_id=document_id,
+                        uploader_id=uploader_id,
+                        message=f"새 제품 자동 생성: {product_name}",
+                        details={'row_data': row, 'column_mapping': column_mapping}
+                    )
                 
                 processed_count += 1
             
@@ -934,7 +1320,9 @@ JSON 형식으로 응답:
                 'success': True,
                 'message': f'제품 정보 삽입 완료: {processed_count}건 처리됨, {skipped_count}건 중복 건너뜀',
                 'processed_count': processed_count,
-                'skipped_count': skipped_count
+                'skipped_count': skipped_count,
+                'created_count': created_count,
+                'updated_count': updated_count
             }
             
         except SQLAlchemyError as e:
@@ -961,7 +1349,10 @@ JSON 형식으로 응답:
                 
                 product_data[db_field] = value
         
-        return Product(**product_data)
+        product = Product(**product_data)
+        product.is_auto_created = True  # 자동 생성 표시
+        product.approval_status = 'pending'  # 승인 대기 상태
+        return product
     
     def _update_product(self, product: Product, row: Dict[str, Any], column_mapping: Dict[str, str]):
         """제품 정보 업데이트"""

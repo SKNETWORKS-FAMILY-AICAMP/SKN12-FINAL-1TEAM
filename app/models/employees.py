@@ -26,4 +26,4 @@ class Employee(Base):
     created_at = Column(DateTime, default=func.now())  # 계정 생성 일시 (자동 설정)
     
     # 관계 설정
-    employee_info = relationship("EmployeeInfo", back_populates="employee", uselist=False)
+    employee_info = relationship("EmployeeInfo", back_populates="employee", uselist=False, foreign_keys="EmployeeInfo.employee_id")

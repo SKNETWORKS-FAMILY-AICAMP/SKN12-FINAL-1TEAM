@@ -155,3 +155,41 @@ except ValueError as e:
 - `JWT_ALGORITHM`, `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`
 - `APP_ENV`, `APP_DEBUG`
 - `OPENSEARCH_CA_CERTS` 
+
+# 설정 파일 설명
+
+## table_descriptions.json
+
+이 파일은 벡터 유사도 검색을 위한 테이블 설명 정보를 관리합니다.
+
+### 구조
+
+```json
+{
+  "테이블명": {
+    "description": "테이블에 대한 설명",
+    "columns": ["컬럼1", "컬럼2", ...],
+    "required_columns": ["필수컬럼1", "필수컬럼2", ...],
+    "sample_data": ["샘플값1", "샘플값2", ...]
+  }
+}
+```
+
+### 필드 설명
+
+- **description**: 테이블의 목적과 관리하는 데이터에 대한 설명 (필수 컬럼 정보 포함)
+- **columns**: 테이블의 컬럼명 목록
+- **required_columns**: 데이터 생성 시 반드시 필요한 필수 컬럼 목록
+- **sample_data**: 각 컬럼에 해당하는 샘플 데이터 (columns와 순서 일치)
+
+### 사용 목적
+
+1. **벡터 임베딩 생성**: 테이블 설명을 OpenAI 임베딩으로 변환하여 pgvector에 저장
+2. **유사도 검색**: 업로드된 문서의 컬럼과 유사한 테이블을 찾기 위한 기준
+3. **LLM 프롬프트 구성**: 다중 테이블 분석 시 LLM에게 전달할 정보 생성
+
+### 수정 시 주의사항
+
+- JSON 형식을 정확히 지켜야 함
+- columns와 sample_data의 순서가 일치해야 함
+- 파일 수정 후 애플리케이션 재시작 필요 (또는 `reload_table_descriptions()` 호출) 

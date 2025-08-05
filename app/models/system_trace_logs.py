@@ -9,11 +9,11 @@ class SystemTraceLog(Base):
     # 기본 식별 정보
     trace_id = Column(BigInteger, primary_key=True, autoincrement=True)  # 추적 로그 고유 ID (자동 증가, 큰 정수)
     
-    # 관계 정보
-    message_id = Column(BigInteger, ForeignKey("chat_history.message_id"), nullable=False)  # 관련 채팅 메시지 ID (외래키, 필수)
+    # 관계 정보 (선택적)
+    message_id = Column(BigInteger, nullable=True)  # 관련 채팅 메시지 ID (선택적)
     
     # 이벤트 정보
-    event_type = Column(String)  # 이벤트 유형 (예: search_request, document_upload, api_call)
+    event_type = Column(String)  # 이벤트 유형 (예: search_request, document_upload, api_call, auto_create)
     
     # 상세 데이터
     log_data = Column(JSONB)  # 상세 로그 데이터 (JSON 형태로 저장)
