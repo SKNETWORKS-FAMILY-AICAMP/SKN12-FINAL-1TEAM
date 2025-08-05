@@ -155,13 +155,13 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 }
                 
                 # next_node로 정확한 상황 판단
-                if next_node == "receive_verification_input":
+                if next_node == "receive_verification_input" or next_node == "process_verification_response":
                     # 분류 검증 단계
                     response.response = f"분류된 문서 타입: {doc_type}\n\n위 분류 결과가 올바른가요?"
                     response.data["interrupt_type"] = "verification"
                     response.data["prompt_type"] = "verification"
                     
-                elif next_node == "receive_manual_doc_type_input":
+                elif next_node == "receive_manual_doc_type_input" or next_node == "process_manual_doc_type_selection":
                     # 수동 선택 단계
                     response.response = "문서 타입을 선택해주세요."
                     response.data["prompt_type"] = "manual_doc_selection"
@@ -175,8 +175,13 @@ async def chat(request: ChatRequest) -> ChatResponse:
                     
                 elif next_node == "receive_user_input":
                     # 필드 입력 단계
-                    response.response = "필요한 정보를 입력해주세요."
+                    template_content = state_info.get("template_content", "")
+                    if template_content:
+                        response.response = template_content
+                    else:
+                        response.response = "필요한 정보를 입력해주세요."
                     response.data["interrupt_type"] = "data_input"
+                    response.data["template_content"] = template_content
                     
                 else:
                     # 기본값
@@ -317,7 +322,7 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
                 response.data["prompt_type"] = "verification"
                 response.data["doc_type"] = doc_type
                 
-            elif next_node == "receive_manual_doc_type_input":
+            elif next_node == "receive_manual_doc_type_input" or next_node == "process_manual_doc_type_selection":
                 # 수동 선택 단계
                 response.response = "문서 타입을 선택해주세요."
                 response.data["prompt_type"] = "manual_doc_selection"
@@ -331,9 +336,16 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
                 
             elif next_node == "receive_user_input":
                 # 필드 입력 단계
-                response.response = "필요한 정보를 입력해주세요."
+                state_info = result.get("state_info", {})
+                template_content = state_info.get("template_content", "")
+                if template_content:
+                    response.response = template_content
+                else:
+                    response.response = "필요한 정보를 입력해주세요."
                 response.data["interrupt_type"] = "data_input"
                 response.data["doc_type"] = doc_type
+                response.data["template_content"] = template_content
+                response.data["state_info"] = state_info
         else:
             # 실패 케이스 (규정 위반, 종료 등)
             response.requires_interrupt = False

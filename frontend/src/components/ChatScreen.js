@@ -367,9 +367,32 @@ const ChatScreen = () => {
         }
         
         // Regular interrupt handling
+        // 디버깅을 위한 콘솔 로그
+        console.log('Interrupt data received:', {
+          response: data.response,
+          interrupt_type: data.data?.interrupt_type,
+          state_info: data.data?.state_info,
+          template_content: data.data?.state_info?.template_content,
+          template_content_in_data: data.data?.template_content,
+          full_data: data
+        });
+        
+        // data_input 타입일 때 template_content 사용
+        let messageContent = data.response || '추가 정보가 필요합니다.';
+        if (data.data.interrupt_type === 'data_input') {
+          // template_content가 여러 위치에 있을 수 있으므로 확인
+          if (data.data.state_info?.template_content) {
+            messageContent = data.data.state_info.template_content;
+            console.log('Using template_content from state_info:', messageContent);
+          } else if (data.data.template_content) {
+            messageContent = data.data.template_content;
+            console.log('Using template_content from data:', messageContent);
+          }
+        }
+        
         const interactiveMessage = {
           type: 'interactive',
-          content: data.response || '추가 정보가 필요합니다.',
+          content: messageContent,
           timestamp: new Date().toLocaleTimeString(),
           agent: data.target_agent || 'Docs Agent',
           waiting_for_input: true,
@@ -981,7 +1004,7 @@ const ChatScreen = () => {
                                 <button
                                   key={idx}
                                   onClick={() => {
-                                    setInputValue((idx + 1).toString());
+                                    setInputValue(option);
                                     sendMessage();
                                   }}
                                   style={{
@@ -1011,13 +1034,13 @@ const ChatScreen = () => {
                           {message.input_type === 'data_input' && (
                             <div style={{
                               marginTop: '10px',
-                              padding: '10px',
+                              padding: '15px',
                               backgroundColor: '#f0f4f8',
                               borderRadius: '8px',
                               fontSize: '14px'
                             }}>
-                              <div style={{color: '#555', marginBottom: '5px'}}>
-                                📝 입력창에 필요한 정보를 입력해주세요
+                              <div style={{color: '#666', fontSize: '13px', fontStyle: 'italic'}}>
+                                위 항목들에 맞춰 정보를 입력해주세요.
                               </div>
                             </div>
                           )}

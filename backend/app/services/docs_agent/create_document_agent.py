@@ -8,6 +8,7 @@ import json
 import yaml
 import time
 import re
+import os
 import uuid
 from pathlib import Path
 from dotenv import load_dotenv
@@ -42,16 +43,18 @@ class State(TypedDict):
 class CreateDocumentAgent:
     """통합 문서 작성 에이전트 - 분류부터 생성까지"""
     
-    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0.7):
+    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0.7, api_mode: bool = False):
         """
         CreateDocumentAgent 초기화
         
         Args:
             model_name: 기본 LLM 모델명
             temperature: LLM 온도 설정
+            api_mode: API 모드 활성화 여부. True일 경우 input() 대신 인터럽트 정보 반환
         """
         self.model_name = model_name
         self.temperature = temperature
+        self.api_mode = api_mode or os.getenv("NO_INPUT_MODE", "false").lower() == "true"
         
         # LLM 초기화
         self.llm = ChatOpenAI(
@@ -88,7 +91,7 @@ class CreateDocumentAgent:
             
             # 템플릿 파일 존재 여부 확인
             if not template_path.exists():
-                print(f"⚠️ 템플릿 파일을 찾을 수 없습니다: {template_path}")
+                print(f"[WARNING] 템플릿 파일을 찾을 수 없습니다: {template_path}")
                 return {}
             
             # YAML 파일 읽기 및 파싱
@@ -97,7 +100,7 @@ class CreateDocumentAgent:
                 return data.get('templates', {})
                 
         except Exception as e:
-            print(f"❌ 템플릿 로드 중 오류 발생: {e}")
+            print(f"[ERROR] 템플릿 로드 중 오류 발생: {e}")
             return {}
     
 
@@ -121,7 +124,7 @@ class CreateDocumentAgent:
         
         try:
             # 1단계: separate_document_type_and_content 툴로 문서 타입과 내용 분리
-            print("🔍 문서 타입과 내용 분리 중...")
+            print("[SEARCH] 문서 타입과 내용 분리 중...")
             separation_result = separate_document_type_and_content.invoke({"user_input": user_message})
             
             # JSON 파싱
@@ -130,8 +133,8 @@ class CreateDocumentAgent:
             document_type_text = separated_data.get("document_type", "")
             content_text = separated_data.get("content", "")
             
-            print(f"📋 분리된 문서 타입: '{document_type_text}'")
-            print(f"📝 분리된 내용: '{content_text[:50]}...' (길이: {len(content_text)})")
+            print(f"[INFO] 분리된 문서 타입: '{document_type_text}'")
+            print(f"[INFO] 분리된 내용: '{content_text[:50]}...' (길이: {len(content_text)})")
             
             # 상태에 내용 저장
             state["user_content"] = content_text
@@ -168,12 +171,12 @@ class CreateDocumentAgent:
                 
             # 분류 결과를 상태에 저장
             state["doc_type"] = doc_type
-            print(f"📋 LLM 문서 타입 분류: {doc_type}")
-            print(f"🔄 ask_required_fields 스킵 여부: {state['skip_ask_fields']}")
+            print(f"[INFO] LLM 문서 타입 분류: {doc_type}")
+            print(f"[INFO] ask_required_fields 스킵 여부: {state['skip_ask_fields']}")
             
         except Exception as e:
             # 처리 실패 시 예외 처리
-            print(f"⚠️ 문서 분류 및 분리 실패: {e}")
+            print(f"[WARNING] 문서 분류 및 분리 실패: {e}")
             state["doc_type"] = "분류 실패"
             state["user_content"] = ""
             state["skip_ask_fields"] = False
@@ -205,33 +208,33 @@ class CreateDocumentAgent:
         # 시스템에서 지원하는 유효한 문서 타입 목록
         valid_types = ["영업방문 결과보고서", "제품설명회 시행 신청서", "제품설명회 시행 결과보고서"]
         
-        print(f"🔍 문서 타입 검증 중: '{doc_type}'")
-        print(f"🔍 유효한 타입 목록: {valid_types}")
+        print(f"[SEARCH] 문서 타입 검증 중: '{doc_type}'")
+        print(f"[SEARCH] 유효한 타입 목록: {valid_types}")
         
         # 유효한 문서 타입인지 확인
         if doc_type in valid_types:
-            print(f"✅ 유효한 문서 타입: {doc_type}")
+            print(f"[SUCCESS] 유효한 문서 타입: {doc_type}")
             
             # 분류된 문서 타입에 맞는 템플릿을 state에 추가
             if doc_type in self.doc_prompts:
                 state["template_content"] = self.doc_prompts[doc_type]["input_prompt"]
-                print(f"📝 템플릿 추가 완료: {doc_type}")
+                print(f"[INFO] 템플릿 추가 완료: {doc_type}")
             
             # 분류 성공 플래그 설정
             state["classification_failed"] = False
-            print(f"🔍 classification_failed 설정: False")
+            print(f"[SEARCH] classification_failed 설정: False")
             return state
         else:
-            print(f"❌ 유효하지 않은 문서 타입: '{doc_type}'")
-            print("🔄 자동 분류 실패 - 수동 선택으로 직접 이동합니다.")
+            print(f"[ERROR] 유효하지 않은 문서 타입: '{doc_type}'")
+            print("[INFO] 자동 분류 실패 - 수동 선택으로 직접 이동합니다.")
             
             # 분류 실패 플래그 설정 - 명시적으로 True 설정
             state["classification_failed"] = True
-            print(f"🔍 classification_failed 설정: True")
+            print(f"[SEARCH] classification_failed 설정: True")
             
             # 추가 보안: 검증 건너뛰기 플래그도 설정 (verify_classification 노드 건너뛰기)
             state["skip_verification"] = True
-            print(f"🔍 skip_verification 설정: True")
+            print(f"[SEARCH] skip_verification 설정: True")
             
             return state
 
@@ -259,7 +262,7 @@ class CreateDocumentAgent:
             if state.get("messages"):
                 user_response = state["messages"][-1].content
             else:
-                print("⚠️ 사용자 검증 응답이 없습니다.")
+                print("[WARNING] 사용자 검증 응답이 없습니다.")
                 return state
         
         # 사용자 검증 응답을 메시지에 추가
@@ -291,18 +294,18 @@ class CreateDocumentAgent:
             # 분석 결과에 따른 상태 업데이트
             if "긍정" in content:
                 state["verification_result"] = "긍정"
-                print(f"✅ 분류 검증 결과: 긍정 - 기존 분류를 유지합니다.")
+                print(f"[SUCCESS] 분류 검증 결과: 긍정 - 기존 분류를 유지합니다.")
             elif "부정" in content:
                 state["verification_result"] = "부정"
-                print(f"❌ 분류 검증 결과: 부정 - 새로운 문서 타입을 선택해주세요.")
+                print(f"[ERROR] 분류 검증 결과: 부정 - 새로운 문서 타입을 선택해주세요.")
             else:
                 # 분석 결과가 명확하지 않은 경우
-                print(f"⚠️ 검증 응답 분석 실패: {content}")
+                print(f"[WARNING] 검증 응답 분석 실패: {content}")
                 state["verification_result"] = "불명확"
                 
         except Exception as e:
             # LLM 호출 실패 시 예외 처리
-            print(f"⚠️ 검증 응답 분석 중 오류: {e}")
+            print(f"[WARNING] 검증 응답 분석 중 오류: {e}")
             state["verification_result"] = "오류"
         
         return state
@@ -326,7 +329,7 @@ class CreateDocumentAgent:
                 user_selection = state["messages"][-1].content
                 # 만약 이미 메시지에 추가된 것이면 중복 추가하지 않음
             else:
-                print("⚠️ 사용자 문서 타입 선택이 없습니다.")
+                print("[WARNING] 사용자 문서 타입 선택이 없습니다.")
                 return state
         else:
             # verification_reply가 있으면 메시지에 추가
@@ -354,24 +357,24 @@ class CreateDocumentAgent:
         selected_doc_type = doc_type_mapping.get(user_selection)
         
         if selected_doc_type == "종료":
-            print("🔚 사용자가 종료를 선택했습니다.")
+            print("[INFO] 사용자가 종료를 선택했습니다.")
             state["end_process"] = True
             return state
         elif selected_doc_type:
-            print(f"✅ 선택된 문서 타입: {selected_doc_type}")
+            print(f"[SUCCESS] 선택된 문서 타입: {selected_doc_type}")
             state["doc_type"] = selected_doc_type
             
             # 선택된 문서 타입에 맞는 템플릿 설정
             if selected_doc_type in self.doc_prompts:
                 state["template_content"] = self.doc_prompts[selected_doc_type]["input_prompt"]
-                print(f"📝 템플릿 업데이트 완료: {selected_doc_type}")
+                print(f"[INFO] 템플릿 업데이트 완료: {selected_doc_type}")
             
             return state
         else:
-            print(f"❌ 유효하지 않은 선택: '{user_selection}'")
+            print(f"[ERROR] 유효하지 않은 선택: '{user_selection}'")
             print("올바른 번호(1-4) 또는 정확한 문서명을 입력해주세요.")
             print("예시: '1' 또는 '영업방문 결과보고서'")
-            print("🔚 문서 타입 선택 실패로 인해 에이전트를 종료합니다.")
+            print("[INFO] 문서 타입 선택 실패로 인해 에이전트를 종료합니다.")
             # 선택 실패 시 에이전트 종료
             state["end_process"] = True
             return state
@@ -389,7 +392,7 @@ class CreateDocumentAgent:
         user_reply = state.get("user_reply", "")
         
         if user_reply:
-            print(f"📝 사용자 입력 수신됨: {user_reply[:50]}...")
+            print(f"[SUCCESS] 사용자 입력 수신됨: {user_reply[:50]}...")
             # 사용자 입력을 메시지에 추가
             if state.get("messages") is None:
                 state["messages"] = []
@@ -397,7 +400,7 @@ class CreateDocumentAgent:
             # user_reply 플래그 제거
             state["user_reply"] = None
         else:
-            print("⚠️ 사용자 입력이 없습니다.")
+            print("[WARNING] 사용자 입력이 없습니다.")
             
         return state
 
@@ -415,10 +418,10 @@ class CreateDocumentAgent:
         user_content = state.get("user_content", "")
         if user_content.strip():
             user_input = user_content
-            print(f"📝 미리 분리된 내용 사용: '{user_input[:50]}...'")
+            print(f"[INFO] 미리 분리된 내용 사용: '{user_input[:50]}...'")
         else:
             user_input = str(state["messages"][-1].content)
-            print(f"📝 사용자 입력 사용: '{user_input[:50]}...'")
+            print(f"[INFO] 사용자 입력 사용: '{user_input[:50]}...'")
             
         doc_type = state["doc_type"]
         response = None
@@ -440,7 +443,7 @@ class CreateDocumentAgent:
 
         try:
             formatted_messages = parsing_prompt.format_messages(user_input=escaped_input)
-            print("📨 LLM에 전달된 메시지:")
+            print("[INFO] LLM에 전달된 메시지:")
             for m in formatted_messages:
                 print(f"[{m.type.upper()}] {m.content[:200]}...")
 
@@ -448,44 +451,44 @@ class CreateDocumentAgent:
 
             content = response.content
             json_str = content if isinstance(content, str) else str(content)
-            print(f"\n🔍 LLM 응답 내용:\n{json_str}")
+            print(f"\n[SEARCH] LLM 응답 내용:\n{json_str}")
 
             if "{" in json_str and "}" in json_str:
                 start = json_str.find("{")
                 end = json_str.rfind("}") + 1
                 clean_json = json_str[start:end]
-                print(f"\n🔍 추출된 JSON:\n{clean_json}")
+                print(f"\n[SEARCH] 추출된 JSON:\n{clean_json}")
 
                 try:
                     parsed_data = json.loads(clean_json)
                     state["filled_data"] = parsed_data
                     state["parse_failed"] = False
-                    print("✅ 파싱 성공:", parsed_data)
+                    print("[SUCCESS] 파싱 성공:", parsed_data)
                 except json.JSONDecodeError as json_error:
-                    print(f"❌ JSON 파싱 오류: {json_error}")
+                    print(f"[ERROR] JSON 파싱 오류: {json_error}")
                     print(f"파싱 시도한 JSON: {repr(clean_json)}")
                     raise json_error
             else:
                 raise ValueError("구조화된 JSON 형식을 찾을 수 없음")
 
         except Exception as e:
-            print("\n⚠️ 예외 발생!")
+            print("\n[WARNING] 예외 발생!")
             if response:
                 print("응답 내용:")
                 print(response)
             else:
-                print("⚠️ response 객체가 존재하지 않습니다.")
-            print(f"⚠️ 예외 메시지: {e}")
+                print("[WARNING] response 객체가 존재하지 않습니다.")
+            print(f"[WARNING] 예외 메시지: {e}")
 
             retry_count = state.get("parse_retry_count", 0) + 1
             state["parse_retry_count"] = retry_count
 
             if retry_count >= 3:
-                print("⚠️ 파싱 재시도 초과. 기본값 사용.")
+                print("WARNING: 파싱 재시도 초과. 기본값 사용.")
                 fallback_data = self.doc_prompts[doc_type]["choan_fallback_fields"]
                 state["filled_data"] = fallback_data
             else:
-                print(f"🔄 재시도 {retry_count}/3")
+                print(f"RETRY: 재시도 {retry_count}/3")
                 state["parse_failed"] = True
 
         return state
@@ -513,34 +516,34 @@ class CreateDocumentAgent:
             state["user_reply"] = None
             
             input_text = user_reply
-            print(f"📝 사용자 입력으로 규정 검사: '{input_text[:50]}...'")
+            print(f"POLICY_CHECK: 사용자 입력으로 규정 검사: '{input_text[:50]}...'")
         else:
             # 내용이 이미 있으면 user_content 사용, 없으면 최신 메시지 사용
             user_content = state.get("user_content", "")
             if user_content.strip():
                 input_text = user_content
-                print(f"📝 미리 분리된 내용으로 규정 검사: '{input_text[:50]}...'")
+                print(f"POLICY_CHECK: 미리 분리된 내용으로 규정 검사: '{input_text[:50]}...'")
             else:
                 if state.get("messages"):
                     input_text = str(state["messages"][-1].content)
-                    print(f"📝 사용자 입력으로 규정 검사: '{input_text[:50]}...'")
+                    print(f"POLICY_CHECK: 사용자 입력으로 규정 검사: '{input_text[:50]}...'")
                 else:
-                    print("⚠️ 검사할 입력이 없습니다.")
+                    print("WARNING: 검사할 입력이 없습니다.")
                     return state
         
         try:
-            print("🔍 규정 위반 검사 시작...")
+            print("POLICY_CHECK: 규정 위반 검사 시작...")
             violation_result = check_policy_violation.invoke({"content": input_text})
             
             state["violation"] = violation_result
             
             if violation_result == "OK":
-                print("✅ 규정 위반 없음 - 파싱 단계로 진행")
+                print("SUCCESS: 규정 위반 없음 - 파싱 단계로 진행")
             else:
-                print(f"⚠️ 규정 위반 사항 발견: {violation_result}")
+                print(f"WARNING: 규정 위반 사항 발견: {violation_result}")
             
         except Exception as e:
-            print(f"❌ 규정 검사 중 오류 발생: {e}")
+            print(f"ERROR: 규정 검사 중 오류 발생: {e}")
             import traceback
             traceback.print_exc()
             state["violation"] = f"규정 검사 오류: {str(e)}"
@@ -559,11 +562,11 @@ class CreateDocumentAgent:
         """
         violation = state["violation"]
         
-        print(f"\n🚨 규정 위반 사항 발견!")
+        print(f"\nALERT: 규정 위반 사항 발견!")
         print("=" * 60)
     
         # check_policy_violation 결과를 직접 출력
-        print("📝 규정 위반 검토 결과:")
+        print("VIOLATION_RESULT: 규정 위반 검토 결과:")
         print(violation)
         
         print("=" * 60)
@@ -572,23 +575,38 @@ class CreateDocumentAgent:
         state["final_doc"] = None  # 문서 생성 실패 표시
         state["end_process"] = True  # 프로세스 종료 표시
         
-        print("❌ 규정 위반 사항으로 인해 문서 생성을 중단합니다.")
-        print("📝 위반 내용을 확인하고 내용을 수정한 후 다시 시도해주세요.")
+        print("ERROR: 규정 위반 사항으로 인해 문서 생성을 중단합니다.")
+        print("INFO: 위반 내용을 확인하고 내용을 수정한 후 다시 시도해주세요.")
         
         return state
     
     def create_choan_document(self, state: State) -> State:
         """
         파싱된 데이터를 기반으로 초안 문서를 생성하고 docx 파일로 저장합니다.
+        규정 위반이 있는 경우 파일 생성을 차단합니다.
         
         Args:
-            state (State): doc_type, filled_data 필드 포함
+            state (State): doc_type, filled_data, violation 필드 포함
         
         Returns:
             State: final_doc 필드 업데이트된 상태 (파일 경로 또는 None)
         """
         doc_type = state["doc_type"]
         filled_data = state["filled_data"]
+        violation = state.get("violation", "")
+        
+        # API 모드에서 규정 위반이 있는 경우 파일 생성 차단
+        if self.api_mode and violation != "OK":
+            print("\n[ALERT] 규정 위반으로 인해 파일 생성이 차단되었습니다! (API 모드)")
+            print("[INFO] 분석은 완료되었지만 규정 위반으로 문서 파일은 생성되지 않습니다.")
+            
+            # 위반 내용 표시
+            if violation != "OK":
+                print(f"\n[위반 내용] {violation}")
+            
+            state["final_doc"] = None
+            state["violation_blocked"] = True
+            return state
         
         # 문서 타입에 따른 템플릿 파일 매핑
         template_mapping = {
@@ -598,7 +616,7 @@ class CreateDocumentAgent:
         }
         template_filename = template_mapping.get(doc_type)
         if not template_filename:
-            print(f"❌ 지원하지 않는 문서 타입: {doc_type}")
+            print(f"ERROR: 지원하지 않는 문서 타입: {doc_type}")
             state["final_doc"] = None
             return state
         
@@ -607,16 +625,16 @@ class CreateDocumentAgent:
         template_path = current_dir / "S3" / template_filename
         
         if not template_path.exists():
-            print(f"❌ 템플릿 파일을 찾을 수 없습니다: {template_path}")
+            print(f"ERROR: 템플릿 파일을 찾을 수 없습니다: {template_path}")
             state["final_doc"] = None
             return state
         
         try:
             # 템플릿 파일 읽기
-            print(f"📂 템플릿 파일 로딩: {template_filename}")
+            print(f"LOADING: 템플릿 파일 로딩: {template_filename}")
             doc = Document(str(template_path))
             
-            print(f"📝 템플릿 플레이스홀더 치환 중...")
+            print(f"PROCESSING: 템플릿 플레이스홀더 치환 중...")
             
             # 양식을 유지하면서 플레이스홀더만 치환
             self._replace_placeholders_in_document(doc, filled_data, doc_type)
@@ -634,12 +652,12 @@ class CreateDocumentAgent:
             
             state["final_doc"] = str(output_path)
             
-            print("✅ 문서 생성 및 저장 완료!")
-            print(f"📁 저장 경로: {output_path}")
-            print("📝 템플릿 양식이 그대로 유지되면서 플레이스홀더만 치환되었습니다.")
+            print("SUCCESS: 문서 생성 및 저장 완료!")
+            print(f"SAVED_PATH: 저장 경로: {output_path}")
+            print("INFO: 템플릿 양식이 그대로 유지되면서 플레이스홀더만 치환되었습니다.")
             
         except Exception as e:
-            print(f"❌ 문서 생성 중 오류 발생: {e}")
+            print(f"ERROR: 문서 생성 중 오류 발생: {e}")
             import traceback
             traceback.print_exc()
             state["final_doc"] = None
@@ -853,17 +871,17 @@ class CreateDocumentAgent:
         skip_verification = state.get("skip_verification", False)
         doc_type = state.get("doc_type", "")
         
-        print(f"🔍 라우터 상태 확인:")
+        print(f"ROUTER_STATUS: 라우터 상태 확인:")
         print(f"  - doc_type: '{doc_type}'")
         print(f"  - classification_failed: {classification_failed}")
         print(f"  - skip_verification: {skip_verification}")
         
         # 분류 실패이거나 검증 건너뛰기 플래그가 True인 경우
         if classification_failed or skip_verification:
-            print(f"📍 라우팅 결정: process_manual_doc_type_selection (분류 실패)")
+            print(f"ROUTING: 라우팅 결정: process_manual_doc_type_selection (분류 실패)")
             return "process_manual_doc_type_selection"
         else:
-            print(f"📍 라우팅 결정: process_verification_response (분류 성공)")
+            print(f"ROUTING: 라우팅 결정: process_verification_response (분류 성공)")
             return "process_verification_response"
 
     def verification_response_router(self, state: State) -> str:
@@ -883,10 +901,10 @@ class CreateDocumentAgent:
         if verification_result == "긍정":
             # skip_ask_fields가 True면 이미 내용이 있으므로 바로 규정 검사로
             if skip_ask_fields:
-                print("🚀 분류 결과 승인 + 내용 있음 - 바로 check_user_input_policy로 이동")
+                print("FLOW: 분륅 결과 승인 + 내용 있음 - 바로 check_user_input_policy로 이동")
                 return "check_user_input_policy"
             else:
-                print("🚀 분류 결과 승인 - receive_user_input로 이동")
+                print("FLOW: 분류 결과 승인 - receive_user_input로 이동")
                 return "receive_user_input"
         elif verification_result == "부정":
             return "process_manual_doc_type_selection"  # 수동 선택으로
@@ -912,10 +930,10 @@ class CreateDocumentAgent:
         if state.get("doc_type"):
             skip_ask_fields = state.get("skip_ask_fields", False)
             if skip_ask_fields:
-                print(f"📝 문서 타입 이미 선택됨 + 내용 있음: {state['doc_type']} - 바로 check_user_input_policy로 이동")
+                print(f"FLOW: 문서 타입 이미 선택됨 + 내용 있음: {state['doc_type']} - 바로 check_user_input_policy로 이동")
                 return "check_user_input_policy"
             else:
-                print(f"📝 문서 타입 이미 선택됨: {state['doc_type']} - receive_user_input로 이동")
+                print(f"FLOW: 문서 타입 이미 선택됨: {state['doc_type']} - receive_user_input로 이동")
                 return "receive_user_input"
         
         user_selection = ""
@@ -942,27 +960,28 @@ class CreateDocumentAgent:
         elif selected_doc_type:
             skip_ask_fields = state.get("skip_ask_fields", False)
             if skip_ask_fields:
-                print("🚀 문서 타입 선택 완료 + 내용 있음 - 바로 check_user_input_policy로 이동")
+                print("FLOW: 문서 타입 선택 완료 + 내용 있음 - 바로 check_user_input_policy로 이동")
                 return "check_user_input_policy"
             else:
-                print("🚀 문서 타입 선택 완료 - receive_user_input로 이동")
+                print("FLOW: 문서 타입 선택 완료 - receive_user_input로 이동")
                 return "receive_user_input"
         else:
-            print(f"❌ 유효하지 않은 문서 타입 선택: '{user_selection}'")
-            print("⚠️ 다음 중에서 정확히 선택해야 합니다:")
+            print(f"ERROR: 유효하지 않은 문서 타입 선택: '{user_selection}'")
+            print("WARNING: 다음 중에서 정확히 선택해야 합니다:")
             print("  - 번호: 1, 2, 3, 4")
             print("  - 또는 정확한 문서명:")
             print("    * 영업방문 결과보고서")
             print("    * 제품설명회 시행 신청서")
             print("    * 제품설명회 시행 결과보고서")
             print("    * 종료")
-            print("🔚 문서 타입 선택 실패로 인해 에이전트를 종료합니다.")
+            print("[INFO] 문서 타입 선택 실패로 인해 에이전트를 종료합니다.")
             return "END"
 
 
     def policy_check_router(self, state: State) -> str:
         """
         규정 검사 결과에 따라 다음 노드를 결정합니다.
+        API 모드에서는 규정 위반이 있어도 분석을 계속 진행합니다.
         
         Args:
             state (State): violation 필드 포함
@@ -972,13 +991,21 @@ class CreateDocumentAgent:
         """
         violation = state.get("violation", "")
         
-        # 실제 위반 사항이 있는지 검사 (check_policy_violation은 위반시 위반내용, 위반없으면 "OK" 반환)
-        if violation != "OK":
-            print(f"⚠️ 규정 위반 발견 - inform_violation으로 이동")
-            return "inform_violation"
-        else:
-            print(f"✅ 규정 위반 없음 - parse_user_input으로 이동")
+        if self.api_mode:
+            # API 모드에서는 항상 분석 계속
+            if violation != "OK":
+                print(f"[WARNING] 규정 위반이 발견되었지만 분석을 계속합니다 (API 모드)")
+            else:
+                print(f"[SUCCESS] 규정 위반 없음 - parse_user_input으로 이동")
             return "parse_user_input"
+        else:
+            # 콘솔 모드에서는 기존대로 동작
+            if violation != "OK":
+                print(f"[WARNING] 규정 위반 발견 - inform_violation으로 이동")
+                return "inform_violation"
+            else:
+                print(f"[SUCCESS] 규정 위반 없음 - parse_user_input으로 이동")
+                return "parse_user_input"
     
     def parse_router(self, state: State) -> str:
         """
@@ -994,9 +1021,9 @@ class CreateDocumentAgent:
             return "check_user_input_policy"
         else:
             # 파싱 성공 시 바로 문서 생성
-            print("✅ 파싱 성공 - 문서 생성 진행")
+            print("SUCCESS: 파싱 성공 - 문서 생성 진행")
             print("=" * 60)
-            print("📝 파싱된 사용자 입력 데이터:")
+            print("PARSED_DATA: 파싱된 사용자 입력 데이터:")
             print("=" * 60)
             
             filled_data = state.get("filled_data", {})
@@ -1005,7 +1032,7 @@ class CreateDocumentAgent:
                     print(f"- {key}: {value}")
             
             print("=" * 60)
-            print("✅ 문서 데이터 파싱 완료!")
+            print("SUCCESS: 문서 데이터 파싱 완료!")
             return "create_choan_document"
     
 
@@ -1123,9 +1150,9 @@ class CreateDocumentAgent:
         
         # user_input이 없으면 대화형 모드로 시작
         if user_input is None:
-            print("🚀 통합 문서 작성 시스템")
+            print("SYSTEM: 통합 문서 작성 시스템")
             print("=" * 60)
-            print("📝 지원 문서 타입:")
+            print("SUPPORTED_DOCS: 지원 문서 타입:")
             print("  1. 영업방문 결과보고서")
             print("  2. 제품설명회 시행 신청서")
             print("  3. 제품설명회 시행 결과보고서")
@@ -1136,7 +1163,7 @@ class CreateDocumentAgent:
             # 사용자 입력을 대기하고 받는 함수 호출
             user_input = self._get_user_input()
             
-            print(f"\n📝 처리 시작: {user_input}")
+            print(f"\nPROCESSING_START: 처리 시작: {user_input}")
             print("=" * 60)
         
         # 초기 상태 설정
@@ -1173,21 +1200,26 @@ class CreateDocumentAgent:
             
             if has_no_violation and result.get("filled_data") and result.get("final_doc"):
                 print("\n" + "="*50)
-                print("📄 문서 생성 완료!")
+                print("DOCUMENT_COMPLETE: 문서 생성 완료!")
                 print("="*50)
                 
                 result_json = json.dumps(result["filled_data"], indent=2, ensure_ascii=False)
                 print(result_json)
-                print(f"\n📁 생성된 문서: {result['final_doc']}")
+                print(f"\nFINAL_DOC: 생성된 문서: {result['final_doc']}")
                 
                 return {"success": True, "result": result, "thread_id": thread_id}
             else:
-                # 인터럽트로 중단된 경우 - 대화형 처리 시작
-                print(f"\n🔔 인터럽트 발생 - 스레드 ID: {thread_id}")
-                return self._handle_interactive_mode(thread_id)
+                # 인터럽트로 중단된 경우
+                print(f"\nINTERRUPT: 인터럽트 발생 - 스레드 ID: {thread_id}")
+                if self.api_mode:
+                    # API 모드일 경우 인터럽트 정보 반환
+                    return self._handle_api_interrupt(thread_id, result)
+                else:
+                    # 콘솔 모드일 경우 기존 대화형 처리
+                    return self._handle_interactive_mode(thread_id)
                 
         except Exception as e:
-            print(f"\n❌ 실행 중 오류: {e}")
+            print(f"\nERROR: 실행 중 오류: {e}")
             return {"success": False, "error": str(e)}
     
     def _get_user_input(self) -> str:
@@ -1200,10 +1232,10 @@ class CreateDocumentAgent:
         try:
             return input()
         except KeyboardInterrupt:
-            print("\n\n🔚 사용자가 중단했습니다.")
+            print("\n\nUSER_CANCELLED: 사용자가 중단했습니다.")
             raise
         except Exception as e:
-            print(f"\n❌ 입력 오류: {e}")
+            print(f"\nERROR: 입력 오류: {e}")
             raise
     
     def _handle_interactive_mode(self, thread_id: str):
@@ -1216,7 +1248,7 @@ class CreateDocumentAgent:
         Returns:
             dict: 처리 결과 (success, result, interrupted_by_user, error 필드 포함)
         """
-        print(f"✅ 인터럽트 발생 - 스레드 ID: {thread_id}")
+        print(f"INTERRUPT_HANDLER: 인터럽트 발생 - 스레드 ID: {thread_id}")
         
         # 인터럽트 처리 루프
         while True:
@@ -1227,17 +1259,17 @@ class CreateDocumentAgent:
                 
                 # 다음 노드에 따라 안내 문구 출력 및 입력 타입 결정
                 if next_node == "process_verification_response":
-                    print("\n🔍 문서 타입 분류 결과 확인")
+                    print("\nCLASSIFICATION_RESULT: 문서 타입 분류 결과 확인")
                     print("=" * 60)
                     doc_type = current_state.values.get("doc_type", "")
-                    print(f"📋 분류된 문서 타입: {doc_type}")
+                    print(f"DOC_TYPE: 분류된 문서 타입: {doc_type}")
                     print("=" * 60)
                     print("\n위 분류 결과가 올바른가요?")
                     print("- 맞다면 'YES' 또는 '네' 또는 '맞습니다' 등으로 응답해주세요")
                     print("- 틀렸다면 'NO' 또는 '아니요' 또는 '틀렸습니다' 등으로 응답해주세요")
                     input_type = "verification_reply"
                 elif next_node == "process_manual_doc_type_selection":
-                    print("\n📝 올바른 문서 타입을 선택해주세요:")
+                    print("\nMANUAL_SELECT: 올바른 문서 타입을 선택해주세요:")
                     print("=" * 60)
                     print("1. 영업방문 결과보고서")
                     print("2. 제품설명회 시행 신청서") 
@@ -1250,19 +1282,19 @@ class CreateDocumentAgent:
                     # 문서 작성을 위한 필수 항목 안내
                     template_content = current_state.values.get("template_content", "")
                     if template_content:
-                        print("\n📝 다음 항목들을 입력해주세요:")
+                        print("\nREQUIRED_FIELDS: 다음 항목들을 입력해주세요:")
                         print("=" * 60)
                         print(template_content)
                         print("=" * 60)
                         print("\n위 항목들에 맞춰 정보를 입력해주세요.")
                     else:
-                        print("\n📄 문서 작성을 위한 정보를 입력해주세요.")
+                        print("\nINPUT_REQUEST: 문서 작성을 위한 정보를 입력해주세요.")
                     input_type = "user_reply"
                 else:
-                    print("\n📄 문서 작성을 위한 정보를 입력해주세요.")
+                    print("\nINPUT_REQUEST: 문서 작성을 위한 정보를 입력해주세요.")
                     input_type = "user_reply"  # 기본값
                 
-                print("🔔 사용자 입력을 기다립니다.")
+                print("WAITING_INPUT: 사용자 입력을 기다립니다.")
                 print(">>> ", end="")
                 user_response = self._get_user_input()
                 
@@ -1270,7 +1302,7 @@ class CreateDocumentAgent:
                 resume_result = self.resume(thread_id, user_response, input_type)
                 
                 if resume_result.get("success"):
-                    print("\n🎉 문서 작성 완료!")
+                    print("\nCOMPLETE: 문서 작성 완료!")
                     return {"success": True, "result": resume_result.get("result")}
                 elif resume_result.get("interrupted"):
                     # 또 다른 인터럽트가 발생한 경우 계속 진행
@@ -1280,7 +1312,7 @@ class CreateDocumentAgent:
                     return {"success": False, "result": resume_result}
                     
             except KeyboardInterrupt:
-                print("\n\n🔚 사용자가 중단했습니다.")
+                print("\n\nUSER_CANCELLED: 사용자가 중단했습니다.")
                 return {"success": False, "interrupted_by_user": True}
             except Exception as e:
                 print(f"\n❌ 오류 발생: {e}")
@@ -1303,7 +1335,7 @@ class CreateDocumentAgent:
         try:
             # 현재 상태 가져오기
             current_state = self.app.get_state(config)
-            print(f"📋 현재 상태: {current_state}")
+            print(f"CURRENT_STATE: 현재 상태: {current_state}")
             
             # 사용자 입력을 상태에 업데이트 (입력 타입에 따라)
             update_data = {input_type: user_reply}
@@ -1315,47 +1347,176 @@ class CreateDocumentAgent:
             current_messages.append(new_message)
             self.app.update_state(config, {"messages": current_messages})
             
-            print(f"📝 입력 타입: {input_type}, 사용자 입력: {user_reply[:50]}...")
+            print(f"INPUT_TYPE: {input_type}, 사용자 입력: {user_reply[:50]}...")
             
-            # 워크플로우 재개 - stream을 사용하여 단계별로 진행
-            final_result = None
-            for chunk in self.app.stream(None, config):
-                print(f"🔄 처리 중: {list(chunk.keys())}")
-                if chunk:
-                    final_result = list(chunk.values())[-1]  # 마지막 결과 저장
-            
-            # 최종 상태 확인
-            if final_result:
-                violation_text = final_result.get("violation", "")
-                has_no_violation = (violation_text == "OK")
-                
-                if has_no_violation and final_result.get("filled_data") and final_result.get("final_doc"):
-                    print("\n" + "="*50)
-                    print("📄 문서 생성 완료!")
-                    print("="*50)
+            # 워크플로우 재개 - API 모드 체크
+            if self.api_mode:
+                # API 모드에서는 invoke 사용하여 한 번에 처리
+                try:
+                    final_result = self.app.invoke(None, config)
                     
-                    result_json = json.dumps(final_result["filled_data"], indent=2, ensure_ascii=False)
-                    print(result_json)
-                    print(f"\n📁 생성된 문서: {final_result['final_doc']}")
+                    # 또 다른 인터럽트 확인
+                    current_state_after = self.app.get_state(config)
+                    if current_state_after.next:
+                        return self._handle_api_interrupt(thread_id, final_result)
                     
-                    return {"success": True, "result": final_result}
+                    # 종료 처리 확인
+                    if final_result.get("end_process"):
+                        return {
+                            "success": False,
+                            "result": final_result,
+                            "thread_id": thread_id,
+                            "error_type": "user_terminated",
+                            "message": "사용자가 종료를 선택했습니다.",
+                            "end_process": True
+                        }
+                    
+                    # 성공 또는 실패 처리
+                    violation_text = final_result.get("violation", "")
+                    has_violation = (violation_text != "OK")
+                    
+                    # API 모드에서는 규정 위반이 있어도 분석이 완료되면 성공으로 처리
+                    if final_result.get("filled_data"):
+                        if has_violation:
+                            # 규정 위반이 있지만 분석은 완료됨
+                            return {
+                                "success": True,  # 분석은 성공했으므로 True
+                                "result": final_result,
+                                "thread_id": thread_id,
+                                "filled_data": final_result.get("filled_data"),
+                                "final_doc": final_result.get("final_doc"),  # 파일 생성이 차단되면 None
+                                "violation": violation_text,
+                                "violation_blocked": final_result.get("violation_blocked", False)
+                            }
+                        else:
+                            # 규정 위반 없이 성공
+                            return {
+                                "success": True, 
+                                "result": final_result,
+                                "thread_id": thread_id,
+                                "filled_data": final_result.get("filled_data"),
+                                "final_doc": final_result.get("final_doc")
+                            }
+                    else:
+                        # 분석 자체가 실패한 경우
+                        return {
+                            "success": False, 
+                            "result": final_result,
+                            "thread_id": thread_id,
+                            "error_type": "processing_error"
+                        }
+                        
+                except Exception as e:
+                    return {"success": False, "error": str(e), "thread_id": thread_id}
             else:
-                # 중간 인터럽트 상황도 처리
-                current_state_after = self.app.get_state(config)
-                if current_state_after.next:  # 다음 실행할 노드가 있으면 인터럽트 상황
-                    next_node = current_state_after.next[0] if current_state_after.next else None
-                    print(f"🔔 다음 인터럽트 대기 중 - 다음 노드: {next_node}")
-                    return {"success": False, "interrupted": True, "thread_id": thread_id, "next_node": next_node}
+                # 기존 콘솔 모드 처리 - stream 사용
+                final_result = None
+                for chunk in self.app.stream(None, config):
+                    print(f"PROCESSING: 처리 중: {list(chunk.keys())}")
+                    if chunk:
+                        final_result = list(chunk.values())[-1]  # 마지막 결과 저장
+                
+                # 최종 상태 확인
+                if final_result:
+                    violation_text = final_result.get("violation", "")
+                    has_no_violation = (violation_text == "OK")
+                    
+                    if has_no_violation and final_result.get("filled_data") and final_result.get("final_doc"):
+                        print("\n" + "="*50)
+                        print("DOCUMENT_COMPLETE: 문서 생성 완료!")
+                        print("="*50)
+                        
+                        result_json = json.dumps(final_result["filled_data"], indent=2, ensure_ascii=False)
+                        print(result_json)
+                        print(f"\n📁 생성된 문서: {final_result['final_doc']}")
+                        
+                        return {"success": True, "result": final_result}
                 else:
-                    print("\n❌ 문서 생성 실패")
-                    print(f"최종 결과: {final_result}")
-                    return {"success": False, "result": final_result}
+                    # 중간 인터럽트 상황도 처리
+                    current_state_after = self.app.get_state(config)
+                    if current_state_after.next:  # 다음 실행할 노드가 있으면 인터럽트 상황
+                        next_node = current_state_after.next[0] if current_state_after.next else None
+                        print(f"NEXT_INTERRUPT: 다음 인터럽트 대기 중 - 다음 노드: {next_node}")
+                        return {"success": False, "interrupted": True, "thread_id": thread_id, "next_node": next_node}
+                    else:
+                        print("\n❌ 문서 생성 실패")
+                        print(f"최종 결과: {final_result}")
+                        return {"success": False, "result": final_result}
                 
         except Exception as e:
             print(f"\n❌ 재개 중 오류: {e}")
             import traceback
             traceback.print_exc()
             return {"success": False, "error": str(e)}
+    
+    def _handle_api_interrupt(self, thread_id: str, current_result: dict = None):
+        """
+        API 모드에서 인터럽트 처리
+        
+        Args:
+            thread_id (str): 스레드 ID
+            current_result (dict): 현재 워크플로우 결과
+        
+        Returns:
+            dict: 인터럽트 정보 (interrupted, thread_id, next_node, doc_type 등 포함)
+        """
+        current_state = self.app.get_state({"configurable": {"thread_id": thread_id}})
+        next_node = current_state.next[0] if current_state.next else None
+        
+        # 현재 상태에서 모든 정보 추출
+        state_values = current_state.values
+        doc_type = state_values.get("doc_type")
+        
+        # 전체 state 정보를 포함하여 누락 방지
+        interrupt_info = {
+            "success": False,
+            "interrupted": True,
+            "thread_id": thread_id,
+            "next_node": next_node,
+            "doc_type": doc_type,
+            "state_info": {
+                # 모든 state 필드 포함
+                "messages": [msg.content if hasattr(msg, 'content') else str(msg) for msg in state_values.get("messages", [])],
+                "template_content": state_values.get("template_content"),
+                "filled_data": state_values.get("filled_data", {}),
+                "violation": state_values.get("violation"),
+                "final_doc": state_values.get("final_doc"),
+                "classification_failed": state_values.get("classification_failed"),
+                "skip_verification": state_values.get("skip_verification"),
+                "end_process": state_values.get("end_process"),
+                "parse_retry_count": state_values.get("parse_retry_count"),
+                "parse_failed": state_values.get("parse_failed"),
+                "user_reply": state_values.get("user_reply"),
+                "verification_reply": state_values.get("verification_reply"),
+                "verification_result": state_values.get("verification_result"),
+                "user_content": state_values.get("user_content"),
+                "skip_ask_fields": state_values.get("skip_ask_fields")
+            }
+        }
+        
+        # 노드별 프롬프트 설정
+        if next_node == "receive_verification_input":
+            interrupt_info["prompt"] = f"분류된 문서 타입: {doc_type}\n\n위 분류 결과가 올바른가요?"
+            interrupt_info["prompt_type"] = "verification"
+        elif next_node == "receive_manual_doc_type_input":
+            interrupt_info["prompt"] = "문서 타입을 선택해주세요."
+            interrupt_info["prompt_type"] = "manual_selection"
+            interrupt_info["options"] = [
+                {"value": "1", "label": "영업방문 결과보고서"},
+                {"value": "2", "label": "제품설명회 시행 신청서"},
+                {"value": "3", "label": "제품설명회 시행 결과보고서"},
+                {"value": "4", "label": "종료"}
+            ]
+        elif next_node == "receive_user_input":
+            # 필요한 필드 정보 포함
+            template_info = self.doc_prompts.get(doc_type, {})
+            interrupt_info["prompt"] = template_info.get("input_prompt", "필요한 정보를 입력해주세요.")
+            interrupt_info["prompt_type"] = "field_input"
+            interrupt_info["required_fields"] = template_info.get("required_fields", [])
+            # 템플릿 정보도 포함
+            interrupt_info["template_content"] = state_values.get("template_content")
+        
+        return interrupt_info
 
 if __name__ == "__main__":
     # 통합 문서 작성 시스템 실행
