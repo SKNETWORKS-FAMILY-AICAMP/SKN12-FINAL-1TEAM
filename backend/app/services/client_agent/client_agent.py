@@ -1,0 +1,538 @@
+import pandas as pd
+import json
+import re
+from typing import Dict, Any, Optional, TypedDict
+from pathlib import Path
+from openai import AsyncOpenAI
+import os
+import logging
+from langgraph.graph import StateGraph, START, END
+
+# 스테이트정의
+
+class ReportState(TypedDict):
+    company_name: str
+    start_month: Optional[int]
+    end_month: Optional[int]
+    grade: Optional[str]
+    grade_report: Optional[str]
+    final_report: Optional[str]
+
+# 클래스 정의 
+class ClientAgent:
+    def __init__(self):
+        self.data_path = Path(__file__).parent / "좋은제약_거래처정보.xlsx"
+        self.df = None
+        self._load_data()
+        
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
+        self.client = AsyncOpenAI(api_key=api_key)
+        
+        # 임계값 정의
+        self.revenue_threshold = {"A":3000000, "B":2000000, "C":1000000, "D":500000, "E":100000}
+        self.profit_threshold = {"A":10, "B":15, "C":20, "D":25, "E":30}  # reverse=True
+        self.patience_threshold = {"A":2200, "B":1800, "C":1400, "D":1000, "E":500}
+        self.interaction_threshold = {"A":60, "B":45, "C":30, "D":15, "E":0}
+
+    def _load_data(self):
+        try:
+            self.df = pd.read_excel(self.data_path)
+            self.df['월'] = pd.to_datetime(self.df['월'].astype(str), format='%Y%m', errors='coerce')
+        # 월_int 컬럼 미리 생성
+            self.df['월_int'] = self.df['월'].dt.strftime('%Y%m').astype(int)
+            print(f"[OK] 데이터 로드 완료: {len(self.df)}건")              
+        except Exception as e:
+            print(f"[ERROR] 데이터 로드 실패: {e}")
+            self.df = pd.DataFrame()
+
+    async def parse_query_params(self, query: str) -> Dict:
+        prompt = f"""
+다음 쿼리에서 거래처명과 분석 기간을 추출해주세요.
+쿼리: {query}
+
+규칙:
+1. 거래처명은 괄호 포함 전체를 추출 (예: '우리가족의원(강서구 가양동)')
+2. 날짜는 YYYYMM 형식으로 변환
+3. 오늘 날짜는 2024년 11월로 가정
+
+JSON 형식으로만 응답:
+{{
+    "company_name": "거래처명",
+    "start_month": "YYYYMM 또는 null",
+    "end_month": "YYYYMM 또는 null"
+}}
+"""
+        try:
+            response = await self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0
+            )
+            json_text = response.choices[0].message.content
+            json_text = re.sub(r"^```json\s*|\s*```$", "", json_text.strip())
+            result = json.loads(json_text)
+            return {
+                "success": True,
+                "company_name": result["company_name"],
+                "start_month": int(result["start_month"]) if result["start_month"] else None,
+                "end_month": int(result["end_month"]) if result["end_month"] else None
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def _get_grade(self, value: float, threshold_dict: Dict[str, float], reverse: bool = False) -> str:
+        grades = ["A", "B", "C", "D", "E"]
+        if reverse:
+            for grade in grades:
+                if value <= threshold_dict[grade]: #self.profit_threshold = {"A":10, "B":15, "C":20, "D":25, "E":30}
+                    return grade
+            return "E"
+        else:
+            for grade in grades:
+                if value >= threshold_dict[grade]:
+                    return grade
+            return "E"
+
+    def map_grade_to_score(self, grade: str) -> int:
+        mapping = {"A": 5, "B":4, "C":3, "D":2, "E":1}
+        return mapping.get(grade.upper(), 0)
+
+    def map_score_to_grade(self, score: int) -> str:
+        mapping = {5:"A",4:"B",3:"C",2:"D",1:"E"}
+        return mapping.get(score, "E")
+
+    def calculate_company_grade(self, company_name: str, start_month: Optional[int] = None,
+                                end_month: Optional[int] = None) -> Dict:
+        df = self.df
+        filtered_df = df[df["거래처ID"] == company_name].copy()
+        if start_month and end_month:
+            filtered_df = filtered_df[(filtered_df["월_int"] >= start_month) & (filtered_df["월_int"] <= end_month)]
+
+        if filtered_df.empty:
+            return {"error": "해당 기간의 데이터가 없습니다", "최종등급": "N/A"}
+
+        avg_revenue = filtered_df["매출"].mean()
+        total_revenue = filtered_df["매출"].sum()
+        total_budget = filtered_df["사용 예산"].sum()
+        profit_rate = (total_budget / total_revenue * 100) if total_revenue > 0 else 0
+        avg_patience = filtered_df["총환자수"].mean()
+        interaction_rate = (filtered_df["총환자수"].sum() * 30000 / total_revenue) * 100 if total_revenue > 0 else 0
+
+        revenue_grade = self._get_grade(avg_revenue, self.revenue_threshold)
+        profit_grade = self._get_grade(profit_rate, self.profit_threshold, reverse=True)
+        patience_grade = self._get_grade(avg_patience, self.patience_threshold)
+        interaction_grade = self._get_grade(interaction_rate, self.interaction_threshold)
+
+        scores = {
+            "매출액": self.map_grade_to_score(revenue_grade),
+            "수익률": self.map_grade_to_score(profit_grade),
+            "환자수": self.map_grade_to_score(patience_grade),
+            "관계도": self.map_grade_to_score(interaction_grade)
+        }
+
+        average_score = sum(scores.values()) / len(scores)
+        final_grade = self.map_score_to_grade(round(average_score))
+
+        return {
+            "거래처명": company_name,
+            "매출등급": revenue_grade,
+            "수익률등급": profit_grade,
+            "환자수등급": patience_grade,
+            "관계도등급": interaction_grade,
+            "최종등급": final_grade
+        }
+    
+
+    async def use_llm_analysis_report(self, prompt: str) -> str:  # LLM이용하는 LLM호출함수
+        try:
+          response = await self.client.chat.completions.create(
+              model="gpt-4.1",
+              messages=[{"role": "user", "content": prompt}],
+              temperature=0.7
+          )
+          return response.choices[0].message.content.strip()
+        except Exception as e:
+            logging.error(f"LLM 분석 생성 실패: {e}")
+            raise
+
+
+    async def generate_grade_analysis_report(self, company_name: str, grade_result: Dict,
+                                             start_month: Optional[int] = None, end_month: Optional[int] = None) -> str:
+        prompt = f"""
+너는 제약사 영업 데이터 분석 전문가이며, 
+주어진 거래처의 종합 등급과 세부 지표를 바탕으로 **왜 해당 거래처가 그 등급에 선정되었는지**를 설명하는 분석 보고서를 작성해야 한다.
+
+### 분석 대상
+- 거래처명: {company_name}
+- 분석 기간: {start_month or '전체기간'} ~ {end_month or '전체기간'}
+
+등급 결과 요약
+{json.dumps(grade_result, ensure_ascii=False, indent=2)}
+
+### 작성 지침
+1. 먼저 등급 산출 배경을 설명하라 (어떤 지표가 강점이고 어떤 지표가 약점인지).
+2. 주요 지표(매출, 수익률, 환자수, 관계도)를 각각 분석하라.
+3. 해당 거래처가 이 등급에 속한 이유를 중심으로 구체적으로 기술하라.
+"""
+        try:
+            result = await self.use_llm_analysis_report(prompt)
+            return result
+        except Exception as e:
+            return f"AI 분석 생성 실패: {e}"
+
+    def get_same_grade_companies(self, company_name: str,
+                                 start_month: Optional[int] = None,
+                                 end_month: Optional[int] = None) -> Dict[str, Any]:
+        target_grade_data = self.calculate_company_grade(company_name, start_month, end_month)
+        target_grade = target_grade_data.get("최종등급", "N/A")
+
+        filtered_df = self.df.copy()
+        if start_month and end_month:
+            filtered_df = filtered_df[(filtered_df["월_int"] >= start_month) & (filtered_df["월_int"] <= end_month)]
+
+        same_grade_companies = []
+        for cid in filtered_df["거래처ID"].unique():
+            if cid == company_name:
+                continue
+            grade_data = self.calculate_company_grade(cid, start_month, end_month)
+            if grade_data.get("최종등급") == target_grade:
+                subset = filtered_df[filtered_df["거래처ID"] == cid]["진료과"]
+                진료과값 = subset.iloc[0] if not subset.empty else "정보없음"
+                same_grade_companies.append({
+                    "거래처ID": cid,
+                    "진료과": 진료과값
+                })
+
+        return {
+            "target_grade": target_grade,
+            "target_info": target_grade_data,
+            "same_grade_companies": same_grade_companies
+        }
+
+    def split_companies_by_department(self, company_name: str, same_grade_result: Dict) -> Dict[str, Any]:
+        subset = self.df[self.df["거래처ID"] == company_name]["진료과"]
+        target_department = subset.iloc[0] if not subset.empty else "정보없음"
+
+        same_grade_df = pd.DataFrame(same_grade_result["same_grade_companies"])
+
+        same_department_df = same_grade_df[same_grade_df["진료과"] == target_department]
+        diff_department_df = same_grade_df[same_grade_df["진료과"] != target_department]
+
+        return {
+            "same_department": same_department_df,
+            "diff_department": diff_department_df,
+            "target_department": target_department
+        }
+
+    async def analyze_same_grade_departments(self, company_name: str,
+                                             start_month: Optional[int] = None,
+                                             end_month: Optional[int] = None) -> str:
+        same_grade_result = self.get_same_grade_companies(company_name, start_month, end_month)
+        split_result = self.split_companies_by_department(company_name, same_grade_result)
+
+        target_df = self.df[self.df["거래처ID"] == company_name].copy()
+        if start_month and end_month:
+            target_df = target_df[(target_df["월_int"] >= start_month) & (target_df["월_int"] <= end_month)]
+
+        target_avg_revenue = target_df["매출"].mean() or 0
+        target_avg_budget = target_df["사용 예산"].mean() or 0
+
+        same_dept_avg_revenue = split_result["same_department"]["매출"].mean() if not split_result["same_department"].empty else 0
+        diff_dept_avg_budget = split_result["diff_department"]["사용 예산"].mean() if not split_result["diff_department"].empty else 0
+
+        prompt = f"""
+너는 제약사 영업 데이터 분석 전문가이다.
+아래 데이터를 기반으로 **대상 병원의 매출과 사용 예산을 같은/다른 진료과 병원들과 비교 분석**하는 보고서를 작성하라.
+
+### 대상 병원
+- 이름: {company_name}
+- 분석 기간: {start_month or '전체기간'} ~ {end_month or '전체기간'}
+- 대상 병원 평균 매출: {target_avg_revenue:,.0f}원
+- 대상 병원 평균 사용 예산: {target_avg_budget:,.0f}원
+- 진료과: {split_result['target_department']}
+
+### 비교 그룹
+1. 같은 진료과 & 동일 등급 병원 평균 매출: {same_dept_avg_revenue:,.0f}원
+2. 다른 진료과 & 동일 등급 병원 평균 사용 예산: {diff_dept_avg_budget:,.0f}원
+
+### 작성 지침
+- 먼저 대상 병원의 매출을 같은 진료과 병원 평균과 비교 분석하라.
+- 그 다음 대상 병원의 사용 예산을 다른 진료과 병원 평균과 비교 분석하라.
+- 분석 시 어떤 지표가 우위인지, 개선할 부분이 무엇인지 제안하라.
+- 구체적인 수치 기반 비교를 포함하라.
+"""
+
+        try:
+            analysis_report = await self.use_llm_analysis_report(prompt)
+        except Exception as e:
+            analysis_report = f"AI 분석 생성 실패: {e}"
+
+        return analysis_report
+
+    async def generate_growth_analysis_report(self, company_name: str,
+                                             start_month: Optional[int] = None,
+                                             end_month: Optional[int] = None) -> str:
+        
+        company_df = self.df[self.df["거래처ID"] == company_name].copy()
+
+        if start_month and end_month:
+            company_df = company_df[(company_df["월_int"] >= start_month) & (company_df["월_int"] <= end_month)]
+
+        if company_df.empty:
+            return f"{company_name}의 해당 기간 데이터가 없습니다."
+
+        monthly_data = company_df.sort_values(by="월_int")[["월_int", "매출", "사용 예산", "월방문횟수"]]
+
+
+        monthly_data_md = monthly_data.to_markdown(index=False) #LLM을 위해
+
+        start_visits = monthly_data["월방문횟수"].iloc[0]
+        end_visits = monthly_data["월방문횟수"].iloc[-1]
+        avg_visits = monthly_data["월방문횟수"].mean()
+
+        start_revenue = monthly_data["매출"].iloc[0]
+        end_revenue = monthly_data["매출"].iloc[-1]
+        revenue_growth = ((end_revenue - start_revenue) / start_revenue * 100) if start_revenue else "데이터 없음"
+
+        start_budget = monthly_data["사용 예산"].iloc[0]
+        end_budget = monthly_data["사용 예산"].iloc[-1]
+        budget_growth = ((end_budget - start_budget) / start_budget * 100) if start_budget else "데이터 없음"
+
+        prompt = f"""
+너는 제약사 영업 데이터 분석 전문가이며,
+아래 월별 데이터를 기반으로 **우리 제약사와 거래처 간 관계의 성장성**을 분석하는 보고서를 작성해야 한다.
+
+### 대상 병원
+- 이름: {company_name}
+- 분석 기간: {start_month or '전체기간'} ~ {end_month or '전체기간'}
+
+### 월별 데이터 (매출/예산)
+{monthly_data_md}
+
+### 참고 지표
+
+- 매출 성장률: {revenue_growth:.2f}%
+- 예산 성장률: {budget_growth:.2f}%
+
+- 시작 월 방문 횟수: {start_visits}
+- 기간 평균 방문 횟수: {avg_visits:.2f}
+- 종료 월 방문 횟수: {end_visits}
+
+### 작성 지침
+1. 월별 매출 추이와 예산 추이를 함께 분석해, **협력 관계가 균형적으로 성장하고 있는지** 설명하라.
+2. 매출만 증가하거나 예산만 증가하는 경우 **관계 불균형 가능성**을 지적하라.
+3. 수요(병원 측)와 공급(우리 회사) 관점에서 상호작용 분석을 하라.
+4. 방문 횟수 추이를 기반으로 영업 활동 강도 변화(증가/감소/안정)를 평가하라.
+"""
+
+        try:
+            growth_report = await self.use_llm_analysis_report(prompt)
+        except Exception as e:
+            growth_report = f"AI 분석 생성 실패: {e}"
+
+        return growth_report
+    
+    async def generate_sales_strategy_report(self, company_name: str) -> str:
+        overall_avg_patients = self.df["총환자수"].mean() or 0
+        overall_avg_visits = self.df["월방문횟수"].mean() or 0
+        overall_avg_revenue = self.df["매출"].mean() or 0 
+
+        company_df = self.df[self.df["거래처ID"] == company_name].copy()
+        if company_df.empty:
+            return f"{company_name}의 데이터가 존재하지 않습니다."
+
+        company_avg_patients = company_df["총환자수"].mean() or 0
+        company_avg_visits = company_df["월방문횟수"].mean() or 0
+        company_avg_revenue = company_df["매출"].mean() or 0
+
+        insights = []
+        
+        patients_ratio = (company_avg_patients - overall_avg_patients) / (overall_avg_patients or 1) * 100
+        revenue_ratio = (company_avg_revenue - overall_avg_revenue) / (overall_avg_revenue or 1) * 100
+        visits_ratio = (company_avg_visits - overall_avg_visits) / (overall_avg_visits or 1) * 100
+        recent_revenue = company_df.sort_values("월")["매출"].tail(3).mean()
+        recent_ratio = (recent_revenue - company_avg_revenue) / (company_avg_revenue or 1) * 100
+
+        if patients_ratio > 15 and revenue_ratio < 0:
+            insights.append("환자 수는 높지만 매출은 평균 이하로, 미개척 잠재 시장 가능성이 있습니다.")
+
+        if patients_ratio > 15 and revenue_ratio > 15:
+            insights.append("환자 수와 매출 모두 평균 이상으로 핵심 고객군에 속합니다.")
+
+        if visits_ratio > 15 and revenue_ratio < 0:
+            insights.append("방문 횟수는 많으나 매출이 낮아 방문 전략 재검토가 필요합니다.")
+        
+        if recent_ratio > 15:
+            insights.append("최근 3개월 매출이 급상승, 성장세 유지 전략 필요.")
+                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+        if recent_ratio < -15:
+            insights.append("최근 3개월 매출이 급감, 원인 파악 및 리커버리 전략 필요.")
+        
+        if not insights:
+            insights.append("모든 지표가 평균 범위 내에 있어 안정적이나, 추가 성장 기회 탐색 필요.")
+
+
+        monthly_revenue_trend = company_df.sort_values("월")[["월", "매출"]].to_dict("records")
+
+        prompt = f"""
+너는 제약사 영업전략 컨설턴트                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 이며, 
+아래 데이터를 기반으로 **해당 거래처의 영업전략 분석 보고서**를 작성하라.                  
+                                                 
+### 대상 거래처                                                                                                     
+- 이름: {company_name}                                                                                 
+- 분석 기간: 전체 기간
+                                                                                        
+### 전체 거래처 평균
+- 환자수 평균: {overall_avg_patients:.1f}
+- 방문 횟수 평균: {overall_avg_visits:.1f}
+- 매출 평균: {overall_avg_revenue:.1f}
+
+### 해당 거래처 평균
+- 환자수 평균: {company_avg_patients:.1f}                     
+- 방문 횟수 평균: {company_avg_visits:.1f}
+- 매출 평균: {company_avg_revenue:.1f}                                                              
+
+### 월별 매출 추이
+{monthly_revenue_trend}
+
+### 분석 포인트
+- {', '.join(insights) if insights else '특이사항 없음'}
+
+### 작성 지침
+1. 제공된 insights 목록을 가장 핵심 분석 포인트로 삼아, 각각의 의미를 해석하고 영향 요인을 설명하라.
+2. insights에서 드러난 문제점·기회 요인을 기반으로 원인과 배경을 구체적으로 추론하라.
+3. insights에 따라 실행 가능한 영업 전략(방문 전략, 제품 포트폴리오, 예산 배분, 프로모션 등)을 제안하라.
+4. 숫자 지표(환자수, 방문횟수, 매출)와 insights 해석을 연결해 논리적으로 서술하라.
+5. 만약 insights가 '모든 지표가 평균 범위 내에 있어 안정적이나, 추가 성장 기회 탐색 필요.'일 경우,
+    전반적으로 안정적인 고객으로 평가하고 관계 유지 및 성장 가능성 탐색 전략에 중점 두어 작성하라.
+"""
+
+        try:
+            strategy_report = await self.use_llm_analysis_report(prompt)
+        except Exception as e:
+            strategy_report = f"AI 분석 생성 실패: {e}"
+
+        return strategy_report
+    
+    async def generate_combined_reports(self, company_name: str,
+                                    start_month: Optional[int] = None,
+                                    end_month: Optional[int] = None) -> str:
+        same_grade_report = await self.analyze_same_grade_departments(
+        company_name=company_name,
+        start_month=start_month,
+        end_month=end_month
+    )
+
+        growth_report = await self.generate_growth_analysis_report(
+        company_name=company_name,
+        start_month=start_month,
+        end_month=end_month
+    )
+
+        strategy_report = await self.generate_sales_strategy_report(
+        company_name=company_name
+    )
+
+    # 2. 최종 통합 보고서 작성 (LLM 호출)
+        prompt = f"""
+너는 제약사 영업 데이터 컨설턴트다.
+아래 3개의 분석 리포트를 종합하여 하나의 **최종 통합 영업 전략 보고서**를 작성하라.
+
+### 보고서 1: 동일 등급 비교 분석
+{same_grade_report}
+
+### 보고서 2: 성장성 분석
+{growth_report}
+
+### 보고서 3: 영업 전략 제안
+{strategy_report}
+
+### 작성 지침
+- 중복되는 내용은 요약하고, 핵심 포인트만 정리할 것
+- 비교 분석 → 성장 분석 → 전략 제안 순으로 정리
+- 경영진에게 전달하는 보고서 스타일로 작성
+- 마지막에 **구체적 실행 권고 사항 3~5개 bullet point** 제시
+"""
+
+        try:
+            final_report = await self.use_llm_analysis_report(prompt)
+        except Exception as e:
+            final_report = f"AI 최종 리포트 생성 실패: {e}"
+
+        return final_report
+
+# 1) 등급 계산 노드 ---
+async def calculate_grade_node(state: ReportState, agent: ClientAgent):
+    result = agent.calculate_company_grade(
+        company_name=state["company_name"],
+        start_month=state.get("start_month"),
+        end_month=state.get("end_month")
+    )
+    state["grade"] = result.get("최종등급")
+    return state
+
+# 2) 등급 분석 리포트 노드 ---
+async def grade_analysis_node(state: ReportState, agent: ClientAgent):
+    grade_result = agent.calculate_company_grade(
+        company_name=state["company_name"],
+        start_month=state.get("start_month"),
+        end_month=state.get("end_month")
+    )
+    report = await agent.generate_grade_analysis_report(
+        company_name=state["company_name"],
+        grade_result=grade_result,
+        start_month=state.get("start_month"),
+        end_month=state.get("end_month")
+    )
+    state["grade_report"] = report
+    return state
+
+# 3) 통합 보고서 노드 ---
+
+async def combined_report_node(state: ReportState, agent: ClientAgent):
+    report = await agent.generate_combined_reports(
+        company_name=state["company_name"],
+        start_month=state.get("start_month"),
+        end_month=state.get("end_month")
+    )
+    state["final_report"] = report
+    return state
+
+# 그래프 빌드 함수
+
+def build_graph(agent: ClientAgent):
+    graph = StateGraph(ReportState)
+
+    # 노드 등록
+    graph.add_node("calculate_grade", lambda state: calculate_grade_node(state, agent))
+    graph.add_node("grade_analysis", lambda state: grade_analysis_node(state, agent))
+    graph.add_node("combined_report", lambda state: combined_report_node(state, agent))
+
+    # 순서 연결
+    graph.set_entry_point("calculate_grade")
+    graph.add_edge("calculate_grade", "grade_analysis")
+    graph.add_edge("grade_analysis", "combined_report")
+    graph.add_edge("combined_report", END)
+
+    return graph.compile()
+# 실행 함수
+
+async def run_full_pipeline(self, company_name: str,
+                            start_month: Optional[int] = None,
+                            end_month: Optional[int] = None):
+    # 초기 state 설정
+    initial_state: ReportState = {
+        "company_name": company_name,
+        "start_month": start_month,
+        "end_month": end_month,
+        "grade": None,
+        "grade_report": None,
+        "final_report": None
+    }
+
+    graph = build_graph(self)
+    final_state = await graph.ainvoke(initial_state)
+
+    return final_state
