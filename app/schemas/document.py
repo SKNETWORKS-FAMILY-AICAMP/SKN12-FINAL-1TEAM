@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime
 
 class DocumentBase(BaseModel):
@@ -12,6 +12,9 @@ class DocumentBase(BaseModel):
 
 class DocumentInfo(DocumentBase):
     doc_id: int
+    processing_status: Optional[str] = None
+    processed_at: Optional[datetime] = None
+    processing_metadata: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True 

@@ -13,6 +13,7 @@ python-multipart
 opensearch-py
 alembic
 psycopg2-binary
+asyncpg
 python-dotenv
 psutil
 openai

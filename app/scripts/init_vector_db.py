@@ -28,20 +28,23 @@ async def init_vector_database():
     """벡터 데이터베이스 초기화"""
     try:
         from app.services.core.vector_similarity_service import vector_similarity_service
-        from app.services.utils.db import SessionLocal
+        from app.services.utils.db import AsyncSessionLocal
+        from app.config.table_descriptions_loader import load_table_descriptions
         
         logger.info("🔧 벡터 데이터베이스 초기화 시작...")
         
-        # 데이터베이스 세션 생성
-        session = SessionLocal()
+        # JSON에서 테이블 설명 로드
+        logger.info("📄 테이블 설명 JSON 파일 로드 중...")
+        table_descriptions = load_table_descriptions()
         
-        try:
+        # 비동기 데이터베이스 세션 생성
+        async with AsyncSessionLocal() as session:
             # 벡터 데이터베이스 초기화
-            await vector_similarity_service.initialize_table_descriptions(session)
+            await vector_similarity_service.initialize_table_descriptions_from_json(
+                session, table_descriptions
+            )
             logger.info("✅ 벡터 데이터베이스 초기화 완료")
             return True
-        finally:
-            session.close()
             
     except Exception as e:
         logger.error(f"❌ 벡터 데이터베이스 초기화 실패: {e}")

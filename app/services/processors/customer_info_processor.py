@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.customers import Customer
 from app.services.utils.db import get_db
 from sqlalchemy.exc import SQLAlchemyError
-from app.services.utils.customer_utils import extract_name_and_address
+
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +27,13 @@ def process_customer_info(table_data: List[Dict[str, Any]], engine=None) -> int:
     
     try:
         for row in table_data:
-            # 1. 고객명/주소 추출
-            raw_name = row.get("거래처ID")
-            if not raw_name:
+            # 1. 고객명 추출
+            customer_name = row.get("거래처ID")
+            if not customer_name:
                 logger.warning(f"거래처ID 없는 행 건너뜀: {row}")
                 continue
-            customer_name, address = extract_name_and_address(raw_name)
+            customer_name = str(customer_name).strip()
+            address = None
             
             # 2. 이미 처리된 고객인지 확인 (중복 방지)
             if customer_name in processed_customers:
@@ -47,10 +48,9 @@ def process_customer_info(table_data: List[Dict[str, Any]], engine=None) -> int:
             except Exception:
                 total_patients = None
             
-            # 4. customers 테이블에서 기존 고객 확인 (고객명 + 주소 조합으로 체크)
+            # 4. customers 테이블에서 기존 고객 확인 (고객명으로만 체크)
             existing_customer = db.query(Customer).filter(
-                Customer.customer_name == customer_name,
-                Customer.address == address
+                Customer.customer_name == customer_name
             ).first()
             
             if existing_customer:
