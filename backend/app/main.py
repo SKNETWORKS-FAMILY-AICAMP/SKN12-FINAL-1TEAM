@@ -43,6 +43,14 @@ else:
 from app.api.router_api import router
 print("[OK] router_api imported successfully")
 
+# docs_agent API 라우터 추가
+try:
+    from app.api.docs_agent_api import router as docs_router
+    print("[OK] docs_agent_api imported successfully")
+except Exception as e:
+    print(f"[WARNING] Failed to import docs_agent_api: {e}")
+    docs_router = None
+
 # 간단한 테스트 라우터 추가
 try:
     from app.api.router_api_simple import router as simple_router
@@ -65,6 +73,11 @@ app.add_middleware(
 # 라우터 등록 - /api prefix로 통일
 app.include_router(router, prefix="/api")
 print("[OK] Router registered at /api")
+
+# docs_agent API 라우터 등록
+if docs_router:
+    app.include_router(docs_router, prefix="/api")
+    print("[OK] Docs agent router registered at /api")
 
 # 간단한 테스트 라우터 등록
 if simple_router:
