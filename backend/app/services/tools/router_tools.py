@@ -19,7 +19,8 @@ def create_tools_from_config(agents_config: Dict[str, Any], execute_agent_func) 
         # 도구 함수 동적 생성
         def make_tool(name, cfg):
             # 클로저로 agent_name과 config 캡처
-            def agent_tool(query: Annotated[str, f"{metadata['description'][:50]}..."]) -> Dict[str, Any]:
+            # description 전체를 사용하여 LLM이 충분한 컨텍스트를 가지도록 함
+            def agent_tool(query: Annotated[str, metadata['description']]) -> Dict[str, Any]:
                 return execute_agent_func(name, query)
             
             # 함수 메타데이터 설정
