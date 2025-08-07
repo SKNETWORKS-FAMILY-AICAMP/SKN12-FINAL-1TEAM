@@ -6,8 +6,10 @@ from pathlib import Path
 from openai import AsyncOpenAI
 import os
 import logging
+from typing_extensions import Annotated
 from langgraph.graph import StateGraph, START, END
-
+from dotenv import load_dotenv
+load_dotenv()
 # 스테이트정의
 
 class ReportState(TypedDict):
@@ -17,6 +19,10 @@ class ReportState(TypedDict):
     grade: Optional[str]
     grade_report: Optional[str]
     final_report: Optional[str]
+    grade_result: Optional[Dict[str, Any]]
+    same_grade_report: Optional[str]     
+    growth_report: Optional[str]         
+    strategy_report: Optional[str]    
 
 # 클래스 정의 
 class ClientAgent:
@@ -36,16 +42,65 @@ class ClientAgent:
         self.patience_threshold = {"A":2200, "B":1800, "C":1400, "D":1000, "E":500}
         self.interaction_threshold = {"A":60, "B":45, "C":30, "D":15, "E":0}
 
+    
+    async def run_full_pipeline(self, company_name: str,
+                                start_month: Optional[int] = None,
+                                end_month: Optional[int] = None):
+        """
+        파싱된 파라미터 기반으로 LangGraph 파이프라인 실행
+        """
+        initial_state: ReportState = {
+            "company_name": company_name,
+            "start_month": start_month,
+            "end_month": end_month,
+            "grade": None,
+            "grade_report": None,
+            "final_report": None,
+            "grade_result": None,
+            "same_grade_report": None,     
+            "growth_report": None,         
+            "strategy_report": None        
+        }
+
+        graph = build_full_graph(self)
+        final_state = await graph.ainvoke(initial_state)
+
+        return final_state
+
+
     def _load_data(self):
         try:
             self.df = pd.read_excel(self.data_path)
             self.df['월'] = pd.to_datetime(self.df['월'].astype(str), format='%Y%m', errors='coerce')
         # 월_int 컬럼 미리 생성
             self.df['월_int'] = self.df['월'].dt.strftime('%Y%m').astype(int)
-            print(f"[OK] 데이터 로드 완료: {len(self.df)}건")              
+            print(f"[OK] 데이터 로드 완료: {len(self.df)}건")
+            print("[DEBUG] 컬럼 목록:", self.df.columns.tolist())
+              
         except Exception as e:
             print(f"[ERROR] 데이터 로드 실패: {e}")
             self.df = pd.DataFrame()
+
+        
+    async def run_pipeline_from_query(self, query: str) -> Dict[str, Any]:
+        """
+        자연어 쿼리를 받아서 파라미터 추출 후 전체 LangGraph 파이프라인 실행
+        """
+        parsed = await self.parse_query_params(query)
+        if not parsed["success"]:
+            return {
+                "error": "❌ 파라미터 추출 실패",
+                "detail": parsed.get("error", "Unknown error")
+            }
+
+        result = await self.run_full_pipeline(
+            company_name=parsed["company_name"],
+            start_month=parsed["start_month"],
+            end_month=parsed["end_month"]
+        )
+
+        return result
+    
 
     async def parse_query_params(self, query: str) -> Dict:
         prompt = f"""
@@ -66,7 +121,7 @@ JSON 형식으로만 응답:
 """
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0
             )
@@ -81,6 +136,8 @@ JSON 형식으로만 응답:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
+        
+
 
     def _get_grade(self, value: float, threshold_dict: Dict[str, float], reverse: bool = False) -> str:
         grades = ["A", "B", "C", "D", "E"]
@@ -148,9 +205,9 @@ JSON 형식으로만 응답:
     async def use_llm_analysis_report(self, prompt: str) -> str:  # LLM이용하는 LLM호출함수
         try:
           response = await self.client.chat.completions.create(
-              model="gpt-4.1",
+              model="gpt-4o",
               messages=[{"role": "user", "content": prompt}],
-              temperature=0.7
+              temperature=0.3
           )
           return response.choices[0].message.content.strip()
         except Exception as e:
@@ -198,11 +255,16 @@ JSON 형식으로만 응답:
                 continue
             grade_data = self.calculate_company_grade(cid, start_month, end_month)
             if grade_data.get("최종등급") == target_grade:
-                subset = filtered_df[filtered_df["거래처ID"] == cid]["진료과"]
-                진료과값 = subset.iloc[0] if not subset.empty else "정보없음"
+                subset = filtered_df[filtered_df["거래처ID"] == cid]
+                진료과값 = str(subset["과"].iloc[0]) if not subset.empty else "정보없음"
+                평균매출 = subset["매출"].mean() if not subset.empty else 0
+                평균예산 = subset["사용 예산"].mean() if not subset.empty else 0
+
                 same_grade_companies.append({
                     "거래처ID": cid,
-                    "진료과": 진료과값
+                    "과": 진료과값,
+                    "매출": 평균매출,
+                    "사용 예산": 평균예산
                 })
 
         return {
@@ -212,19 +274,25 @@ JSON 형식으로만 응답:
         }
 
     def split_companies_by_department(self, company_name: str, same_grade_result: Dict) -> Dict[str, Any]:
-        subset = self.df[self.df["거래처ID"] == company_name]["진료과"]
-        target_department = subset.iloc[0] if not subset.empty else "정보없음"
+        subset = self.df[self.df["거래처ID"] == company_name]["과"]
+
+        if not subset.empty:
+            target_department = str(subset.iloc[0])  # 🔥 핵심 수정
+        else:
+            target_department = "정보없음"
 
         same_grade_df = pd.DataFrame(same_grade_result["same_grade_companies"])
 
-        same_department_df = same_grade_df[same_grade_df["진료과"] == target_department]
-        diff_department_df = same_grade_df[same_grade_df["진료과"] != target_department]
+    # 🔐 이제 비교가 안전하게 동작
+        same_department_df = same_grade_df[same_grade_df["과"] == target_department]
+        diff_department_df = same_grade_df[same_grade_df["과"] != target_department]
 
         return {
             "same_department": same_department_df,
             "diff_department": diff_department_df,
             "target_department": target_department
         }
+
 
     async def analyze_same_grade_departments(self, company_name: str,
                                              start_month: Optional[int] = None,
@@ -366,7 +434,7 @@ JSON 형식으로만 응답:
         
         if recent_ratio > 15:
             insights.append("최근 3개월 매출이 급상승, 성장세 유지 전략 필요.")
-                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
         if recent_ratio < -15:
             insights.append("최근 3개월 매출이 급감, 원인 파악 및 리커버리 전략 필요.")
         
@@ -416,123 +484,106 @@ JSON 형식으로만 응답:
 
         return strategy_report
     
-    async def generate_combined_reports(self, company_name: str,
-                                    start_month: Optional[int] = None,
-                                    end_month: Optional[int] = None) -> str:
-        same_grade_report = await self.analyze_same_grade_departments(
-        company_name=company_name,
-        start_month=start_month,
-        end_month=end_month
-    )
 
-        growth_report = await self.generate_growth_analysis_report(
-        company_name=company_name,
-        start_month=start_month,
-        end_month=end_month
-    )
-
-        strategy_report = await self.generate_sales_strategy_report(
-        company_name=company_name
-    )
-
-    # 2. 최종 통합 보고서 작성 (LLM 호출)
-        prompt = f"""
-너는 제약사 영업 데이터 컨설턴트다.
-아래 3개의 분석 리포트를 종합하여 하나의 **최종 통합 영업 전략 보고서**를 작성하라.
-
-### 보고서 1: 동일 등급 비교 분석
-{same_grade_report}
-
-### 보고서 2: 성장성 분석
-{growth_report}
-
-### 보고서 3: 영업 전략 제안
-{strategy_report}
-
-### 작성 지침
-- 중복되는 내용은 요약하고, 핵심 포인트만 정리할 것
-- 비교 분석 → 성장 분석 → 전략 제안 순으로 정리
-- 경영진에게 전달하는 보고서 스타일로 작성
-- 마지막에 **구체적 실행 권고 사항 3~5개 bullet point** 제시
-"""
-
-        try:
-            final_report = await self.use_llm_analysis_report(prompt)
-        except Exception as e:
-            final_report = f"AI 최종 리포트 생성 실패: {e}"
-
-        return final_report
-
-# 1) 등급 계산 노드 ---
-async def calculate_grade_node(state: ReportState, agent: ClientAgent):
-    result = agent.calculate_company_grade(
-        company_name=state["company_name"],
-        start_month=state.get("start_month"),
-        end_month=state.get("end_month")
-    )
-    state["grade"] = result.get("최종등급")
-    return state
-
-# 2) 등급 분석 리포트 노드 ---
-async def grade_analysis_node(state: ReportState, agent: ClientAgent):
-    grade_result = agent.calculate_company_grade(
-        company_name=state["company_name"],
-        start_month=state.get("start_month"),
-        end_month=state.get("end_month")
-    )
-    report = await agent.generate_grade_analysis_report(
-        company_name=state["company_name"],
-        grade_result=grade_result,
-        start_month=state.get("start_month"),
-        end_month=state.get("end_month")
-    )
-    state["grade_report"] = report
-    return state
-
-# 3) 통합 보고서 노드 ---
-
-async def combined_report_node(state: ReportState, agent: ClientAgent):
-    report = await agent.generate_combined_reports(
-        company_name=state["company_name"],
-        start_month=state.get("start_month"),
-        end_month=state.get("end_month")
-    )
-    state["final_report"] = report
-    return state
-
-# 그래프 빌드 함수
-
-def build_graph(agent: ClientAgent):
+    
+def build_full_graph(agent: ClientAgent):
     graph = StateGraph(ReportState)
 
-    # 노드 등록
-    graph.add_node("calculate_grade", lambda state: calculate_grade_node(state, agent))
-    graph.add_node("grade_analysis", lambda state: grade_analysis_node(state, agent))
-    graph.add_node("combined_report", lambda state: combined_report_node(state, agent))
+    # --- 1단계: 등급 계산 ---
+    async def calculate_grade_node(state: ReportState):
+        company_name = state["company_name"]
+        start_month = state["start_month"]
+        end_month = state["end_month"]
+        grade_result = agent.calculate_company_grade(company_name, start_month, end_month)
+        state["grade_result"] = grade_result
+        return state
 
-    # 순서 연결
+    # --- 2단계: 등급 분석 리포트 ---
+    async def grade_analysis_node(state: ReportState):
+        company_name = state["company_name"]
+        grade_result = state["grade_result"]
+        start_month = state["start_month"]
+        end_month = state["end_month"]
+        report = await agent.generate_grade_analysis_report(
+            company_name=company_name,
+            grade_result=grade_result,
+            start_month=start_month,
+            end_month=end_month
+        )
+        state["grade_report"] = report
+        return state
+
+    async def same_grade_node(state: ReportState):
+        company_name = state["company_name"]
+        start_month = state["start_month"]
+        end_month = state["end_month"]
+        report = await agent.analyze_same_grade_departments(company_name, start_month, end_month)
+        return {"same_grade_report": report}
+
+    async def growth_node(state: ReportState):
+        company_name = state["company_name"]
+        start_month = state["start_month"]
+        end_month = state["end_month"]
+        report = await agent.generate_growth_analysis_report(company_name, start_month, end_month)
+        return {"growth_report": report}
+
+    async def strategy_node(state: ReportState):
+        company_name = state["company_name"]
+        report = await agent.generate_sales_strategy_report(company_name)
+        return {"strategy_report": report}
+
+    # --- 4단계: 병합 노드 ---
+    async def merge_node(state: ReportState):
+        prompt = f"""
+너는 제약사 영업 데이터 컨설턴트이다.
+아래 리포트를 종합하여 통합 보고서를 작성하라.
+
+### 등급 분석
+{state['grade_report']}
+
+### 동일 등급 비교 분석
+{state['same_grade_report']}
+
+### 성장성 분석
+{state['growth_report']}
+
+### 영업 전략 제안
+{state['strategy_report']}
+"""
+        report = await agent.use_llm_analysis_report(prompt)
+        state["final_report"] = report
+        return state
+
+    # --- 그래프 노드 등록 ---
+    graph.add_node("calculate_grade", calculate_grade_node)
+    graph.add_node("grade_analysis", grade_analysis_node)
+    graph.add_node("same_grade", same_grade_node)
+    graph.add_node("growth", growth_node)
+    graph.add_node("strategy", strategy_node)
+    graph.add_node("merge", merge_node)
+
+    # --- 노드 연결 ---
     graph.set_entry_point("calculate_grade")
     graph.add_edge("calculate_grade", "grade_analysis")
-    graph.add_edge("grade_analysis", "combined_report")
-    graph.add_edge("combined_report", END)
+    graph.add_edge("grade_analysis", "same_grade")
+    graph.add_edge("grade_analysis", "growth")
+    graph.add_edge("grade_analysis", "strategy")
+    graph.add_edge("same_grade", "merge")
+    graph.add_edge("growth", "merge")
+    graph.add_edge("strategy", "merge")
+    graph.set_finish_point("merge")
 
     return graph.compile()
-# 실행 함수
 
-async def run_full_pipeline(self, company_name: str,
-                            start_month: Optional[int] = None,
-                            end_month: Optional[int] = None):
-    # 초기 state 설정
-    initial_state: ReportState = {
-        "company_name": company_name,
-        "start_month": start_month,
-        "end_month": end_month,
-        "grade": None,
-        "grade_report": None,
-        "final_report": None
-    }
 
-    graph = build_graph(self)
-    final_state = await graph.ainvoke(initial_state)
 
-    return final_state
+if __name__ == "__main__":
+    import asyncio
+
+    agent = ClientAgent()
+
+    query = "우리가족의원(강서구 가양동)의 2024년 1월부터 3월까지 분석 보고서를 생성해줘"
+    result = asyncio.run(agent.run_pipeline_from_query(query))
+    
+    print("\n[최종 통합 리포트]")
+    print(result.get("final_report", "리포트 없음"))
