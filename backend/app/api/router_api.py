@@ -88,7 +88,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         logger.info(f"[CHAT] 요청 수신: {request.message[:50]}...")
         
         # 라우터 에이전트 실행
-        result = await router_agent.run(
+        result = router_agent.run(
             user_input=request.message,
             session_id=request.session_id
         )
