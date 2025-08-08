@@ -1111,4 +1111,4 @@ const ChatScreen = () => {
   );
 };
 
-export default ChatScreen; 
+export default ChatScreen;
