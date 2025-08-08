@@ -91,7 +91,7 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
                     fastapi_url,
                     json=payload,
                     headers={"Content-Type": "application/json"},
-                    timeout=30
+                    timeout=60
                 )
                 
                 if response.status_code == 200:

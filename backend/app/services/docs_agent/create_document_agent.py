@@ -11,6 +11,7 @@ import re
 import os
 import uuid
 from pathlib import Path
+from dotenv import load_dotenv
 from docx import Document
 
 # 외부 도구 임포트
@@ -18,6 +19,8 @@ import sys
 # 상위 디렉토리를 sys.path에 추가하여 tools 모듈에 접근
 sys.path.append(str(Path(__file__).parent.parent))
 from tools.common_tools import check_policy_violation, separate_document_type_and_content
+
+load_dotenv()
 
 class State(TypedDict):
     messages: List[HumanMessage]
@@ -440,27 +443,42 @@ class CreateDocumentAgent:
 
         try:
             formatted_messages = parsing_prompt.format_messages(user_input=escaped_input)
-            print("[INFO] LLM에 전달된 메시지:")
-            for m in formatted_messages:
-                print(f"[{m.type.upper()}] {m.content[:200]}...")
+            # API 모드에서 규정 위반이 없을 때만 상세 로그 출력
+            violation = state.get("violation", "")
+            if not self.api_mode or violation == "OK":
+                print("[INFO] LLM에 전달된 메시지:")
+                for m in formatted_messages:
+                    print(f"[{m.type.upper()}] {m.content[:200]}...")
 
             response = self.llm.invoke(formatted_messages)
 
             content = response.content
             json_str = content if isinstance(content, str) else str(content)
-            print(f"\n[SEARCH] LLM 응답 내용:\n{json_str}")
+            
+            # API 모드에서 규정 위반 시에는 상세 로그 출력 생략
+            violation = state.get("violation", "")
+            if not self.api_mode or violation == "OK":
+                print(f"\n[SEARCH] LLM 응답 내용:\n{json_str}")
 
             if "{" in json_str and "}" in json_str:
                 start = json_str.find("{")
                 end = json_str.rfind("}") + 1
                 clean_json = json_str[start:end]
-                print(f"\n[SEARCH] 추출된 JSON:\n{clean_json}")
+                
+                if not self.api_mode or violation == "OK":
+                    print(f"\n[SEARCH] 추출된 JSON:\n{clean_json}")
 
                 try:
                     parsed_data = json.loads(clean_json)
                     state["filled_data"] = parsed_data
                     state["parse_failed"] = False
-                    print("[SUCCESS] 파싱 성공:", parsed_data)
+                    
+                    # API 모드에서 규정 위반 시에는 상세 파싱 결과 출력 생략
+                    violation = state.get("violation", "")
+                    if not self.api_mode or violation == "OK":
+                        print("[SUCCESS] 파싱 성공:", parsed_data)
+                    else:
+                        print("[SUCCESS] 파싱 성공 (상세 결과 생략)")
                 except json.JSONDecodeError as json_error:
                     print(f"[ERROR] JSON 파싱 오류: {json_error}")
                     print(f"파싱 시도한 JSON: {repr(clean_json)}")
@@ -559,21 +577,25 @@ class CreateDocumentAgent:
         """
         violation = state["violation"]
         
-        print(f"\nALERT: 규정 위반 사항 발견!")
-        print("=" * 60)
-    
-        # check_policy_violation 결과를 직접 출력
-        print("VIOLATION_RESULT: 규정 위반 검토 결과:")
-        print(violation)
+        if self.api_mode:
+            # API 모드에서는 간단하게 위반 내용만 출력
+            print(f"\n[위반 내용]\n{violation}")
+        else:
+            # 콘솔 모드에서는 상세한 안내
+            print(f"\nALERT: 규정 위반 사항 발견!")
+            print("=" * 60)
         
-        print("=" * 60)
+            # check_policy_violation 결과를 직접 출력
+            print("VIOLATION_RESULT: 규정 위반 검토 결과:")
+            print(violation)
+            
+            print("=" * 60)
+            print("ERROR: 규정 위반 사항으로 인해 문서 생성을 중단합니다.")
+            print("INFO: 위반 내용을 확인하고 내용을 수정한 후 다시 시도해주세요.")
         
         # 위반 사항을 state에 저장
         state["final_doc"] = None  # 문서 생성 실패 표시
         state["end_process"] = True  # 프로세스 종료 표시
-        
-        print("ERROR: 규정 위반 사항으로 인해 문서 생성을 중단합니다.")
-        print("INFO: 위반 내용을 확인하고 내용을 수정한 후 다시 시도해주세요.")
         
         return state
     
@@ -592,14 +614,14 @@ class CreateDocumentAgent:
         filled_data = state["filled_data"]
         violation = state.get("violation", "")
         
-        # API 모드에서 규정 위반이 있는 경우 파일 생성 차단
-        if self.api_mode and violation != "OK":
-            print("\n[ALERT] 규정 위반으로 인해 파일 생성이 차단되었습니다! (API 모드)")
-            print("[INFO] 분석은 완료되었지만 규정 위반으로 문서 파일은 생성되지 않습니다.")
+        # API 모드에서는 여기까지 도달하지 않음 (규정 위반 시 inform_violation에서 처리됨)
+        # 콘솔 모드에서만 실행
+        if violation and violation.strip() != "OK":
+            print("\n[ALERT] 규정 위반으로 인해 파일 생성이 차단되었습니다!")
+            print("[INFO] 규정 위반으로 문서 파일은 생성되지 않습니다.")
             
             # 위반 내용 표시
-            if violation != "OK":
-                print(f"\n[위반 내용] {violation}")
+            print(f"\n[위반 내용] {violation}")
             
             state["final_doc"] = None
             state["violation_blocked"] = True
@@ -989,12 +1011,13 @@ class CreateDocumentAgent:
         violation = state.get("violation", "")
         
         if self.api_mode:
-            # API 모드에서는 항상 분석 계속
+            # API 모드에서는 규정 위반 발견 시 즉시 종료
             if violation != "OK":
-                print(f"[WARNING] 규정 위반이 발견되었지만 분석을 계속합니다 (API 모드)")
+                print(f"[ERROR] 규정 위반이 발견되어 처리를 중단합니다 (API 모드)")
+                return "inform_violation"
             else:
                 print(f"[SUCCESS] 규정 위반 없음 - parse_user_input으로 이동")
-            return "parse_user_input"
+                return "parse_user_input"
         else:
             # 콘솔 모드에서는 기존대로 동작
             if violation != "OK":
@@ -1017,19 +1040,24 @@ class CreateDocumentAgent:
         if state.get("parse_failed"):
             return "check_user_input_policy"
         else:
-            # 파싱 성공 시 바로 문서 생성
-            print("SUCCESS: 파싱 성공 - 문서 생성 진행")
-            print("=" * 60)
-            print("PARSED_DATA: 파싱된 사용자 입력 데이터:")
-            print("=" * 60)
+            # 파싱 성공 시 문서 생성 단계로 이동
+            violation = state.get("violation", "")
             
-            filled_data = state.get("filled_data", {})
-            for key, value in filled_data.items():
-                if value:
-                    print(f"- {key}: {value}")
+            # API 모드가 아니거나 규정 위반이 없는 경우에만 상세 로그 출력
+            if not self.api_mode or violation == "OK":
+                print("SUCCESS: 파싱 성공 - 문서 생성 단계로 이동")
+                print("=" * 60)
+                print("PARSED_DATA: 파싱된 사용자 입력 데이터:")
+                print("=" * 60)
+                
+                filled_data = state.get("filled_data", {})
+                for key, value in filled_data.items():
+                    if value:
+                        print(f"- {key}: {value}")
+                
+                print("=" * 60)
+                print("SUCCESS: 문서 데이터 파싱 완료!")
             
-            print("=" * 60)
-            print("SUCCESS: 문서 데이터 파싱 완료!")
             return "create_choan_document"
     
 
@@ -1210,7 +1238,7 @@ class CreateDocumentAgent:
                 print(f"\nINTERRUPT: 인터럽트 발생 - 스레드 ID: {thread_id}")
                 if self.api_mode:
                     # API 모드일 경우 인터럽트 정보 반환
-                    return self._handle_api_interrupt(thread_id, result)
+                    return self._handle_api_interrupt(thread_id)
                 else:
                     # 콘솔 모드일 경우 기존 대화형 처리
                     return self._handle_interactive_mode(thread_id)
@@ -1355,7 +1383,7 @@ class CreateDocumentAgent:
                     # 또 다른 인터럽트 확인
                     current_state_after = self.app.get_state(config)
                     if current_state_after.next:
-                        return self._handle_api_interrupt(thread_id, final_result)
+                        return self._handle_api_interrupt(thread_id)
                     
                     # 종료 처리 확인
                     if final_result.get("end_process"):
@@ -1446,13 +1474,12 @@ class CreateDocumentAgent:
             traceback.print_exc()
             return {"success": False, "error": str(e)}
     
-    def _handle_api_interrupt(self, thread_id: str, current_result: dict = None):
+    def _handle_api_interrupt(self, thread_id: str):
         """
         API 모드에서 인터럽트 처리
         
         Args:
             thread_id (str): 스레드 ID
-            current_result (dict): 현재 워크플로우 결과
         
         Returns:
             dict: 인터럽트 정보 (interrupted, thread_id, next_node, doc_type 등 포함)
