@@ -491,6 +491,78 @@ async def list_agents():
     }
 
 
+@router.get("/chat/history/{session_id}")
+async def get_chat_history(session_id: str):
+    """
+    특정 세션의 채팅 내역을 조회합니다.
+    
+    Args:
+        session_id: 세션 ID
+        
+    Returns:
+        List[Dict]: 메시지 목록
+    """
+    try:
+        from app.services.common.conversation_storage import ConversationStorage
+        
+        storage = ConversationStorage()
+        messages = await storage.get_conversation(session_id)
+        
+        if not messages:
+            raise HTTPException(
+                status_code=404,
+                detail=f"세션 {session_id}에 대한 대화 내역이 없습니다."
+            )
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "messages": messages,
+            "count": len(messages)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[CHAT_HISTORY] 오류 발생: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"대화 내역 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.get("/chat/sessions/user/{employee_id}")
+async def get_user_sessions(employee_id: int):
+    """
+    사용자의 모든 세션 목록을 조회합니다.
+    
+    Args:
+        employee_id: 직원 ID
+        
+    Returns:
+        List[Dict]: 세션 목록
+    """
+    try:
+        from app.services.common.conversation_storage import ConversationStorage
+        
+        storage = ConversationStorage()
+        sessions = await storage.get_user_sessions(employee_id)
+        
+        return {
+            "success": True,
+            "employee_id": employee_id,
+            "sessions": sessions,
+            "count": len(sessions)
+        }
+        
+    except Exception as e:
+        logger.error(f"[USER_SESSIONS] 오류 발생: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"세션 목록 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
 # 개발용 테스트 엔드포인트
 if __name__ == "__main__":
     # 테스트를 위한 간단한 예제
