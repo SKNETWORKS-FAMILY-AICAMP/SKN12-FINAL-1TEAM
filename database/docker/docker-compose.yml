@@ -1,11 +1,10 @@
-version: '3.8'
-
 services:
   # FastAPI 애플리케이션
   fastapi-app:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    image: ansirh/database-fastapi-app:0.4
+    # build:
+    #   context: ../
+    #   dockerfile: docker/database-fastapi-app.Dockerfile
     container_name: fastapi-app
     ports:
       - "8010:8000"
@@ -38,13 +37,13 @@ services:
       # OpenAI 설정
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
-      - model_cache:/app/.cache/huggingface
       # 개발 중에는 로컬 파일을 마운트 (빌드 없이 즉시 반영)
-      - ../app:/app/app
-      - ../migrations:/app/migrations
-      - ./.env:/app/.env
-      # start.sh 파일 보존 (읽기 전용)
-      - ./start.sh:/app/start.sh:ro
+      # - ../app:/app/app
+      # - ../migrations:/app/migrations
+      # - ./.env:/app/.env
+      # 캐시 볼륨 (로컬 마운트 이후에 마운트)
+      - model_cache:/root/.cache/huggingface
+      - pip_cache:/root/.cache/pip
     depends_on:
       postgres:
         condition: service_started
@@ -60,7 +59,7 @@ services:
       - app-network
 
   postgres:
-    image: postgres:15
+    image: ansirh/postgres:v1.0.0
     container_name: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -69,7 +68,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     networks:
       - app-network
 
@@ -80,19 +79,10 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
-      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
-      # PostgreSQL 연결 정보 (자동 설정용)
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
     ports:
       - "5050:80"
     volumes:
-      - ./pgadmin_data:/var/lib/pgadmin
-      - ./pgadmin/generate_config.py:/pgadmin4/generate_config.py
-      - ./pgadmin/init_pgadmin.sh:/docker-entrypoint-initdb.d/init_pgadmin.sh
+      - pgadmin_data:/var/lib/pgadmin
     depends_on:
       - postgres
     networks:
@@ -109,7 +99,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - ./minio_data:/data
+      - minio_data:/data
     networks:
       - app-network
 
@@ -130,7 +120,7 @@ services:
         soft: -1
         hard: -1
     volumes:
-      - ./osdata1:/usr/share/opensearch/data
+      - osdata1:/usr/share/opensearch/data
     ports:
       - "9200:9200"
     networks:
@@ -158,7 +148,7 @@ services:
         soft: -1
         hard: -1
     volumes:
-      - ./osdata2:/usr/share/opensearch/data
+      - osdata2:/usr/share/opensearch/data
     ports:
       - "9201:9200"
     networks:
@@ -181,7 +171,7 @@ services:
         soft: -1
         hard: -1
     volumes:
-      - ./osdata3:/usr/share/opensearch/data
+      - osdata3:/usr/share/opensearch/data
     ports:
       - "9202:9200"
     networks:
@@ -210,4 +200,10 @@ networks:
 
 volumes:
   pgdata:
+  osdata1:
+  osdata2:
+  osdata3:
+  minio_data:
+  pgadmin_data:
   model_cache:  # 모델 캐시를 위한 볼륨 
+  pip_cache:  # pip 캐시를 위한 볼륨 

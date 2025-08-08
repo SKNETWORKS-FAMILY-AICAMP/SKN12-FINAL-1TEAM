@@ -5,6 +5,7 @@ router_api.py와 각 에이전트에서 사용하기 위한 헬퍼 함수들
 from typing import Dict, List, Optional
 from .postgres_chat_manager import postgres_chat_history_manager
 from .context_manager import context_manager
+from .database_api_client import database_api_client
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ class ChatHistoryIntegration:
     def __init__(self):
         self.history_manager = postgres_chat_history_manager
         self.context_manager = context_manager
+        self.api_client = database_api_client
     
     async def process_user_message(
         self,
@@ -33,19 +35,21 @@ class ChatHistoryIntegration:
         Returns:
             message_id: 저장된 메시지 ID
         """
-        # 1. 사용자 메시지 저장
-        message_id = await self.history_manager.save_message(
-            session_id=session_id,
-            role="user",
-            message_text=query,
-            employee_id=employee_id
-        )
-        
-        # 2. 컨텍스트 매니저 업데이트 (기존 기능 활용)
-        # context_manager는 동기식이므로 필요시 수정
-        
-        logger.info(f"User message processed: {message_id}")
-        return message_id
+        try:
+            # Database API를 통한 사용자 메시지 저장
+            message_id = await self.api_client.save_message(
+                session_id=session_id,
+                role="user",
+                message_text=query,
+                employee_id=employee_id
+            )
+            
+            logger.info(f"User message processed via API: {message_id}")
+            return message_id
+            
+        except Exception as e:
+            logger.error(f"API call failed: {e}")
+            raise e
     
     async def process_assistant_response(
         self,
@@ -66,16 +70,22 @@ class ChatHistoryIntegration:
         Returns:
             message_id: 저장된 메시지 ID
         """
-        # 응답 저장
-        message_id = await self.history_manager.save_message(
-            session_id=session_id,
-            role="assistant",
-            message_text=response,
-            employee_id=employee_id
-        )
-        
-        logger.info(f"Assistant response processed: {message_id}")
-        return message_id
+        try:
+            # Database API를 통한 어시스턴트 응답 저장
+            message_id = await self.api_client.save_message(
+                session_id=session_id,
+                role="assistant",
+                message_text=response,
+                employee_id=employee_id,
+                metadata={"agent_name": agent_name}
+            )
+            
+            logger.info(f"Assistant response processed via API: {message_id}")
+            return message_id
+            
+        except Exception as e:
+            logger.error(f"API call failed: {e}")
+            raise e
     
     async def get_conversation_context(
         self,

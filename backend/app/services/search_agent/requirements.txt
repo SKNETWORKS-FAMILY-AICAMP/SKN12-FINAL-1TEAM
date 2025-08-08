@@ -1,0 +1,20 @@
+# Search Agent Dependencies
+
+# Core LangChain and LangGraph
+langchain>=0.1.0
+langgraph>=0.0.20
+langchain-openai>=0.0.5
+
+# HTTP requests
+requests>=2.31.0
+
+# Environment and configuration
+python-dotenv>=1.0.0
+
+# Logging and utilities
+typing-extensions>=4.8.0
+
+# Optional: For enhanced functionality
+# pydantic>=2.0.0  # For data validation
+# asyncio>=3.4.3   # For async operations
+# aiohttp>=3.8.0   # For async HTTP requests 
