@@ -1,7 +1,7 @@
 services:
   # FastAPI 애플리케이션
   fastapi-app:
-    image: ansirh/database-fastapi-app:0.4
+    image: ansirh/database-fastapi-app:v0.4
     # build:
     #   context: ../
     #   dockerfile: docker/database-fastapi-app.Dockerfile
