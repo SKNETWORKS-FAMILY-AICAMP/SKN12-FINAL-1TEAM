@@ -34,15 +34,12 @@ class GetSessionInfoRequest(BaseModel):
     session_id: str
 
 class UpdateSessionTitleRequest(BaseModel):
-    session_id: str
     title: str
 
 class ArchiveSessionRequest(BaseModel):
-    session_id: str
     employee_id: int
 
 class RestoreSessionRequest(BaseModel):
-    session_id: str
     employee_id: int
 
 # 응답 모델
@@ -70,7 +67,7 @@ async def save_message(
     """메시지 저장"""
     try:
         message_id = str(uuid.uuid4())
-        timestamp = datetime.now(timezone.utc).isoformat()
+        dt_now = datetime.now(timezone.utc)
         
         # 세션이 없으면 생성
         session = db.query(ChatSession).filter(
@@ -81,8 +78,8 @@ async def save_message(
             session = ChatSession(
                 session_id=request.session_id,
                 employee_id=request.employee_id,
-                created_at=timestamp,
-                last_activity=timestamp,
+                created_at=dt_now,
+                last_activity=dt_now,
                 is_archived=False
             )
             db.add(session)
@@ -91,16 +88,16 @@ async def save_message(
         message = ChatHistory(
             session_id=request.session_id,
             message_id=message_id,
-            timestamp=timestamp,
             role=request.role,
             message_text=request.message_text,
-            employee_id=request.employee_id
+            employee_id=request.employee_id,
+            created_at=dt_now
         )
         
         db.add(message)
         
         # 세션 last_activity 업데이트
-        session.last_activity = timestamp
+        session.last_activity = dt_now
         
         db.commit()
         
@@ -109,7 +106,7 @@ async def save_message(
         return {
             "success": True,
             "message_id": message_id,
-            "timestamp": timestamp
+            "timestamp": dt_now.isoformat()
         }
         
     except Exception as e:
@@ -126,7 +123,7 @@ async def get_conversation_history(
     try:
         query = db.query(ChatHistory).filter(
             ChatHistory.session_id == request.session_id
-        ).order_by(ChatHistory.timestamp.asc())
+        ).order_by(ChatHistory.created_at.asc())
         
         if request.limit:
             query = query.limit(request.limit)
@@ -139,7 +136,7 @@ async def get_conversation_history(
         for msg in messages:
             result.append({
                 "message_id": msg.message_id,
-                "timestamp": msg.timestamp,
+                "timestamp": msg.created_at.isoformat() if msg.created_at else None,
                 "role": msg.role,
                 "content": msg.message_text
             })
@@ -178,11 +175,11 @@ async def get_session_info(
             "session": {
                 "session_id": session.session_id,
                 "session_title": session.session_title,
-                "created_at": session.created_at,
-                "last_activity": session.last_activity,
+                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "last_activity": session.last_activity.isoformat() if session.last_activity else None,
                 "message_count": message_count,
                 "is_archived": session.is_archived,
-                "archived_at": session.archived_at
+                "archived_at": session.archived_at.isoformat() if session.archived_at else None
             }
         }
         
@@ -229,11 +226,11 @@ async def get_user_sessions(
             result.append({
                 "session_id": session.session_id,
                 "session_title": session.session_title,
-                "created_at": session.created_at,
-                "last_activity": session.last_activity,
+                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "last_activity": session.last_activity.isoformat() if session.last_activity else None,
                 "message_count": message_count,
                 "is_archived": session.is_archived,
-                "archived_at": session.archived_at
+                "archived_at": session.archived_at.isoformat() if session.archived_at else None
             })
         
         # 전체 개수도 함께 반환

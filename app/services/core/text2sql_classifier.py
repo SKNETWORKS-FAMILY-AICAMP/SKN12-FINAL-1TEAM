@@ -6,7 +6,7 @@ LLM을 사용하여 테이블 데이터를 분석하고 적절한 데이터베�
 import logging
 import re
 import json
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional, Callable, Tuple
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
@@ -39,6 +39,72 @@ class Text2SQLTableClassifier:
         """초기화"""
         self.db_session_factory = db_session_factory
         
+    async def _validate_and_filter_target_tables(self, uploaded_columns: List[str], target_tables: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """LLM 결과 테이블/매핑을 필수 컬럼 및 로컬 매핑으로 검증하여 정제"""
+        validated: List[Dict[str, Any]] = []
+        reasons: List[str] = []
+        uploaded_set = set(str(c) for c in uploaded_columns)
+
+        # 테이블별 필수 컬럼 정의
+        required = {
+            'employee_info': ['name', 'employee_number'],
+            'customers': ['customer_name'],
+            'products': ['product_name'],
+            'sales_records': ['employee_name', 'employee_number', 'customer_name']
+        }
+
+        async with self._get_db_session() as session:
+            for t in target_tables:
+                table = t.get('table_name')
+                mapping = t.get('column_mapping', {}) or {}
+                conf = t.get('confidence', 0.0)
+
+                # 1) 필수 컬럼 키가 매핑에 존재하는지 확인(매출은 별도 규칙)
+                req_cols = required.get(table, [])
+                missing_keys = [rk for rk in req_cols if rk not in mapping]
+                if missing_keys and table != 'sales_records':
+                    reasons.append(f"{table}: 필수 컬럼 매핑 누락 {missing_keys}")
+                    continue
+
+                # 2) 매핑된 소스 컬럼이 업로드 컬럼에 실제 존재하는지 확인
+                nonexistent = [src for src in mapping.values() if str(src) not in uploaded_set]
+                if nonexistent:
+                    reasons.append(f"{table}: 존재하지 않는 소스 컬럼 매핑 {nonexistent}")
+                    continue
+
+                # 3) 로컬 자동 매핑과 교차 검증(간단 동일 매칭)
+                try:
+                    local_map = await vector_similarity_service.find_column_mapping(session, table, uploaded_columns)
+                except Exception:
+                    local_map = {}
+                filtered_map: Dict[str, Any] = {}
+                for dst, src in mapping.items():
+                    local_src = local_map.get(dst)
+                    if local_src and str(local_src) == str(src):
+                        filtered_map[dst] = src
+
+                if req_cols and any(k not in filtered_map for k in req_cols) and table != 'sales_records':
+                    reasons.append(f"{table}: 교차 검증 실패(필수 컬럼 불일치)")
+                    continue
+
+                # 4) sales_records 전용 규칙
+                if table == 'sales_records':
+                    has_monthly = any(re.fullmatch(r'\d{6}', str(col)) for col in uploaded_columns)
+                    has_amount_date = ('sale_amount' in mapping) and ('sale_date' in mapping)
+                    if not has_monthly and not has_amount_date:
+                        reasons.append("sales_records: 월별 컬럼 또는 (sale_amount, sale_date) 매핑이 필요")
+                        continue
+                    base_keys = ['employee_name', 'employee_number', 'customer_name']
+                    if any(k not in mapping for k in base_keys):
+                        reasons.append("sales_records: 기본 필수 컬럼 매핑 누락(employee_name, employee_number, customer_name)")
+                        continue
+                    filtered_map = mapping if mapping else {}
+
+                t['column_mapping'] = filtered_map or mapping
+                validated.append(t)
+
+        validated.sort(key=lambda x: x.get('confidence', 0.0), reverse=True)
+        return validated, reasons
 
     
     @asynccontextmanager
@@ -91,6 +157,26 @@ class Text2SQLTableClassifier:
             
             # 3. 결과 검증 및 데이터 삽입
             if classification_result['success'] and classification_result['confidence'] > 0.3:
+                # 3-1. 사전 검증 및 교차 검증으로 테이블/매핑 정제
+                target_tables = classification_result.get('target_tables', [])
+                if target_tables:
+                    validated_tables, exclude_reasons = await self._validate_and_filter_target_tables(columns, target_tables)
+                    if exclude_reasons:
+                        for reason in exclude_reasons:
+                            logger.warning(f"사전검증 제외: {reason}")
+                    # 검증 실패 시 중단
+                    if not validated_tables:
+                        return {
+                            'success': False,
+                            'message': '사전검증 결과, 생성 가능한 테이블이 없습니다.',
+                            'target_table': None,
+                            'confidence': 0.0
+                        }
+                    # 검증 통과한 테이블로 교체
+                    classification_result['target_tables'] = validated_tables
+                else:
+                    # 단일 테이블 응답에 대해서도 최소한의 검증 적용 가능 (향후 확장)
+                    pass
                 # 다중 테이블 처리 지원
                 target_tables = classification_result.get('target_tables', [])
                 if target_tables:
@@ -271,6 +357,7 @@ class Text2SQLTableClassifier:
         try:
             # 1단계: 다중 테이블 분석 시도
             async with self._get_db_session() as session:
+                # 유사도 임계치 상향을 위해 analyze 단계에서 필터 강화는 내부 서비스에서 수행됨
                 multi_table_result = await vector_similarity_service.analyze_multi_table_capability(
                     session, columns, sample_data
                 )
@@ -295,11 +382,20 @@ class Text2SQLTableClassifier:
                     
                     result = openai_service.create_json_completion(
                         messages=messages,
-                        model="gpt-3.5-turbo",
+                        model="gpt-4o-mini",
                         max_tokens=1500,
                         temperature=0.1
                     )
                     
+                    # JSON 파싱 실패 시 명확히 실패 반환
+                    if not result:
+                        return {
+                            'success': False,
+                            'message': 'LLM JSON 파싱 실패',
+                            'target_table': None,
+                            'confidence': 0.0
+                        }
+
                     if result and 'target_tables' in result:
                         logger.info(f"다중 테이블 LLM 분류 완료: {result.get('target_tables')}")
                         

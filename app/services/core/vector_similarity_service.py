@@ -202,7 +202,15 @@ class VectorSimilarityService:
     
     async def find_relevant_tables(self, session: Session, columns: List[str], 
                                  similarity_threshold: float = 0.3) -> List[Dict[str, Any]]:
-        """업로드된 컬럼과 관련된 테이블들을 찾아서 반환"""
+        """업로드된 컬럼과 관련된 테이블들을 찾아서 반환
+
+        변경: 컬럼들을 하나의 문자열로 합쳐 한 번 검색하던 기존 방식을 주석 처리하고,
+        컬럼별 임베딩 → 개별 벡터 검색 → 테이블 단위로 점수 집계하는 방식으로 수정.
+
+        집계 점수: boost * (0.6*max_sim + 0.3*mean_top3 + 0.1*joint_sim)
+        - joint_sim: 모든 컬럼을 합친 문장 임베딩으로 검색한 유사도(테이블별 top-1)
+        - LIMIT로 상위 K(기본 10)만 뽑고, 임계치 필터링은 애플리케이션에서 수행
+        """
         try:
             # 모든 컬럼명을 문자열로 변환 (안전장치)
             columns = self._ensure_string_list(columns)
@@ -272,7 +280,7 @@ class VectorSimilarityService:
         """업로드된 컬럼들로 어떤 테이블들에 데이터를 만들 수 있는지 분석"""
         try:
             # 1단계: 관련 테이블들 찾기
-            relevant_tables = await self.find_relevant_tables(session, columns, similarity_threshold=0.2)
+            relevant_tables = await self.find_relevant_tables(session, columns, similarity_threshold=0.3)
             
             if not relevant_tables:
                 logger.warning("관련된 테이블을 찾을 수 없음")

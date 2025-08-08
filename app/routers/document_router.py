@@ -85,7 +85,83 @@ def _extract_docx_data(file_bytes: bytes) -> tuple[str, list]:
         raise ImportError("python-docx 라이브러리가 설치되지 않았습니다.")
     try:
         doc = DocxDocument(io.BytesIO(file_bytes))
-        text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+
+        def _collapse_spaces(s: str) -> str:
+            return " ".join(s.split())
+
+        def _normalize_label(s: str) -> str:
+            import re
+            # 불릿/구분 기호 제거 후 공백 정규화
+            s = s.replace('■', ' ').replace(':', ' ').strip()
+            label = _collapse_spaces(s)
+            # 한글 라벨의 경우 단어 사이 임의 공백 제거(일반화)
+            # 예) "연 락 처" → "연락처", "소    속" → "소속"
+            if re.fullmatch(r'[가-힣\s]{2,}', label):
+                compact = label.replace(' ', '')
+                # 너무 길면 원형 유지(영문 혼합/문장 가능성)
+                if len(compact) <= 10:
+                    label = compact
+            return label
+
+        def _normalize_value(s: str) -> str:
+            # 값은 기호/콜론 등 보존, 공백만 접기
+            return _collapse_spaces(s.strip())
+
+        parts: list[str] = []
+
+        # 1) 일반 문단 텍스트 수집
+        paragraph_texts = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
+        if paragraph_texts:
+            parts.append("\n".join(paragraph_texts))
+
+        # 2) 표 내용을 텍스트로 평탄화하여 수집
+        table_lines: list[str] = []
+        seen_recent: set[str] = set()
+        for table in doc.tables:
+            for row in table.rows:
+                raw_cells = [c.text.strip() for c in row.cells]
+                cells = [c for c in raw_cells if c and c.strip()]
+                if not cells:
+                    continue
+
+                # 같은 문구 반복만 있는 행은 한 번만 기록
+                if len(set(_normalize_value(c) for c in cells)) == 1:
+                    line = _normalize_value(cells[0])
+                    if line and line not in seen_recent:
+                        table_lines.append(line)
+                        seen_recent = {line}
+                    continue
+
+                # 짝수 개 컬럼은 라벨:값 페어링으로 변환
+                if len(cells) % 2 == 0 and len(cells) <= 8:
+                    pairs = []
+                    for i in range(0, len(cells), 2):
+                        label = _normalize_label(cells[i])
+                        value = _normalize_value(cells[i + 1])
+                        if label or value:
+                            pairs.append(f"{label}: {value}" if value else label)
+                    line = " | ".join([p for p in pairs if p])
+                else:
+                    # 다열 표는 공백/중복 제거 후 결합
+                    non_empty = []
+                    for c in cells:
+                        val = _normalize_value(c)
+                        if val and (not non_empty or val != non_empty[-1]):
+                            non_empty.append(val)
+                    line = " | ".join(non_empty)
+
+                line = line.strip()
+                if line and (not table_lines or line != table_lines[-1]):
+                    table_lines.append(line)
+
+            # 표 간 구분 빈 줄 추가
+            if table_lines and table_lines[-1] != "":
+                table_lines.append("")
+
+        if table_lines:
+            parts.append("\n".join(table_lines))
+
+        text = "\n".join(parts).strip()
         return text, []
     except Exception as e:
         logger.error(f"DOCX 파일 텍스트 추출 실패: {e}")

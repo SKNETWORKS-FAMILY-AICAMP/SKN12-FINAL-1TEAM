@@ -6,7 +6,7 @@
 ## 기본 정보
 - **Base URL**: `/api/chat-history`
 - **Content-Type**: `application/json`
-- **인증**: JWT 토큰 기반
+- **인증**: 선택(배포 환경에 따라 전역 JWT 미들웨어 사용 시 필요). 현재 라우터 코드에서는 JWT 검증을 강제하지 않습니다.
 
 ## API 엔드포인트
 
@@ -15,8 +15,8 @@
 
 #### 헤더
 ```
-Authorization: Bearer <access_token>
 Content-Type: application/json
+# (선택) Authorization: Bearer <access_token>
 ```
 
 #### 요청 본문
@@ -29,25 +29,18 @@ Content-Type: application/json
 }
 ```
 
-#### 파라미터 설명
-- **session_id**: 채팅 세션 ID (문자열)
-- **role**: 메시지 역할 ("user" 또는 "assistant")
-- **message_text**: 메시지 내용 (텍스트)
-- **employee_id**: 직원 ID (정수)
-
 #### 응답
 ```json
 {
   "success": true,
   "message_id": "msg_456",
-  "timestamp": "2024-01-01T12:00:00Z"
+  "timestamp": "2024-01-01T12:00:00+00:00"
 }
 ```
 
 #### 사용 예시
 ```bash
 curl -X POST "http://localhost:8010/api/chat-history/save-message" \
-  -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "session_123",
@@ -64,8 +57,8 @@ curl -X POST "http://localhost:8010/api/chat-history/save-message" \
 
 #### 헤더
 ```
-Authorization: Bearer <access_token>
 Content-Type: application/json
+# (선택) Authorization: Bearer <access_token>
 ```
 
 #### 요청 본문
@@ -77,11 +70,6 @@ Content-Type: application/json
 }
 ```
 
-#### 파라미터 설명
-- **session_id**: 채팅 세션 ID (문자열)
-- **limit**: 조회할 메시지 수 (선택사항, 기본값: 50)
-- **offset**: 건너뛸 메시지 수 (선택사항, 기본값: 0)
-
 #### 응답
 ```json
 {
@@ -89,25 +77,18 @@ Content-Type: application/json
   "messages": [
     {
       "message_id": "msg_456",
-      "timestamp": "2024-01-01T12:00:00Z",
+      "timestamp": "2024-01-01T12:00:00+00:00",
       "role": "user",
       "content": "안녕하세요, 매출 현황을 알려주세요."
-    },
-    {
-      "message_id": "msg_457",
-      "timestamp": "2024-01-01T12:01:00Z",
-      "role": "assistant",
-      "content": "2024년 매출은 15% 증가했습니다."
     }
   ],
-  "count": 2
+  "count": 1
 }
 ```
 
 #### 사용 예시
 ```bash
 curl -X POST "http://localhost:8010/api/chat-history/get-history" \
-  -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "session_123",
@@ -123,15 +104,13 @@ curl -X POST "http://localhost:8010/api/chat-history/get-history" \
 
 #### 헤더
 ```
-Authorization: Bearer <access_token>
 Content-Type: application/json
+# (선택) Authorization: Bearer <access_token>
 ```
 
 #### 요청 본문
 ```json
-{
-  "session_id": "session_123"
-}
+{ "session_id": "session_123" }
 ```
 
 #### 응답
@@ -141,8 +120,8 @@ Content-Type: application/json
   "session": {
     "session_id": "session_123",
     "session_title": "매출 현황 문의",
-    "created_at": "2024-01-01T12:00:00Z",
-    "last_activity": "2024-01-01T12:01:00Z",
+    "created_at": "2024-01-01T12:00:00+00:00",
+    "last_activity": "2024-01-01T12:01:00+00:00",
     "message_count": 2,
     "is_archived": false,
     "archived_at": null
@@ -153,11 +132,8 @@ Content-Type: application/json
 #### 사용 예시
 ```bash
 curl -X POST "http://localhost:8010/api/chat-history/get-session-info" \
-  -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "session_123"
-  }'
+  -d '{ "session_id": "session_123" }'
 ```
 
 ---
@@ -167,7 +143,7 @@ curl -X POST "http://localhost:8010/api/chat-history/get-session-info" \
 
 #### 헤더
 ```
-Authorization: Bearer <access_token>
+# (선택) Authorization: Bearer <access_token>
 ```
 
 #### 쿼리 파라미터
@@ -183,31 +159,21 @@ Authorization: Bearer <access_token>
     {
       "session_id": "session_123",
       "session_title": "매출 현황 문의",
-      "created_at": "2024-01-01T12:00:00Z",
-      "last_activity": "2024-01-01T12:01:00Z",
+      "created_at": "2024-01-01T12:00:00+00:00",
+      "last_activity": "2024-01-01T12:01:00+00:00",
       "message_count": 2,
-      "is_archived": false,
-      "archived_at": null
-    },
-    {
-      "session_id": "session_124",
-      "session_title": "직원 정보 문의",
-      "created_at": "2024-01-01T13:00:00Z",
-      "last_activity": "2024-01-01T13:05:00Z",
-      "message_count": 3,
       "is_archived": false,
       "archived_at": null
     }
   ],
-  "count": 2,
-  "total_count": 5
+  "count": 1,
+  "total_count": 1
 }
 ```
 
 #### 사용 예시
 ```bash
-curl -X GET "http://localhost:8010/api/chat-history/sessions/1?include_archived=false&limit=50&offset=0" \
-  -H "Authorization: Bearer <access_token>"
+curl -X GET "http://localhost:8010/api/chat-history/sessions/1?include_archived=false&limit=50&offset=0"
 ```
 
 ---
@@ -217,33 +183,25 @@ curl -X GET "http://localhost:8010/api/chat-history/sessions/1?include_archived=
 
 #### 헤더
 ```
-Authorization: Bearer <access_token>
 Content-Type: application/json
+# (선택) Authorization: Bearer <access_token>
 ```
 
 #### 요청 본문
 ```json
-{
-  "title": "업데이트된 세션 제목"
-}
+{ "title": "업데이트된 세션 제목" }
 ```
 
 #### 응답
 ```json
-{
-  "success": true,
-  "message": "Session title updated successfully"
-}
+{ "success": true, "message": "Session title updated successfully" }
 ```
 
 #### 사용 예시
 ```bash
 curl -X PUT "http://localhost:8010/api/chat-history/session/session_123/title" \
-  -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "업데이트된 세션 제목"
-  }'
+  -d '{ "title": "업데이트된 세션 제목" }'
 ```
 
 ---
@@ -253,33 +211,25 @@ curl -X PUT "http://localhost:8010/api/chat-history/session/session_123/title" \
 
 #### 헤더
 ```
-Authorization: Bearer <access_token>
 Content-Type: application/json
+# (선택) Authorization: Bearer <access_token>
 ```
 
 #### 요청 본문
 ```json
-{
-  "employee_id": 1
-}
+{ "employee_id": 1 }
 ```
 
 #### 응답
 ```json
-{
-  "success": true,
-  "message": "Session archived successfully"
-}
+{ "success": true, "message": "Session archived successfully" }
 ```
 
 #### 사용 예시
 ```bash
 curl -X POST "http://localhost:8010/api/chat-history/session/session_123/archive" \
-  -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
-  -d '{
-    "employee_id": 1
-  }'
+  -d '{ "employee_id": 1 }'
 ```
 
 ---
@@ -289,33 +239,25 @@ curl -X POST "http://localhost:8010/api/chat-history/session/session_123/archive
 
 #### 헤더
 ```
-Authorization: Bearer <access_token>
 Content-Type: application/json
+# (선택) Authorization: Bearer <access_token>
 ```
 
 #### 요청 본문
 ```json
-{
-  "employee_id": 1
-}
+{ "employee_id": 1 }
 ```
 
 #### 응답
 ```json
-{
-  "success": true,
-  "message": "Session restored successfully"
-}
+{ "success": true, "message": "Session restored successfully" }
 ```
 
 #### 사용 예시
 ```bash
 curl -X POST "http://localhost:8010/api/chat-history/session/session_123/restore" \
-  -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
-  -d '{
-    "employee_id": 1
-  }'
+  -d '{ "employee_id": 1 }'
 ```
 
 ---
@@ -325,7 +267,7 @@ curl -X POST "http://localhost:8010/api/chat-history/session/session_123/restore
 
 #### 헤더
 ```
-Authorization: Bearer <access_token>
+# (선택) Authorization: Bearer <access_token>
 ```
 
 #### 쿼리 파라미터
@@ -333,16 +275,12 @@ Authorization: Bearer <access_token>
 
 #### 응답
 ```json
-{
-  "success": true,
-  "message": "Session deleted successfully"
-}
+{ "success": true, "message": "Session deleted successfully" }
 ```
 
 #### 사용 예시
 ```bash
-curl -X DELETE "http://localhost:8010/api/chat-history/session/session_123?employee_id=1" \
-  -H "Authorization: Bearer <access_token>"
+curl -X DELETE "http://localhost:8010/api/chat-history/session/session_123?employee_id=1"
 ```
 
 ---
@@ -352,10 +290,7 @@ curl -X DELETE "http://localhost:8010/api/chat-history/session/session_123?emplo
 
 #### 응답
 ```json
-{
-  "status": "healthy",
-  "service": "chat-history-api"
-}
+{ "status": "healthy", "service": "chat-history-api" }
 ```
 
 #### 사용 예시
@@ -370,12 +305,10 @@ curl -X GET "http://localhost:8010/api/chat-history/health"
 ### 사용자 메시지
 - **role**: "user"
 - 사용자가 입력한 메시지
-- 질문, 요청, 응답 등
 
 ### 어시스턴트 메시지
 - **role**: "assistant"
 - 시스템이 생성한 응답
-- AI 답변, 시스템 메시지 등
 
 ---
 
@@ -398,45 +331,35 @@ curl -X GET "http://localhost:8010/api/chat-history/health"
 
 ### 400 Bad Request
 ```json
-{
-  "detail": "Session is already archived"
-}
+{ "detail": "Session is already archived" }
 ```
 
 ```json
-{
-  "detail": "Session is not archived"
-}
+{ "detail": "Session is not archived" }
 ```
 
 ### 401 Unauthorized
 ```json
-{
-  "detail": "Could not validate credentials"
-}
+{ "detail": "Could not validate credentials" }
 ```
 
 ### 404 Not Found
 ```json
-{
-  "detail": "Session not found"
-}
+{ "detail": "Session not found" }
 ```
 
 ### 500 Internal Server Error
 ```json
-{
-  "detail": "메시지 저장 중 오류가 발생했습니다."
-}
+{ "detail": "메시지 저장 중 오류가 발생했습니다." }
 ```
 
 ---
 
 ## 주의사항
 
-1. **메시지 순서**: timestamp 기준으로 정렬
-2. **세션 고유성**: session_id는 고유해야 함
-3. **권한 확인**: 자신의 세션만 접근 가능
+1. **메시지 순서**: `created_at` 기준으로 정렬됩니다.
+2. **세션 고유성**: `session_id`는 고유해야 합니다.
+3. **권한**: 현재 라우터는 인증을 강제하지 않습니다. 배포 환경에서 전역 JWT 미들웨어를 사용하는 경우 Authorization 헤더가 필요할 수 있습니다.
 4. **데이터 보존**: 중요한 대화는 별도 백업 권장
 5. **성능**: 대용량 메시지는 청킹 처리
-6. **URL 경로**: 모든 엔드포인트는 `/api/chat-history` 접두사 사용 
+6. **URL 경로**: 모든 엔드포인트는 `/api/chat-history` 접두사 사용
