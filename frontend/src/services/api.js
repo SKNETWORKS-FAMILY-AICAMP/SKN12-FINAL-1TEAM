@@ -97,6 +97,16 @@ const apiRequest = async (endpoint, options = {}) => {
 
 // 사용자 로그인
 export const loginUser = async (credentials) => {
+  // Mock 로그인 모드 (개발용)
+  if (process.env.REACT_APP_MOCK_LOGIN === 'true') {
+    console.log('🔓 Mock API: loginUser 호출');
+    return Promise.resolve({
+      access_token: 'mock-jwt-token-' + Date.now(),
+      token_type: 'bearer'
+    });
+  }
+
+  // 실제 API 호출
   const formData = new URLSearchParams();
   formData.append('username', credentials.username);
   formData.append('password', credentials.password);
@@ -112,6 +122,29 @@ export const loginUser = async (credentials) => {
 
 // 토큰 검증
 export const verifyToken = async () => {
+  // Mock 로그인 모드 (개발용)
+  if (process.env.REACT_APP_MOCK_LOGIN === 'true') {
+    console.log('🔓 Mock API: verifyToken 호출');
+    
+    // LocalStorage에서 사용자 정보 가져오기
+    const userData = localStorage.getItem('narutalk_user');
+    if (userData) {
+      return Promise.resolve(JSON.parse(userData));
+    }
+    
+    // 기본 Mock 사용자 정보 반환
+    return Promise.resolve({
+      employee_id: 1,
+      email: 'test@example.com',
+      username: 'testuser',
+      name: '테스트 사용자',
+      role: 'user',
+      is_active: true,
+      created_at: new Date().toISOString()
+    });
+  }
+
+  // 실제 API 호출
   return await apiRequest('/user/me', {
     method: 'GET',
   });

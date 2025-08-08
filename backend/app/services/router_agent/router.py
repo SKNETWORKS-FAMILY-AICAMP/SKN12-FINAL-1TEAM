@@ -218,7 +218,7 @@ class RouterAgent:
         message += "원하시는 작업을 구체적으로 말씀해주세요."
         return message
     
-    def _execute_agent(self, agent_name: str, query: str) -> Dict[str, Any]:
+    async def _execute_agent(self, agent_name: str, query: str) -> Dict[str, Any]:
         """에이전트 실행"""
         try:
             logger.info(f"[EXECUTE_AGENT] Starting {agent_name} with query: {query[:50]}...")
@@ -291,7 +291,7 @@ class RouterAgent:
             elif agent_name == "client_agent":
                 # client_agent는 async 함수
                 logger.info(f"[EXECUTE_AGENT] Running client_agent with query: {query[:50]}...")
-                result = asyncio.run(client_agent_run(query, session_id or "default"))
+                result = await client_agent_run(query, session_id or "default")
                 
                 current_state["agent_type"] = agent_name
                 return result
@@ -299,7 +299,7 @@ class RouterAgent:
             elif agent_name == "search_agent":
                 # search_agent는 async 함수
                 logger.info(f"[EXECUTE_AGENT] Running search_agent with query: {query[:50]}...")
-                result = asyncio.run(search_agent_run(query, session_id or "default"))
+                result = await search_agent_run(query, session_id or "default")
                 
                 current_state["agent_type"] = agent_name
                 return result
@@ -319,7 +319,7 @@ class RouterAgent:
     
     
     
-    def run(self, user_input: str, session_id: Optional[str] = None) -> Dict[str, Any]:
+    async def run(self, user_input: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """Router 실행"""
         # 세션 ID 생성 또는 사용
         if not session_id:
@@ -327,11 +327,11 @@ class RouterAgent:
         
         # 사용자 메시지를 PostgreSQL에 저장 (비동기를 동기로 실행)
         try:
-            asyncio.run(self.conversation_storage.save_message(
+            await self.conversation_storage.save_message(
                 session_id=session_id,
                 role="user",
                 message=user_input
-            ))
+            )
         except Exception as e:
             logger.warning(f"사용자 메시지 저장 실패: {e}")
         
@@ -400,11 +400,11 @@ class RouterAgent:
                 
                 # AI 응답 저장
                 try:
-                    asyncio.run(self.conversation_storage.save_message(
+                    await self.conversation_storage.save_message(
                         session_id=session_id,
                         role="assistant",
                         message=response_text
-                    ))
+                    )
                 except Exception as e:
                     logger.warning(f"AI 응답 저장 실패: {e}")
                 
@@ -419,11 +419,11 @@ class RouterAgent:
             response_text = result.get("response", "") if result else ""
             if response_text:
                 try:
-                    asyncio.run(self.conversation_storage.save_message(
+                    await self.conversation_storage.save_message(
                         session_id=session_id,
                         role="assistant",
                         message=response_text
-                    ))
+                    )
                 except Exception as e:
                     logger.warning(f"AI 응답 저장 실패: {e}")
             

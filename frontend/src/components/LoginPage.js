@@ -41,6 +41,49 @@ const LoginPage = ({ onLogin }) => {
     setError('');
 
     try {
+      // Mock 로그인 모드 체크 (개발용)
+      if (process.env.REACT_APP_MOCK_LOGIN === 'true') {
+        console.log('🔓 Mock 로그인 모드 활성화');
+        
+        // Mock 토큰 생성
+        const mockToken = 'mock-token-' + Date.now();
+        
+        // 이메일 기반 사용자 정보 생성
+        const emailPrefix = loginData.email.split('@')[0];
+        const isAdmin = loginData.email.toLowerCase().includes('admin');
+        
+        const mockUserData = {
+          email: loginData.email,
+          name: emailPrefix,
+          role: isAdmin ? 'admin' : 'user',
+          username: emailPrefix,
+          company: '좋은제약',
+          department: isAdmin ? '시스템 관리부' : '영업부',
+          position: isAdmin ? '시스템 관리자' : '영업사원',
+          phone: '010-1234-5678'
+        };
+        
+        // LocalStorage에 저장
+        localStorage.setItem('narutalk_token', mockToken);
+        localStorage.setItem('narutalk_token_type', 'bearer');
+        localStorage.setItem('narutalk_user', JSON.stringify(mockUserData));
+        localStorage.setItem('narutalk_isLoggedIn', 'true');
+        
+        // 로그인 성공 처리
+        if (onLogin) {
+          onLogin(mockUserData);
+        }
+        
+        // 짧은 지연 후 대시보드로 이동
+        setTimeout(() => {
+          navigate('/');
+        }, 500);
+        
+        setIsLoading(false);
+        return; // Mock 로그인 완료
+      }
+      
+      // 실제 로그인 API 호출 (Backend가 구현된 경우)
       const response = await loginUser({
         username: loginData.email,
         password: loginData.password

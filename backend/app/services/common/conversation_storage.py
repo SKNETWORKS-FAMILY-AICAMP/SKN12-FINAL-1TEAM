@@ -58,7 +58,7 @@ class ConversationStorage:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
-                    f"{self.base_url}/chat/messages",
+                    f"{self.base_url}/api/chat-history/save-message",
                     json={
                         "session_id": session_id,
                         "employee_id": employee_id or self.employee_id,
@@ -97,13 +97,19 @@ class ConversationStorage:
         """
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/chat/messages/{session_id}",
+                response = await client.post(
+                    f"{self.base_url}/api/chat-history/get-history",
+                    json={
+                        "session_id": session_id,
+                        "limit": 50,
+                        "offset": 0
+                    },
                     headers=self._get_headers()
                 )
                 
                 if response.status_code == 200:
-                    messages = response.json()
+                    result = response.json()
+                    messages = result.get("messages", [])
                     logger.info(f"대화 조회 성공: session_id={session_id}, 메시지 수={len(messages)}")
                     return messages
                 elif response.status_code == 404:
@@ -135,13 +141,15 @@ class ConversationStorage:
         """
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/chat/sessions/{session_id}",
+                response = await client.post(
+                    f"{self.base_url}/api/chat-history/get-session-info",
+                    json={"session_id": session_id},
                     headers=self._get_headers()
                 )
                 
                 if response.status_code == 200:
-                    return response.json()
+                    result = response.json()
+                    return result.get("session") if result.get("success") else None
                 else:
                     return None
                     
@@ -166,12 +174,13 @@ class ConversationStorage:
             emp_id = employee_id or self.employee_id
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
-                    f"{self.base_url}/chat/sessions/user/{emp_id}",
+                    f"{self.base_url}/api/chat-history/sessions/{emp_id}",
                     headers=self._get_headers()
                 )
                 
                 if response.status_code == 200:
-                    return response.json()
+                    result = response.json()
+                    return result.get("sessions", []) if result.get("success") else []
                 else:
                     return []
                     
@@ -197,8 +206,8 @@ class ConversationStorage:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.put(
-                    f"{self.base_url}/chat/sessions/{session_id}/title",
-                    json={"session_title": title},
+                    f"{self.base_url}/api/chat-history/session/{session_id}/title",
+                    json={"session_id": session_id, "title": title},
                     headers=self._get_headers()
                 )
                 
@@ -220,7 +229,7 @@ class ConversationStorage:
         """
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{self.base_url}/chat/health")
+                response = await client.get(f"{self.base_url}/api/chat-history/health")
                 return response.status_code == 200
         except:
             return False
