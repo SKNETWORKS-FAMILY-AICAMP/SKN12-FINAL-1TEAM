@@ -11,7 +11,7 @@ import os
 
 from ..employee_agent.employee_agent import EnhancedEmployeeAgent
 from ..docs_agent import CreateDocumentAgent
-from ..client_agent import client_agent
+from ..client_agent import agent as client_agent_instance, run as client_agent_run
 from ..search_agent import run as search_agent_run
 import asyncio
 
@@ -88,7 +88,7 @@ class RouterAgent:
                 }
             },
             "client_agent": {
-                "instance": client_agent.agent,
+                "instance": client_agent_instance,
                 "metadata": {
                     "description": "외부 고객사, 병원, 의료기관 등 거래처의 매출과 실적을 분석하는 에이전트입니다. 병원명(예: 미라클신경과, 우리가족의원)이 언급되거나 거래처, 고객사 관련 매출 분석이 필요할 때 사용됩니다. 병원별 매출 추이, 거래처 간 비교, 고객 등급 분류 등을 수행합니다. 주의: 회사 직원이 아닌, 외부 거래처와 고객사 정보만 다룹니다.",
                     "capabilities": [
@@ -285,7 +285,7 @@ class RouterAgent:
             elif agent_name == "client_agent":
                 # client_agent는 async 함수
                 logger.info(f"[EXECUTE_AGENT] Running client_agent with query: {query[:50]}...")
-                result = asyncio.run(client_agent.run(query, session_id or "default"))
+                result = asyncio.run(client_agent_run(query, session_id or "default"))
                 
                 current_state["agent_type"] = agent_name
                 return result

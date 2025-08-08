@@ -1,0 +1,62 @@
+1
+'어느병원'의 2023년4~9월 까지의 실적을 분석해줘
+->
+쿼리분석로직 병원이름,날짜, 매출....
+->
+아래 json형태로 
+{
+    'company_name':"어느병원",
+    'strat_month': '202002',
+    'end_month': '202208'
+}
+->
+
+
+2. text2sql
+
+
+# fan in, fan out기능 (랭그래프)
+
+from openai import OpenAI
+import json
+
+client = OpenAI(api_key="YOUR_API_KEY")
+
+def parse_query_with_llm(query: str):
+    # LLM에게 요청할 프롬프트
+    prompt = f"""
+너는 한국어 자연어 질의를 분석해서 병원이름, 시작월, 종료월을 YYYYMM 포맷으로 변환해 JSON으로 출력하는 도우미야.
+출력은 JSON만 하고 설명이나 다른 텍스트는 절대 포함하지 마.
+
+예시:
+입력: '바른치과의 2011년2월에서6월까지의 실적을 분석해줘'
+출력:
+{{
+    "company_name": "바른치과",
+    "strat_month": "201102",
+    "end_month": "201106"
+}}
+
+이제 다음 입력을 처리해:
+{query}
+"""
+
+    response = client.responses.create(
+        model="gpt-4.1-mini",  # 또는 gpt-4.5 / o3 모델
+        input=prompt,
+        temperature=0
+    )
+
+    # 모델 출력(JSON string) 파싱
+    result_text = response.output_text.strip()
+    try:
+        result = json.loads(result_text)
+    except json.JSONDecodeError:
+        raise ValueError(f"LLM이 반환한 JSON 파싱 실패: {result_text}")
+
+    return result
+
+
+
+    데이터베이스api와 연동 어떤데이터추출 
+    202312~202411로 모두 월칼럼 구성 같음

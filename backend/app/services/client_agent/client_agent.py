@@ -128,9 +128,25 @@ JSON 형식으로만 응답:
             json_text = response.choices[0].message.content
             json_text = re.sub(r"^```json\s*|\s*```$", "", json_text.strip())
             result = json.loads(json_text)
+            
+            # 퍼지 매칭 추가: 정확한 거래처명이 없으면 부분 일치 검색
+            company_name = result["company_name"]
+            if company_name and company_name not in self.df["거래처ID"].values:
+                # 부분 일치 검색
+                partial_matches = self.df[
+                    self.df["거래처ID"].str.contains(company_name, na=False, case=False)
+                ]
+                if not partial_matches.empty:
+                    # 첫 번째 매칭 결과 사용
+                    matched_name = partial_matches["거래처ID"].iloc[0]
+                    print(f"[INFO] 거래처명 자동 매칭: '{company_name}' → '{matched_name}'")
+                    company_name = matched_name
+                else:
+                    print(f"[WARNING] '{company_name}'와 일치하는 거래처를 찾을 수 없습니다.")
+            
             return {
                 "success": True,
-                "company_name": result["company_name"],
+                "company_name": company_name,
                 "start_month": int(result["start_month"]) if result["start_month"] else None,
                 "end_month": int(result["end_month"]) if result["end_month"] else None
             }
@@ -256,9 +272,18 @@ JSON 형식으로만 응답:
             grade_data = self.calculate_company_grade(cid, start_month, end_month)
             if grade_data.get("최종등급") == target_grade:
                 subset = filtered_df[filtered_df["거래처ID"] == cid]
-                진료과값 = str(subset["과"].iloc[0]) if not subset.empty else "정보없음"
-                평균매출 = subset["매출"].mean() if not subset.empty else 0
-                평균예산 = subset["사용 예산"].mean() if not subset.empty else 0
+                # 안전한 데이터 접근
+                if not subset.empty:
+                    try:
+                        진료과값 = str(subset["과"].iloc[0]) if "과" in subset.columns else "정보없음"
+                    except (IndexError, KeyError):
+                        진료과값 = "정보없음"
+                    평균매출 = subset["매출"].mean() if "매출" in subset.columns else 0
+                    평균예산 = subset["사용 예산"].mean() if "사용 예산" in subset.columns else 0
+                else:
+                    진료과값 = "정보없음"
+                    평균매출 = 0
+                    평균예산 = 0
 
                 same_grade_companies.append({
                     "거래처ID": cid,
