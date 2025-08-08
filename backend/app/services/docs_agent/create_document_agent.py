@@ -11,7 +11,6 @@ import re
 import os
 import uuid
 from pathlib import Path
-from dotenv import load_dotenv
 from docx import Document
 
 # 외부 도구 임포트
@@ -19,8 +18,6 @@ import sys
 # 상위 디렉토리를 sys.path에 추가하여 tools 모듈에 접근
 sys.path.append(str(Path(__file__).parent.parent))
 from tools.common_tools import check_policy_violation, separate_document_type_and_content
-
-load_dotenv()
 
 class State(TypedDict):
     messages: List[HumanMessage]

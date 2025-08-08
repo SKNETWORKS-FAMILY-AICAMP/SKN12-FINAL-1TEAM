@@ -8,8 +8,7 @@ import os
 import logging
 from typing_extensions import Annotated
 from langgraph.graph import StateGraph, START, END
-from dotenv import load_dotenv
-load_dotenv()
+
 # 스테이트정의
 
 class ReportState(TypedDict):
