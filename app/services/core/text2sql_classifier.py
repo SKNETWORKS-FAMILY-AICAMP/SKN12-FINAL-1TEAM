@@ -72,35 +72,35 @@ class Text2SQLTableClassifier:
                     reasons.append(f"{table}: 존재하지 않는 소스 컬럼 매핑 {nonexistent}")
                     continue
 
-                # 3) 로컬 자동 매핑과 교차 검증(간단 동일 매칭)
+                # 3) 로컬 자동 매핑과 교차 검증(배제용이 아닌 참고용 지표)
                 try:
                     local_map = await vector_similarity_service.find_column_mapping(session, table, uploaded_columns)
                 except Exception:
                     local_map = {}
-                filtered_map: Dict[str, Any] = {}
-                for dst, src in mapping.items():
-                    local_src = local_map.get(dst)
-                    if local_src and str(local_src) == str(src):
-                        filtered_map[dst] = src
-
-                if req_cols and any(k not in filtered_map for k in req_cols) and table != 'sales_records':
-                    reasons.append(f"{table}: 교차 검증 실패(필수 컬럼 불일치)")
-                    continue
+                if mapping:
+                    agree = sum(1 for dst, src in mapping.items() if str(local_map.get(dst)) == str(src))
+                    ratio = agree / max(1, len(mapping))
+                    t['local_match_ratio'] = ratio
 
                 # 4) sales_records 전용 규칙
                 if table == 'sales_records':
                     has_monthly = any(re.fullmatch(r'\d{6}', str(col)) for col in uploaded_columns)
                     has_amount_date = ('sale_amount' in mapping) and ('sale_date' in mapping)
-                    if not has_monthly and not has_amount_date:
-                        reasons.append("sales_records: 월별 컬럼 또는 (sale_amount, sale_date) 매핑이 필요")
-                        continue
-                    base_keys = ['employee_name', 'employee_number', 'customer_name']
-                    if any(k not in mapping for k in base_keys):
-                        reasons.append("sales_records: 기본 필수 컬럼 매핑 누락(employee_name, employee_number, customer_name)")
-                        continue
-                    filtered_map = mapping if mapping else {}
 
-                t['column_mapping'] = filtered_map or mapping
+                    # LLM metrics 기반 판단 우선
+                    metrics = t.get('metrics', {}) or {}
+                    amount_ratio = float(metrics.get('sale_amount_numeric_ratio', 0.0) or 0.0)
+                    date_ratio = float(metrics.get('sale_date_parse_ratio', 0.0) or 0.0)
+                    monthly_cols = metrics.get('monthly_columns', []) or []
+
+                    cond_monthly = bool(monthly_cols) or has_monthly
+                    cond_amount_date = has_amount_date and (amount_ratio >= 0.7 and date_ratio >= 0.7)
+
+                    if not (cond_monthly or cond_amount_date):
+                        reasons.append("sales_records: 월별 컬럼 또는 (sale_amount, sale_date) 값지표 기준(≥0.7) 미충족")
+                        continue
+
+                t['column_mapping'] = mapping
                 validated.append(t)
 
         validated.sort(key=lambda x: x.get('confidence', 0.0), reverse=True)
@@ -146,7 +146,8 @@ class Text2SQLTableClassifier:
             columns = [str(col) for col in columns]
             
 
-            sample_data = table_data[:3] if len(table_data) >= 3 else table_data
+            # LLM 인식 강화를 위해 최대 30행까지 전달
+            sample_data = table_data[:30] if len(table_data) >= 30 else table_data
             
             # 2. Text2SQL 분류 수행
             classification_result = await self._perform_text2sql_classification(
@@ -369,7 +370,7 @@ class Text2SQLTableClassifier:
                     best_mapping = max(multi_table_result['table_mappings'], 
                                      key=lambda x: x['similarity'])
                     
-                    # 효율적인 LLM 프롬프트 구성
+                    # 효율적인 LLM 프롬프트 구성(대표 컬럼 + 샘플 N행 + metrics 요청)
                     prompt = self._create_enhanced_llm_prompt(
                         columns, sample_data, table_description, multi_table_result
                     )
@@ -399,11 +400,27 @@ class Text2SQLTableClassifier:
                     if result and 'target_tables' in result:
                         logger.info(f"다중 테이블 LLM 분류 완료: {result.get('target_tables')}")
                         
-                        # 모든 선택된 테이블 처리
+                        # 모든 선택된 테이블 처리(LLM metrics 기반 1차 필터)
                         target_tables = result.get('target_tables', [])
                         if target_tables:
+                            filtered = []
+                            for t in target_tables:
+                                table = t.get('table_name')
+                                mapping = t.get('column_mapping', {}) or {}
+                                if table == 'sales_records':
+                                    metrics = t.get('metrics', {}) or {}
+                                    amount_ratio = float(metrics.get('sale_amount_numeric_ratio', 0.0) or 0.0)
+                                    date_ratio = float(metrics.get('sale_date_parse_ratio', 0.0) or 0.0)
+                                    monthly_cols = metrics.get('monthly_columns', []) or []
+                                    has_amount_date = ('sale_amount' in mapping) and ('sale_date' in mapping)
+                                    cond_monthly = bool(monthly_cols)
+                                    cond_amount_date = has_amount_date and (amount_ratio >= 0.7 and date_ratio >= 0.7)
+                                    if not (cond_monthly or cond_amount_date):
+                                        continue
+                                filtered.append(t)
+
                             # 신뢰도 순으로 정렬
-                            sorted_tables = sorted(target_tables, key=lambda x: x.get('confidence', 0.0), reverse=True)
+                            sorted_tables = sorted(filtered, key=lambda x: x.get('confidence', 0.0), reverse=True)
                             
                             return {
                                 'success': True,
