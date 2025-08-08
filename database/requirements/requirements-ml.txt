@@ -1,4 +1,0 @@
-sentence-transformers
-FlagEmbedding
-transformers
-huggingface_hub 

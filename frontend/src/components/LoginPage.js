@@ -1,22 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { loginUser, verifyToken } from '../services/api';
 import './LoginPage.css';
 
 const LoginPage = ({ onLogin }) => {
   const navigate = useNavigate();
   const [loginData, setLoginData] = useState({
-    employeeId: '',
+    email: '',
     password: ''
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-
-  // 미리 정의된 사용자 정보 (실제 환경에서는 백엔드 API 연동)
-  const validUsers = [
-    { id: 'E001', password: '1234', name: '김복남', department: '영업부' },
-    { id: 'E002', password: '1234', name: '이영희', department: '마케팅부' },
-    { id: 'admin', password: 'admin123', name: '관리자', department: '관리부' }
-  ];
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -31,57 +25,67 @@ const LoginPage = ({ onLogin }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!loginData.employeeId || !loginData.password) {
-      setError('사원번호와 비밀번호를 입력해주세요.');
+    if (!loginData.email || !loginData.password) {
+      setError('이메일과 비밀번호를 입력해주세요.');
+      return;
+    }
+
+    // 이메일 형식 검증
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(loginData.email)) {
+      setError('올바른 이메일 형식을 입력해주세요.');
       return;
     }
 
     setIsLoading(true);
     setError('');
 
-    // 로그인 시뮬레이션 (1초 대기)
-    setTimeout(() => {
-      const user = validUsers.find(
-        u => u.id === loginData.employeeId && u.password === loginData.password
-      );
+    try {
+      const response = await loginUser({
+        username: loginData.email,
+        password: loginData.password
+      });
 
-      if (user) {
-        // 로그인 성공
-        const userData = {
-          id: user.id,
-          name: user.name,
-          department: user.department,
-          company: '좋은제약',
-          position: '영업팀 대리',
-          email: `${user.id.toLowerCase()}@goodpharm.co.kr`,
-          phone: '010-1234-5678'
-        };
+      // 로그인 성공 - 토큰 저장
+      const { access_token, token_type } = response;
+      localStorage.setItem('narutalk_token', access_token);
+      localStorage.setItem('narutalk_token_type', token_type);
 
-        // 로컬 스토리지에 사용자 정보 저장
-        localStorage.setItem('narutalk_user', JSON.stringify(userData));
-        localStorage.setItem('narutalk_isLoggedIn', 'true');
+      // 토큰으로 실제 사용자 정보 가져오기
+      const userInfo = await verifyToken();
 
-        // 부모 컴포넌트에 로그인 상태 전달
-        if (onLogin) {
-          onLogin(userData);
-        }
+      // 백엔드에서 받은 사용자 정보 사용
+      const userData = {
+        email: userInfo.email,
+        name: userInfo.name,
+        role: userInfo.role,
+        username: userInfo.username,
+        company: '좋은제약',
+        department: userInfo.role === 'admin' ? '시스템 관리부' : '영업부',
+        position: userInfo.role === 'admin' ? '시스템 관리자' : '영업사원',
+        phone: '010-1234-5678'
+      };
 
-        // 대시보드로 이동
-        navigate('/');
-      } else {
-        setError('사원번호 또는 비밀번호가 잘못되었습니다.');
+      // 로컬 스토리지에 사용자 정보 저장
+      localStorage.setItem('narutalk_user', JSON.stringify(userData));
+      localStorage.setItem('narutalk_isLoggedIn', 'true');
+
+      // 부모 컴포넌트에 로그인 상태 전달
+      if (onLogin) {
+        onLogin(userData);
       }
 
+      // 대시보드로 이동
+      navigate('/');
+
+    } catch (error) {
+      setError(error.message || '로그인에 실패했습니다. 사용자명과 비밀번호를 확인해주세요.');
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
-  const handleDemoLogin = () => {
-    setLoginData({
-      employeeId: 'E001',
-      password: '1234'
-    });
-  };
+
 
   return (
     <div className="login-page">
@@ -102,14 +106,14 @@ const LoginPage = ({ onLogin }) => {
 
           <form className="login-form" onSubmit={handleSubmit}>
             <div className="form-group">
-              <label htmlFor="employeeId">사원번호</label>
+              <label htmlFor="email">이메일</label>
               <input
-                type="text"
-                id="employeeId"
-                name="employeeId"
-                value={loginData.employeeId}
+                type="email"
+                id="email"
+                name="email"
+                value={loginData.email}
                 onChange={handleInputChange}
-                placeholder="사원번호를 입력하세요"
+                placeholder="이메일을 입력하세요"
                 disabled={isLoading}
               />
             </div>
