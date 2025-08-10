@@ -272,20 +272,39 @@ class ConversationStorage:
 
 # 동기 래퍼 함수 (필요시 사용)
 def save_message_sync(session_id: str, role: str, message: str, employee_id: int = 1) -> Optional[Dict[str, Any]]:
-    """동기 방식으로 메시지 저장"""
-    import asyncio
-    import nest_asyncio
+    """동기 방식으로 메시지 저장 - httpx 동기 클라이언트 사용"""
+    import httpx
+    import logging
     
-    # 이미 실행 중인 이벤트 루프에서도 작동하도록 처리
+    logger = logging.getLogger(__name__)
+    base_url = "http://localhost:8010"
+    
     try:
-        nest_asyncio.apply()
-        storage = ConversationStorage()
-        return asyncio.run(storage.save_message(session_id, role, message, employee_id))
-    except RuntimeError:
-        # 이미 실행 중인 이벤트 루프가 있는 경우
-        loop = asyncio.get_event_loop()
-        storage = ConversationStorage()
-        return loop.run_until_complete(storage.save_message(session_id, role, message, employee_id))
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(
+                f"{base_url}/api/chat-history/save-message",
+                json={
+                    "session_id": session_id,
+                    "employee_id": employee_id,
+                    "role": role,
+                    "message_text": message
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200 or response.status_code == 201:
+                logger.info(f"메시지 저장 성공 (동기): session_id={session_id}, role={role}")
+                return response.json()
+            else:
+                logger.warning(f"메시지 저장 실패 (동기): {response.status_code} - {response.text}")
+                return None
+                
+    except httpx.ConnectError:
+        logger.warning(f"PostgreSQL API 연결 실패 (동기): {base_url}")
+        return None
+    except Exception as e:
+        logger.error(f"메시지 저장 중 오류 (동기): {e}")
+        return None
 
 
 def get_conversation_sync(session_id: str) -> List[Dict[str, Any]]:

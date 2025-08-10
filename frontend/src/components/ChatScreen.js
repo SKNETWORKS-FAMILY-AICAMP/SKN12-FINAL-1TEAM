@@ -285,7 +285,7 @@ const ChatScreen = () => {
         // DB 메시지를 UI 형식으로 변환
         const formattedMessages = dbMessages.map(msg => ({
           type: msg.role === 'user' ? 'user' : 'bot',
-          content: msg.message_text || msg.content || msg.message,  // DB 필드명 호환성
+          content: msg.content || msg.message_text || msg.message,  // DB는 content 필드 사용
           timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString(),
           agent: 'Router Agent'
         }));
