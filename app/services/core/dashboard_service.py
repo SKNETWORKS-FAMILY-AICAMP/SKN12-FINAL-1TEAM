@@ -5,9 +5,9 @@
 
 import logging
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, and_
+from sqlalchemy import desc, and_
 
 from app.models.system_trace_logs import SystemTraceLog
 from app.models.documents import Document
@@ -29,7 +29,7 @@ class DashboardService:
         """대시보드 통계 조회"""
         try:
             # 기간 설정
-            start_date = datetime.now(timezone.utc) - timedelta(days=days)
+            start_date = datetime.now() - timedelta(days=days)
             
             # 전체 문서 수
             total_documents = self.db.query(Document).filter(
@@ -86,7 +86,7 @@ class DashboardService:
     def get_auto_create_summary(self, entity_type: str, days: int = 30) -> Dict[str, Any]:
         """특정 엔티티 타입의 자동 생성 요약"""
         try:
-            start_date = datetime.now(timezone.utc) - timedelta(days=days)
+            start_date = datetime.now() - timedelta(days=days)
             
             # 해당 엔티티 타입의 로그 조회
             logs = self.db.query(SystemTraceLog).filter(
@@ -207,7 +207,7 @@ class DashboardService:
     def _get_recent_uploads(self, days: int) -> List[Dict[str, Any]]:
         """최근 업로드 현황 조회"""
         try:
-            start_date = datetime.now(timezone.utc) - timedelta(days=days)
+            start_date = datetime.now() - timedelta(days=days)
             
             # 최근 문서 업로드 조회
             recent_docs = self.db.query(Document).filter(
@@ -247,7 +247,7 @@ class DashboardService:
     def _calculate_upload_success_rate(self, days: int) -> float:
         """업로드 성공률 계산"""
         try:
-            start_date = datetime.now(timezone.utc) - timedelta(days=days)
+            start_date = datetime.now() - timedelta(days=days)
             
             # 전체 업로드 시도
             total_uploads = self.db.query(SystemTraceLog).filter(
@@ -280,7 +280,7 @@ class DashboardService:
     def _calculate_auto_create_success_rate(self, days: int) -> float:
         """자동 생성 성공률 계산"""
         try:
-            start_date = datetime.now(timezone.utc) - timedelta(days=days)
+            start_date = datetime.now() - timedelta(days=days)
             
             # 자동 생성 시도
             logs = self.db.query(SystemTraceLog).filter(

@@ -218,8 +218,8 @@ def get_dashboard_health(
         total_documents = db.query(Document).count()
         
         # 최근 24시간 활동
-        from datetime import datetime, timedelta, timezone
-        recent_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+        from datetime import datetime, timedelta
+        recent_24h = datetime.now() - timedelta(hours=24)
         
         recent_logs = db.query(SystemTraceLog).filter(
             SystemTraceLog.created_at >= recent_24h
@@ -235,7 +235,7 @@ def get_dashboard_health(
             'total_documents': total_documents,
             'recent_24h_logs': recent_logs,
             'recent_24h_documents': recent_documents,
-            'last_check': datetime.now(timezone.utc).isoformat()
+            'last_check': datetime.now().isoformat()
         }
         
     except Exception as e:
@@ -243,7 +243,7 @@ def get_dashboard_health(
         return {
             'status': 'unhealthy',
             'error': str(e),
-            'last_check': datetime.now(timezone.utc).isoformat()
+            'last_check': datetime.now().isoformat()
         }
 
 @router.get("/system-documents")

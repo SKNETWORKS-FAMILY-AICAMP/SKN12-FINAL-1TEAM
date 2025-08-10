@@ -90,40 +90,41 @@ class HybridSearchService:
             return []
     
     def _search_text_documents(self, query: str, analysis: Dict, limit: int) -> List[Dict]:
-        """텍스트 문서 검색"""
+        """텍스트 문서 검색 (파이프라인 기반 하이브리드 검색)"""
         try:
-            # OpenSearch 검색 수행
-            text_results = opensearch_client.search_document(DOCUMENT_INDEX_NAME, {
-                "query": {
-                    "multi_match": {
-                        "query": query,
-                        "fields": ["content", "doc_title"],
-                        "type": "best_fields"
-                    }
-                },
-                "size": limit
-            })
+            logger.info(f"OpenSearch 파이프라인 기반 하이브리드 검색: '{query}'")
             
-            logger.info(f"OpenSearch 검색 결과: {len(text_results)}개")
+            # 파이프라인 기반 하이브리드 검색 수행
+            # 벡터 검색 + 키워드 검색을 결합한 고품질 검색
+            text_results = opensearch_client.search_with_pipeline(
+                query_text=query,
+                keywords=query,  # 키워드도 동일하게 설정
+                pipeline_id="hybrid-minmax-pipeline",
+                index_name=DOCUMENT_INDEX_NAME,
+                top_k=limit,
+                use_rerank=True,
+                rerank_top_k=min(limit, 10)  # limit과 10 중 작은 값 사용
+            )
+            
+            logger.info(f"OpenSearch 파이프라인 검색 결과: {len(text_results)}개")
             if text_results:
                 logger.info(f"첫 번째 OpenSearch 결과 구조: {text_results[0]}")
             
             # 결과 포맷 변환
             formatted_results = []
             for result in text_results:
-                # OpenSearch 결과 구조 안전 처리
-                # _source 또는 source 필드에서 데이터 추출
-                source = result.get('_source') or result.get('source', {})
+                source = result.get('source', {})
                 
+                # 파이프라인 검색 결과에서 필요한 정보 추출
                 formatted_result = {
                     'type': 'text',
-                    'id': result.get('_id'),
+                    'id': source.get('document_id') or source.get('id'),
                     'doc_id': source.get('document_id') or source.get('doc_id'),
                     'doc_title': source.get('title') or source.get('doc_title') or source.get('file_name'),
                     'content': source.get('content'),
                     'created_at': source.get('created_at'),
-                    'similarity_score': result.get('_score') or result.get('score', 0.0),
-                    'source': 'opensearch'
+                    'similarity_score': result.get('rerank_score', result.get('score', 0.0)),  # rerank_score 우선, 없으면 기본 score
+                    'source': 'opensearch_pipeline'
                 }
                 
                 # null 값 처리

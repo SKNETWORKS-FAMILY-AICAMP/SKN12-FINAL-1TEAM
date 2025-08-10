@@ -1,7 +1,7 @@
 """
 문서 타입 업데이트를 위한 헬퍼 함수들
 """
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from app.models.documents import Document
@@ -26,7 +26,7 @@ class DocumentTypeUpdater:
             # 문서 타입을 'table_data'로 업데이트
             doc.doc_type = f"text2sql_{result.get('target_table', 'unknown')}"
             doc.processing_status = 'processed'
-            doc.processed_at = datetime.now(timezone.utc)
+            doc.processed_at = datetime.now()
             
             # 처리 결과 메타데이터 저장
             doc.processing_metadata = {
@@ -35,7 +35,7 @@ class DocumentTypeUpdater:
                 'column_mapping': result.get('column_mapping', {}),
                 'reasoning': result.get('reasoning', ''),
                 'method': 'text2sql',
-                'processed_at': datetime.now(timezone.utc).isoformat()
+                'processed_at': datetime.now().isoformat()
             }
             
             session.flush()
@@ -58,13 +58,13 @@ class DocumentTypeUpdater:
         """
         try:
             doc.processing_status = 'failed'
-            doc.processed_at = datetime.now(timezone.utc)
+            doc.processed_at = datetime.now()
             
             # 실패 정보 메타데이터 저장
             doc.processing_metadata = {
                 'error': result.get('message', 'Unknown error'),
                 'method': 'text2sql',
-                'failed_at': datetime.now(timezone.utc).isoformat()
+                'failed_at': datetime.now().isoformat()
             }
             
             session.flush()
@@ -88,14 +88,14 @@ class DocumentTypeUpdater:
         try:
             doc.doc_type = 'table_data_partial'
             doc.processing_status = 'partially_processed'
-            doc.processed_at = datetime.now(timezone.utc)
+            doc.processed_at = datetime.now()
             
             # 부분 성공 정보 메타데이터 저장
             doc.processing_metadata = {
                 'successful_tables': result.get('successful_tables', []),
                 'failed_tables': result.get('failed_tables', []),
                 'method': 'text2sql',
-                'processed_at': datetime.now(timezone.utc).isoformat()
+                'processed_at': datetime.now().isoformat()
             }
             
             session.flush()
@@ -119,7 +119,7 @@ class DocumentTypeUpdater:
         try:
             doc.processing_status = status
             if status in ['processed', 'failed', 'partially_processed']:
-                doc.processed_at = datetime.now(timezone.utc)
+                doc.processed_at = datetime.now()
             
             session.flush()
             logger.info(f"문서 처리 상태 업데이트: {doc.doc_id} -> {status}")

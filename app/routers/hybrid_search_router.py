@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class HybridSearchRequest(BaseModel):
-    """하이브리드 검색 요청 모델"""
+    """하이브리드 검색 요청 모델 (참고용)"""
     query: str
     limit: Optional[int] = 20
 
@@ -32,7 +32,7 @@ class TextSearchResult(BaseModel):
     content: Optional[str] = None
     created_at: Optional[str] = None
     similarity_score: Optional[float] = None
-    source: str = "opensearch"
+    source: str = "opensearch_pipeline"
 
 class HybridSearchResponse(BaseModel):
     """하이브리드 검색 응답 모델"""
@@ -46,28 +46,24 @@ class HybridSearchResponse(BaseModel):
     total_count: int
     search_time: float
 
-@router.post("/search/hybrid", response_model=HybridSearchResponse)
-def hybrid_search(
-    request: HybridSearchRequest,
-    user=Depends(get_current_user)
-):
-    """
-    하이브리드 검색을 수행합니다 (테이블 + 텍스트 문서).
-    
-    Args:
-        request: 검색 요청 정보
-        user: 현재 인증된 사용자
-        
-    Returns:
-        HybridSearchResponse: 검색 결과 (테이블과 텍스트 분리)
-    """
+def _process_created_at(created_at) -> Optional[str]:
+    """created_at 필드를 안전하게 ISO 형식 문자열로 변환합니다."""
+    if created_at and hasattr(created_at, 'isoformat'):
+        return created_at.isoformat()
+    elif created_at and isinstance(created_at, str):
+        return created_at
+    else:
+        return None
+
+def _perform_hybrid_search(query: str, limit: int) -> HybridSearchResponse:
+    """하이브리드 검색을 수행하는 공통 로직입니다."""
     try:
-        logger.info(f"하이브리드 검색 시작: '{request.query}'")
+        logger.info(f"하이브리드 검색 시작: '{query}'")
         
         # 하이브리드 검색 수행
         search_result = hybrid_search_service.search(
-            query=request.query,
-            limit=request.limit
+            query=query,
+            limit=limit
         )
         
         if not search_result['success']:
@@ -79,41 +75,23 @@ def hybrid_search(
         
         for result in search_result['results']:
             if result['type'] == 'table':
-                # created_at 안전 처리
-                created_at = result['created_at']
-                if created_at and hasattr(created_at, 'isoformat'):
-                    created_at = created_at.isoformat()
-                elif created_at and isinstance(created_at, str):
-                    created_at = created_at
-                else:
-                    created_at = None
-                
                 table_result = TableSearchResult(
                     id=result['id'],
                     doc_id=result['doc_id'],
                     table_type=result['table_type'],
                     content=result['content'],
-                    created_at=created_at,
+                    created_at=_process_created_at(result['created_at']),
                     similarity_score=result['similarity_score'],
                     source=result['source']
                 )
                 table_results.append(table_result)
             else:  # text
-                # created_at 안전 처리
-                created_at = result['created_at']
-                if created_at and hasattr(created_at, 'isoformat'):
-                    created_at = created_at.isoformat()
-                elif created_at and isinstance(created_at, str):
-                    created_at = created_at
-                else:
-                    created_at = None
-                
                 text_result = TextSearchResult(
                     id=result['id'],
                     doc_id=result['doc_id'],
                     doc_title=result.get('doc_title'),
                     content=result['content'],
-                    created_at=created_at,
+                    created_at=_process_created_at(result['created_at']),
                     similarity_score=result['similarity_score'],
                     source=result['source']
                 )
@@ -133,102 +111,31 @@ def hybrid_search(
             search_time=search_result['search_time']
         )
         
+    except HTTPException:
+        # HTTPException은 그대로 재발생
+        raise
     except Exception as e:
         logger.error(f"하이브리드 검색 중 오류: {e}")
         raise HTTPException(status_code=500, detail=f"검색 중 오류가 발생했습니다: {str(e)}")
 
 @router.get("/search/hybrid", response_model=HybridSearchResponse)
-def hybrid_search_get(
+def hybrid_search(
     query: str = Query(..., description="검색 쿼리"),
     limit: Optional[int] = Query(20, description="결과 개수 제한"),
     user=Depends(get_current_user)
 ):
     """
-    GET 방식으로 하이브리드 검색을 수행합니다.
+    하이브리드 검색을 수행합니다 (테이블 + 텍스트 문서).
     
     Args:
         query: 검색 쿼리
-        limit: 결과 개수 제한
+        limit: 결과 개수 제한 (기본값: 20)
         user: 현재 인증된 사용자
         
     Returns:
         HybridSearchResponse: 검색 결과 (테이블과 텍스트 분리)
     """
-    try:
-        logger.info(f"하이브리드 검색 시작 (GET): '{query}'")
-        
-        # 하이브리드 검색 수행
-        search_result = hybrid_search_service.search(
-            query=query,
-            limit=limit
-        )
-        
-        if not search_result['success']:
-            raise HTTPException(status_code=500, detail=search_result['message'])
-        
-        # 결과를 테이블과 텍스트로 분리
-        table_results = []
-        text_results = []
-        
-        for result in search_result['results']:
-            if result['type'] == 'table':
-                # created_at 안전 처리
-                created_at = result['created_at']
-                if created_at and hasattr(created_at, 'isoformat'):
-                    created_at = created_at.isoformat()
-                elif created_at and isinstance(created_at, str):
-                    created_at = created_at
-                else:
-                    created_at = None
-                
-                table_result = TableSearchResult(
-                    id=result['id'],
-                    doc_id=result['doc_id'],
-                    table_type=result['table_type'],
-                    content=result['content'],
-                    created_at=created_at,
-                    similarity_score=result['similarity_score'],
-                    source=result['source']
-                )
-                table_results.append(table_result)
-            else:  # text
-                # created_at 안전 처리
-                created_at = result['created_at']
-                if created_at and hasattr(created_at, 'isoformat'):
-                    created_at = created_at.isoformat()
-                elif created_at and isinstance(created_at, str):
-                    created_at = created_at
-                else:
-                    created_at = None
-                
-                text_result = TextSearchResult(
-                    id=result['id'],
-                    doc_id=result['doc_id'],
-                    doc_title=result.get('doc_title'),
-                    content=result['content'],
-                    created_at=created_at,
-                    similarity_score=result['similarity_score'],
-                    source=result['source']
-                )
-                text_results.append(text_result)
-        
-        logger.info(f"하이브리드 검색 완료 (GET): 테이블 {len(table_results)}개, 텍스트 {len(text_results)}개")
-        
-        return HybridSearchResponse(
-            success=True,
-            message=search_result['message'],
-            query=search_result['query'],
-            search_type=search_result['search_type'],
-            analysis=search_result.get('analysis'),
-            table_results=table_results,
-            text_results=text_results,
-            total_count=search_result['total_count'],
-            search_time=search_result['search_time']
-        )
-        
-    except Exception as e:
-        logger.error(f"하이브리드 검색 중 오류 (GET): {e}")
-        raise HTTPException(status_code=500, detail=f"검색 중 오류가 발생했습니다: {str(e)}")
+    return _perform_hybrid_search(query, limit)
 
 @router.get("/search/hybrid/stats")
 def get_hybrid_search_stats(user=Depends(get_current_user)):

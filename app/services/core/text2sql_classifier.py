@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text, select
-from datetime import datetime, timezone
+from datetime import datetime
 import asyncio
 
 # 공통 OpenAI 서비스 import
@@ -919,7 +919,7 @@ class Text2SQLTableClassifier:
                     interaction_date = self._parse_date(str(row[column_mapping['interacted_at']]))
                 
                 if not interaction_date:
-                    interaction_date = datetime.now(timezone.utc)
+                    interaction_date = datetime.now()
                 
                 # 고객 ID 찾기 (customer_name으로만 조회 - address 정보가 없으므로)
                 customer_id = None

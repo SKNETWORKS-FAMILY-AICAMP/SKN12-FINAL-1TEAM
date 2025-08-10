@@ -5,7 +5,7 @@ PostgreSQL을 통한 채팅 메시지 저장 및 조회
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime
 import uuid
 import logging
 
@@ -67,7 +67,7 @@ async def save_message(
     """메시지 저장"""
     try:
         message_id = str(uuid.uuid4())
-        dt_now = datetime.now(timezone.utc)
+        dt_now = datetime.now()
         
         # 세션이 없으면 생성
         session = db.query(ChatSession).filter(
@@ -123,7 +123,7 @@ async def get_conversation_history(
     try:
         query = db.query(ChatHistory).filter(
             ChatHistory.session_id == request.session_id
-        ).order_by(ChatHistory.created_at.asc())
+        ).order_by(ChatHistory.created_at.desc())
         
         if request.limit:
             query = query.limit(request.limit)
@@ -132,6 +132,7 @@ async def get_conversation_history(
         
         messages = query.all()
         
+        # 최신 메시지부터 가져온 후, 응답에서는 시간순으로 정렬
         result = []
         for msg in messages:
             result.append({
@@ -141,6 +142,9 @@ async def get_conversation_history(
                 "content": msg.message_text
             })
         
+        # 응답에서는 시간순으로 정렬 (사용자가 읽기 쉽도록)
+        result.sort(key=lambda x: x["timestamp"] if x["timestamp"] else "")
+
         return {
             "success": True,
             "messages": result,
@@ -268,7 +272,7 @@ async def update_session_title(
             raise HTTPException(status_code=404, detail="Session not found")
         
         session.session_title = request.title
-        session.last_activity = datetime.now(timezone.utc)
+        session.last_activity = datetime.now()
         
         db.commit()
         
@@ -306,7 +310,7 @@ async def archive_session(
             raise HTTPException(status_code=400, detail="Session is already archived")
         
         session.is_archived = True
-        session.archived_at = datetime.now(timezone.utc)
+        session.archived_at = datetime.now()
         
         db.commit()
         
@@ -345,7 +349,7 @@ async def restore_session(
         
         session.is_archived = False
         session.archived_at = None
-        session.last_activity = datetime.now(timezone.utc)
+        session.last_activity = datetime.now()
         
         db.commit()
         

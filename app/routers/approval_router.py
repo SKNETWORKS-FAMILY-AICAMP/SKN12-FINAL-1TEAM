@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.services.utils.db import get_db
 from app.routers.user_router import get_current_admin_user
@@ -144,7 +144,7 @@ def approve_entity(
         Dict: 승인 결과
     """
     try:
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now()
         
         if entity_type == 'employee':
             entity = db.query(EmployeeInfo).filter(
@@ -213,7 +213,7 @@ def reject_entity(
         Dict: 거부 결과
     """
     try:
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now()
         
         if entity_type == 'employee':
             entity = db.query(EmployeeInfo).filter(

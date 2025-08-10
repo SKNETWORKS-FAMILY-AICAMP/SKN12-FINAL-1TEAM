@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from typing import List, Optional, Union, Dict
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.schemas.document import DocumentBase, DocumentInfo
@@ -284,7 +284,7 @@ async def process_single_document(file: UploadFile, uploader_id: int, version: s
                     file_path=file_path,
                     uploader_id=uploader_id,
                     version=version,
-                    created_at=datetime.now(timezone.utc)
+                    created_at=datetime.now()
                 )
                 doc = save_document(meta)
                 
@@ -313,7 +313,7 @@ async def process_single_document(file: UploadFile, uploader_id: int, version: s
                     doc_type=f"text2sql_{result['target_table']}",
                     uploader_id=uploader_id,
                     version=version,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(),
                     message=f"{result['message']} (문서 ID: {doc.doc_id})",
                     analysis={
                         'target_table': result['target_table'],
@@ -350,7 +350,7 @@ async def process_single_document(file: UploadFile, uploader_id: int, version: s
             file_path=file_path,
             uploader_id=uploader_id,
             version=version,
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now()
         )
         doc = save_document(meta)
         
@@ -505,7 +505,7 @@ async def process_single_document_with_session(file: UploadFile, uploader_id: in
                     file_path=file_path,
                     uploader_id=uploader_id,
                     version=version,
-                    created_at=datetime.now(timezone.utc)
+                    created_at=datetime.now()
                 )
                 
                 # 세션을 사용하여 문서 저장
@@ -526,7 +526,7 @@ async def process_single_document_with_session(file: UploadFile, uploader_id: in
                     doc_type=f"text2sql_{result['target_table']}",
                     uploader_id=uploader_id,
                     version=version,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(),
                     message=f"{result['message']} (문서 ID: {db_doc.doc_id})",
                     analysis={
                         'target_table': result['target_table'],
@@ -560,7 +560,7 @@ async def process_single_document_with_session(file: UploadFile, uploader_id: in
             file_path=file_path,
             uploader_id=uploader_id,
             version=version,
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now()
         )
         
         # 세션을 사용하여 문서 저장
