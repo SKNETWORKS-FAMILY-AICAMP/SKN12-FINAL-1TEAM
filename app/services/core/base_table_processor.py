@@ -104,6 +104,7 @@ class BaseTableProcessor(ABC):
             if source_column and str(source_column).strip():
                 value = str(source_column).strip().lower()
                 if any(keyword in value for keyword in summary_keywords):
+                    logger.debug(f"❌ 요약 행 제외: {value}")
                     return False
         
         # 숫자만으로 구성된 값 제외 (고객명, 제품명 등)
@@ -113,9 +114,11 @@ class BaseTableProcessor(ABC):
                 value = str(row[source_column]).strip()
                 # 숫자만으로 구성된 경우 제외
                 if value.isdigit():
+                    logger.debug(f"❌ 숫자만으로 구성된 {db_field} 제외: {value}")
                     return False
                 # 숫자로 시작하는 경우도 제외 (예: "12345병원")
                 if value and value[0].isdigit():
+                    logger.debug(f"❌ 숫자로 시작하는 {db_field} 제외: {value}")
                     return False
         
         return True
@@ -199,10 +202,12 @@ class BaseTableProcessor(ABC):
                     # 업데이트
                     self.update_existing_record(existing_record, row, column_mapping)
                     self.increment_counter("updated")
+                    logger.debug(f"📝 {self.get_table_name()} 업데이트: {record_key}")
                     return "updated"
                 else:
                     # 건너뛰기
                     self.increment_counter("skipped")
+                    logger.debug(f"🔄 {self.get_table_name()} 건너뛰기: {record_key} - 기존과 동일")
                     return "skipped"
             else:
                 # 3-B. 새 레코드 생성
@@ -216,6 +221,7 @@ class BaseTableProcessor(ABC):
                         self.session.add(record)
                     await self.session.flush()
                     self.increment_counter("created", len(new_records))  # 실제 생성된 레코드 수
+                    logger.debug(f"🆕 {self.get_table_name()} 생성: {record_key} - {len(new_records)}개 레코드")
                     return "created"
                 else:
                     # 단일 레코드인 경우
@@ -225,10 +231,11 @@ class BaseTableProcessor(ABC):
                     await self.session.flush()  # ID 생성
                     
                     self.increment_counter("created", 1)  # 단일 레코드
+                    logger.debug(f"🆕 {self.get_table_name()} 생성: {record_key}")
                     return "created"
                 
         except Exception as e:
-            logger.error(f"레코드 처리 중 오류: {e}")
+            logger.error(f"❌ {self.get_table_name()} 레코드 처리 중 오류: {e}")
             return "error"
     
     async def process_batch(self, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str],
@@ -237,8 +244,14 @@ class BaseTableProcessor(ABC):
         table_name = self.get_table_name()
         
         try:
-            for row in table_data:
-                await self.process_single_record(row, column_mapping, document_id, uploader_id)
+            logger.info(f"🔄 {table_name} 배치 처리 시작: {len(table_data)}행")
+            
+            for i, row in enumerate(table_data):
+                result = await self.process_single_record(row, column_mapping, document_id, uploader_id)
+                if result == "error":
+                    logger.warning(f"⚠️ {table_name} {i+1}행 처리 실패")
+            
+            logger.info(f"✅ {table_name} 배치 처리 완료: {self.processed_count}행 처리됨, {self.created_count}{self.get_unit_name()} 생성, {self.updated_count}{self.get_unit_name()} 업데이트, {self.skipped_count}{self.get_unit_name()} 건너뜀")
             
             return {
                 'success': True,
@@ -250,7 +263,7 @@ class BaseTableProcessor(ABC):
             }
             
         except Exception as e:
-            logger.error(f"{table_name} 배치 처리 중 오류: {e}")
+            logger.error(f"❌ {table_name} 배치 처리 중 오류: {e}")
             return {
                 'success': False,
                 'message': f'{table_name} 처리 중 오류: {str(e)}',

@@ -9,9 +9,9 @@ import json
 from typing import List, Dict, Any, Optional, Callable, Tuple
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import text, select
-from datetime import datetime
+
 import asyncio
 
 # 공통 OpenAI 서비스 import
@@ -20,15 +20,8 @@ from app.services.external.openai_service import openai_service
 from app.services.core.vector_similarity_service import vector_similarity_service
 from app.services.core.table_processors import get_table_processor
 
-# 모델 import
-from app.models.employee_info import EmployeeInfo
-from app.models.customers import Customer
-from app.models.sales_records import SalesRecord
-from app.models.products import Product
-from app.models.interaction_logs import InteractionLog
-from app.models.assignment_map import AssignmentMap
-from app.models.documents import Document
-from app.models.document_relations import DocumentRelation
+
+# 모델 import는 프로세서 클래스에서 처리됨
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +32,7 @@ class Text2SQLTableClassifier:
         """초기화"""
         self.db_session_factory = db_session_factory
         
-    async def _validate_and_filter_target_tables(self, uploaded_columns: List[str], target_tables: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    async def _validate_and_filter_target_tables(self, uploaded_columns: List[str], target_tables: List[Dict[str, Any]], sample_data: List[Dict[str, Any]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
         """LLM 결과 테이블/매핑을 필수 컬럼 및 로컬 매핑으로 검증하여 정제"""
         validated: List[Dict[str, Any]] = []
         reasons: List[str] = []
@@ -50,7 +43,9 @@ class Text2SQLTableClassifier:
             'employee_info': ['name', 'employee_number'],
             'customers': ['customer_name'],
             'products': ['product_name'],
-            'sales_records': ['employee_name', 'employee_number', 'customer_name']
+            'sales_records': ['customer_name', 'employee_name', 'employee_number'],  # sales_records 필수 필드 복원
+            'branches': ['branch_name', 'headquarters', 'department'],  # 지점 필수 필드 추가
+            'branch_targets': []  # 목표/실적 데이터는 필수 컬럼 없음 (월별 패턴으로 감지)
         }
 
         async with self._get_db_session() as session:
@@ -59,45 +54,95 @@ class Text2SQLTableClassifier:
                 mapping = t.get('column_mapping', {}) or {}
                 conf = t.get('confidence', 0.0)
 
-                # 1) 필수 컬럼 키가 매핑에 존재하는지 확인(매출은 별도 규칙)
+                # 1) 필수 컬럼 키가 매핑에 존재하는지 확인
                 req_cols = required.get(table, [])
                 missing_keys = [rk for rk in req_cols if rk not in mapping]
+                
+                # 2) 누락된 필수 컬럼이 있다면 실패 처리 (sales_records 제외)
                 if missing_keys and table != 'sales_records':
                     reasons.append(f"{table}: 필수 컬럼 매핑 누락 {missing_keys}")
                     continue
 
-                # 2) 매핑된 소스 컬럼이 업로드 컬럼에 실제 존재하는지 확인
+                # 3) 매핑된 소스 컬럼이 업로드 컬럼에 실제 존재하는지 확인
                 nonexistent = [src for src in mapping.values() if str(src) not in uploaded_set]
                 if nonexistent:
                     reasons.append(f"{table}: 존재하지 않는 소스 컬럼 매핑 {nonexistent}")
                     continue
 
-                # 3) 로컬 자동 매핑과 교차 검증(배제용이 아닌 참고용 지표)
-                try:
-                    local_map = await vector_similarity_service.find_column_mapping(session, table, uploaded_columns)
-                except Exception:
-                    local_map = {}
-                if mapping:
-                    agree = sum(1 for dst, src in mapping.items() if str(local_map.get(dst)) == str(src))
-                    ratio = agree / max(1, len(mapping))
-                    t['local_match_ratio'] = ratio
-
-                # 4) sales_records 전용 규칙
-                if table == 'sales_records':
-                    has_monthly = any(re.fullmatch(r'\d{6}', str(col)) for col in uploaded_columns)
-                    has_amount_date = ('sale_amount' in mapping) and ('sale_date' in mapping)
-
-                    # LLM metrics 기반 판단 우선
+                # 4) branch_targets 전용 규칙 - 목표/실적 패턴 확인
+                if table == 'branch_targets':
+                    # 목표, 실적, 달성률 관련 컬럼 확인
+                    has_target_columns = any('목표' in str(col) for col in uploaded_columns)
+                    has_actual_columns = any('실적' in str(col) for col in uploaded_columns)
+                    has_achievement_columns = any('달성률' in str(col) for col in uploaded_columns)
+                    
+                    # 월별 컬럼 패턴 확인
+                    has_monthly_columns = any(re.fullmatch(r'\d{6}', str(col)) for col in uploaded_columns)
+                    
+                    if not (has_target_columns or has_actual_columns or has_achievement_columns or has_monthly_columns):
+                        reasons.append("branch_targets: 목표/실적 관련 컬럼이 없음")
+                        continue
+                    
+                    logger.info(f"branch_targets 검증 통과: 목표={has_target_columns}, 실적={has_actual_columns}, 월별={has_monthly_columns}")
+                
+                # 5) sales_records 전용 규칙
+                elif table == 'sales_records':
+                    # 잘못된 매핑 키 수정 (customer_id -> customer_name, employee_id -> employee_number, product_id -> product_name)
+                    if 'customer_id' in mapping:
+                        mapping['customer_name'] = mapping.pop('customer_id')
+                        logger.info(f"✅ sales_records 매핑 수정: customer_id -> customer_name = {mapping['customer_name']}")
+                    
+                    if 'employee_id' in mapping:
+                        # employee_id는 employee_number로 매핑
+                        mapping['employee_number'] = mapping.pop('employee_id')
+                        logger.info(f"✅ sales_records 매핑 수정: employee_id -> employee_number = {mapping['employee_number']}")
+                    
+                    if 'product_id' in mapping:
+                        mapping['product_name'] = mapping.pop('product_id')
+                        logger.info(f"✅ sales_records 매핑 수정: product_id -> product_name = {mapping['product_name']}")
+                    
+                    # 월별 컬럼 패턴 확인 (더 유연하게)
+                    has_monthly_columns = any(re.fullmatch(r'\d{6}', str(col)) for col in uploaded_columns)
+                    
+                    # 월별 행 데이터 확인 (데이터 값에 월 정보가 있는지)
+                    has_monthly_rows = False
+                    if sample_data:
+                        for row in sample_data[:5]:  # 처음 5행만 확인
+                            for val in row.values():
+                                if re.fullmatch(r'\d{6}', str(val)):
+                                    has_monthly_rows = True
+                                    break
+                            if has_monthly_rows:
+                                break
+                    
+                    # 매출 관련 키워드 확인
+                    sales_related_keywords = ['매출', '매출액', '금액', '수량', '방문횟수', '예산', '환자수', '판매']
+                    has_sales_related = any(
+                        any(keyword in str(col).lower() for keyword in sales_related_keywords)
+                        for col in uploaded_columns
+                    )
+                    
+                    # LLM metrics 기반 판단
                     metrics = t.get('metrics', {}) or {}
                     amount_ratio = float(metrics.get('sale_amount_numeric_ratio', 0.0) or 0.0)
                     date_ratio = float(metrics.get('sale_date_parse_ratio', 0.0) or 0.0)
                     monthly_cols = metrics.get('monthly_columns', []) or []
-
-                    cond_monthly = bool(monthly_cols) or has_monthly
+                    
+                    # 기존 sale_amount/sale_date 매핑 확인
+                    has_amount_date = ('sale_amount' in mapping) and ('sale_date' in mapping)
+                    
+                    # 조건들 계산
+                    cond_monthly = bool(monthly_cols) or has_monthly_columns or has_monthly_rows
+                    cond_sales_related = has_sales_related
                     cond_amount_date = has_amount_date and (amount_ratio >= 0.7 and date_ratio >= 0.7)
-
-                    if not (cond_monthly or cond_amount_date):
-                        reasons.append("sales_records: 월별 컬럼 또는 (sale_amount, sale_date) 값지표 기준(≥0.7) 미충족")
+                    
+                    # 디버그 로그 제거 - 불필요한 상세 정보
+                    # 매핑 결과 최종 로그만 남김
+                    logger.info(f"sales_records 최종 매핑: {mapping}")
+                    
+                    # 더 유연한 검증: 월별 데이터가 있거나 매출 관련 컬럼이 있으면 통과
+                    if not (cond_monthly or cond_sales_related or cond_amount_date):
+                        reasons.append("sales_records: 월별 데이터 또는 매출 관련 컬럼이 부족함")
                         continue
 
                 t['column_mapping'] = mapping
@@ -143,14 +188,13 @@ class Text2SQLTableClassifier:
             # 1. 테이블 구조 분석
             columns = list(table_data[0].keys()) if table_data else []
             # 모든 컬럼명을 문자열로 변환 (안전장치)
-            columns = [str(col) for col in columns]
-            
+            columns = [str(col) for col in columns]            
 
             # LLM 인식 강화를 위해 최대 30행까지 전달
             sample_data = table_data[:30] if len(table_data) >= 30 else table_data
             
             # 2. Text2SQL 분류 수행
-            classification_result = await self._perform_text2sql_classification(
+            classification_result = await self._perform_llm_classification(
                 columns=columns,
                 sample_data=sample_data,
                 table_description=table_description
@@ -161,7 +205,7 @@ class Text2SQLTableClassifier:
                 # 3-1. 사전 검증 및 교차 검증으로 테이블/매핑 정제
                 target_tables = classification_result.get('target_tables', [])
                 if target_tables:
-                    validated_tables, exclude_reasons = await self._validate_and_filter_target_tables(columns, target_tables)
+                    validated_tables, exclude_reasons = await self._validate_and_filter_target_tables(columns, target_tables, sample_data)
                     if exclude_reasons:
                         for reason in exclude_reasons:
                             logger.warning(f"사전검증 제외: {reason}")
@@ -178,18 +222,23 @@ class Text2SQLTableClassifier:
                 else:
                     # 단일 테이블 응답에 대해서도 최소한의 검증 적용 가능 (향후 확장)
                     pass
+                
                 # 다중 테이블 처리 지원
                 target_tables = classification_result.get('target_tables', [])
                 if target_tables:
-                    # 다중 테이블 순차 처리
+                    # 3-2. 의존성 분석 및 저장 순서 결정
+                    ordered_tables = self._analyze_table_dependencies(target_tables)
+                    logger.info(f"📋 테이블 저장 순서: {[t['table_name'] for t in ordered_tables]}")
+                    
+                    # 3-3. 순차 저장 실행
                     all_results = []
                     total_processed = 0
                     total_created = 0
                     total_updated = 0
                     total_skipped = 0
                     
-                    # 개별 테이블 처리 결과 수집
-                    for table_info in target_tables:
+                    # 의존성 순서에 맞게 테이블 처리
+                    for table_info in ordered_tables:
                         table_name = table_info['table_name']
                         column_mapping = table_info['column_mapping']
                         confidence = table_info['confidence']
@@ -321,38 +370,42 @@ class Text2SQLTableClassifier:
                 'confidence': 0.0
             }
     
-    async def _perform_text2sql_classification(self, columns: List[str], sample_data: List[Dict], table_description: str) -> Dict[str, Any]:
+    def _analyze_table_dependencies(self, target_tables: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        LLM을 사용한 Text2SQL 분류 수행
-        """
-        if not openai_service.is_available():
-            logger.error("OpenAI 클라이언트가 사용 불가능합니다.")
-            return {
-                'success': False,
-                'message': 'OpenAI 클라이언트가 초기화되지 않았습니다.',
-                'target_table': None,
-                'confidence': 0.0
-            }
+        테이블 간의 의존성을 분석하여 저장 순서를 결정
         
-        try:
-            # LLM 기반 분류 수행
-            llm_result = await self._perform_llm_classification(columns, sample_data, table_description)
-            
-            if llm_result['success']:
-                return llm_result
-            else:
-                logger.error(f"LLM 분류 실패: {llm_result['message']}")
-                return llm_result
-                
-        except Exception as e:
-            logger.error(f"LLM 분류 중 오류: {e}")
-            return {
-                'success': False,
-                'message': f'LLM 분류 중 오류: {str(e)}',
-                'target_table': None,
-                'confidence': 0.0
-            }
+        의존성 순서:
+        1. branches (독립적)
+        2. customers (독립적)
+        3. employee_info (branches에 의존) 
+        4. products (독립적)
+        5. sales_records (customers, employee_info, products에 의존)
+        6. interaction_logs (customers, employee_info에 의존)
+        7. assignment_map (employee_info에 의존)
+        """
+        # 테이블별 의존성 레벨 정의
+        dependency_levels = {
+            'branches': 1,  # 최우선 생성
+            'customers': 1,
+            'products': 1,
+            'employee_info': 2,  # branches 생성 후
+            'branch_targets': 3,  # branches, employee_info 생성 후
+            'sales_records': 3,
+            'interaction_logs': 3,
+            'assignment_map': 3,
+            'documents': 4,
+            'document_relations': 5
+        }
+        
+        # 의존성 레벨에 따라 정렬
+        ordered_tables = sorted(target_tables, key=lambda x: dependency_levels.get(x['table_name'], 999))
+        
+        dependency_info = [f"{t['table_name']}(Lv.{dependency_levels.get(t['table_name'], 999)})" for t in ordered_tables]
+        logger.info(f"테이블 의존성 분석 완료: {dependency_info}")
+        
+        return ordered_tables
     
+
     async def _perform_llm_classification(self, columns: List[str], sample_data: List[Dict], table_description: str) -> Dict[str, Any]:
         """LLM을 사용한 테이블 분류 (다중 테이블 분석과 조합)"""
         try:
@@ -377,7 +430,7 @@ class Text2SQLTableClassifier:
                     
                     # OpenAI API 호출
                     messages = [
-                        {"role": "system", "content": "당신은 Excel 테이블 데이터를 분석하여 여러 데이터베이스 테이블에 데이터를 생성할 수 있는지 판단하는 전문가입니다."},
+                        {"role": "system", "content": "당신은 Excel 테이블 데이터를 분석하여 여러 데이터베이스 테이블에 어떤 데이터를 생성할 수 있는지 판단하는 전문가입니다."},
                         {"role": "user", "content": prompt}
                     ]
                     
@@ -412,10 +465,24 @@ class Text2SQLTableClassifier:
                                     amount_ratio = float(metrics.get('sale_amount_numeric_ratio', 0.0) or 0.0)
                                     date_ratio = float(metrics.get('sale_date_parse_ratio', 0.0) or 0.0)
                                     monthly_cols = metrics.get('monthly_columns', []) or []
+                                    
+                                    # 월별 컬럼 패턴 확인
+                                    has_monthly_columns = any(re.fullmatch(r'\d{6}', str(col)) for col in columns)
+                                    
+                                    # 매출 관련 키워드 확인
+                                    sales_related_keywords = ['매출', '매출액', '금액', '수량', '방문횟수', '예산', '환자수', '판매']
+                                    has_sales_columns = any(
+                                        any(keyword in str(col).lower() for keyword in sales_related_keywords)
+                                        for col in columns
+                                    )
+                                    
                                     has_amount_date = ('sale_amount' in mapping) and ('sale_date' in mapping)
-                                    cond_monthly = bool(monthly_cols)
+                                    cond_monthly = bool(monthly_cols) or has_monthly_columns
+                                    cond_sales_related = has_sales_columns
                                     cond_amount_date = has_amount_date and (amount_ratio >= 0.7 and date_ratio >= 0.7)
-                                    if not (cond_monthly or cond_amount_date):
+                                    
+                                    # 더 유연한 검증: 월별 데이터가 있거나 매출 관련 컬럼이 있으면 통과
+                                    if not (cond_monthly or cond_sales_related or cond_amount_date):
                                         continue
                                 filtered.append(t)
 
@@ -430,8 +497,7 @@ class Text2SQLTableClassifier:
                                 'reasoning': sorted_tables[0].get('reasoning', ''),
                                 'column_mapping': sorted_tables[0].get('column_mapping', {}),
                                 'method': 'multi_table_llm',
-                                'table_mappings': multi_table_result['table_mappings'],
-                                'dependency_analysis': multi_table_result['dependency_analysis']
+                                'table_mappings': multi_table_result['table_mappings']
                             }
             
             # 다중 테이블 분석 실패 시
@@ -452,72 +518,84 @@ class Text2SQLTableClassifier:
                 'confidence': 0.0
             }
     
+    def _get_uploadable_columns(self, table_name: str) -> List[str]:
+        """문서 업로드로 저장 가능한 컬럼만 반환"""
+        uploadable_columns = {
+            'branches': ['branch_name', 'headquarters', 'department', 'contact_number', 'status', 'notes'],  # 지점 정보
+            'branch_targets': ['branch_id', 'employee_info_id', 'target_year', 'target_month', 
+                              'target_amount', 'actual_amount', 'achievement_rate'],  # 지점 목표
+            'employee_info': ['name', 'employee_number', 'position', 'branch_id',
+                              'contact_number', 'base_salary', 'incentive_pay', 'avg_monthly_budget', 'latest_evaluation', 
+                              'responsibilities'],  
+            'customers': ['customer_name', 'address', 'doctor_name', 'total_patients', 'customer_grade', 
+                          'notes'],               # 고객 정보
+            'products': ['product_name', 'description', 'category'],                 # 제품 정보
+            'sales_records': ['sale_amount', 'sale_date', 'employee_id', 'customer_id', 'product_id'], # 매출 정보
+            'interaction_logs': ['employee_id', 'customer_id', 'interaction_type', 'summary', 'sentiment', 
+                                'compliance_risk', 'interacted_at'], # 상담 기록
+            'assignment_map': ['employee_id', 'customer_id']   # 담당 정보
+        }
+        return uploadable_columns.get(table_name, [])
+
     def _create_enhanced_llm_prompt(self, columns: List[str], sample_data: List[Dict], 
                                    table_description: str, multi_table_result: Dict[str, Any]) -> str:
-        """다중 테이블 분석을 위한 향상된 LLM 프롬프트 생성"""
+        """향상된 LLM 프롬프트 생성"""
         prompt = f"""
-업로드된 Excel 파일의 컬럼들을 분석하여 어떤 데이터베이스 테이블들에 데이터를 생성할 수 있는지 판단해주세요.
+        업로드된 Excel 파일의 컬럼들을 분석하여 어떤 데이터베이스 테이블들에 어떤 데이터를 생성할 수 있는지 판단해주세요.
+        ## 업로드된 문서 정보:
+        - 컬럼: {', '.join(columns)}
+        - 샘플 데이터: {sample_data[:3] if sample_data else '없음'}
+        - 문서 설명: {table_description if table_description else '없음'}
 
-## 업로드된 컬럼들:
-{', '.join(columns)}
-
-## 샘플 데이터:
-{json.dumps(sample_data[:3], ensure_ascii=False, indent=2) if sample_data else '없음'}
-
-## 문서 설명:
-{table_description if table_description else '없음'}
-
-## 관련성이 높은 테이블들 (벡터 유사도 기반 선별):
-"""
+        ## 관련성이 높은 테이블들 (벡터 유사도 기반 선별):
+        """
         
         for i, table_info in enumerate(multi_table_result['table_mappings'], 1):
-            # 모든 컬럼명을 문자열로 변환
-            table_columns_str = [str(col) for col in table_info['columns']] if table_info['columns'] else []
+            # 문서 업로드로 저장 가능한 컬럼만 필터링
+            uploadable_columns = self._get_uploadable_columns(table_info['table_name'])
+            table_columns_str = [str(col) for col in uploadable_columns] if uploadable_columns else []
             sample_data_str = ', '.join([str(data) for data in table_info.get('sample_data', [])]) if table_info.get('sample_data') else '없음'
             
             prompt += f"""
-{i}. {table_info['table_name']} (유사도: {table_info['similarity']:.3f})
-   - 설명: {table_info['description']}
-   - 테이블 컬럼들: {', '.join(table_columns_str)}
-   - 샘플 데이터: {sample_data_str}
-"""
-        
-        # 의존성 분석 결과도 문자열로 변환
-        primary_tables_str = [str(table) for table in multi_table_result['dependency_analysis']['primary_tables']]
-        dependent_tables_str = [str(table) for table in multi_table_result['dependency_analysis']['dependent_tables']]
-        creation_order_str = [str(table) for table in multi_table_result['dependency_analysis']['creation_order']]
+            {i}. {table_info['table_name']} (유사도: {table_info['similarity']:.3f})
+            - 설명: {table_info['description']}
+            - 테이블 컬럼들: {', '.join(table_columns_str)}
+            - 샘플 데이터: {sample_data_str}
+            """
         
         prompt += f"""
-        ## 테이블 의존성 분석:
-        - 독립 테이블 (먼저 생성 가능): {', '.join(primary_tables_str)}
-        - 의존 테이블 (다른 테이블 필요): {', '.join(dependent_tables_str)}
-        - 권장 생성 순서: {', '.join(creation_order_str)}
 
         ## 컬럼 매핑 가이드라인:
         ### 한국어-영어 매핑 규칙:
+        - 지점/지점명/지사 → branch_name (branches)
+        - 본부/사업부 → headquarters (branches)
+        - 부서/팀 → department (branches)
         - 담당자/직원명 → name (employee_info, sales_records)
         - 사번 → employee_number (employee_info, sales_records) 
         - 거래처/거래처명/고객명/ID → customer_name (customers, sales_records)
         - 품목/제품명 → product_name (products, sales_records)
 
         ### 필수 컬럼 확인:
+        - branches: branch_name, headquarters, department 필수 (나머지는 선택)
+        - branch_targets: 목표/실적 관련 컬럼과 YYYYMM 형식 컬럼 필요 (월별 목표 데이터)
         - employee_info: name, employee_number 필수 (나머지는 선택)
         - customers: customer_name 필수 (나머지는 선택)
         - products: product_name 필수 (나머지는 선택)
         - sales_records: sale_amount, sale_date 필수 (employee_id, customer_id, product_id는 관계 테이블 존재 시 자동 매핑)
-        - interaction_logs: employee_id, customer_id 필수 (관계 테이블 존재 시 자동 매핑)
+        - interaction_logs: employee_id, customer_id, interacted_at 필수 (관계 테이블 존재 시 자동 매핑)
         - assignment_map: employee_id, customer_id 필수 (관계 테이블 존재 시 자동 매핑)
 
         ## 분석 요청사항:
         1. **데이터 생성 가능성 판단**: 업로드된 컬럼으로 각 테이블의 필수 컬럼을 매핑할 수 있는지 확인
         2. **컬럼 매핑 수행**: 업로드 컬럼과 테이블 컬럼 간의 정확한 매핑 관계 설정
-        3. **의존성 고려**: 독립 테이블(employee_info, customers, products)을 우선적으로 선택
-        4. **매출 데이터 우선**: 매출 관련 컬럼이 있으면 반드시 sales_records 테이블을 포함해야 함
-        5. **제외 기준**: 필수 컬럼을 매핑할 수 없는 테이블만 제외 (sales_records는 예외적으로 포함)
-        6. **신뢰도 평가**: 필수 컬럼 매핑 가능성과 의존성 충족도를 기반으로 신뢰도 설정
+        3. **의존성 고려**: 독립 테이블(branches, customers, products)을 우선적으로 선택, employee_info는 branches 생성 후
+        4. **지점 데이터 우선**: 지점/본부/부서 관련 컬럼이 있으면 branches 테이블을 최우선으로 포함
+        5. **목표 데이터 우선**: 목표/실적/달성률 컬럼과 YYYYMM 패턴이 있으면 branch_targets 테이블 포함
+        6. **매출 데이터 우선**: 매출 관련 컬럼이 있으면 반드시 sales_records 테이블을 포함해야 함
+        7. **제외 기준**: 필수 컬럼을 매핑할 수 없는 테이블만 제외 (sales_records, branch_targets는 예외적으로 포함)
+        8. **신뢰도 평가**: 필수 컬럼 매핑 가능성과 의존성 충족도를 기반으로 신뢰도 설정
         7. **월별 매출 데이터 특별 처리**: 
-           - YYYYMM 형식 컬럼(예: 202212, 202301, 202302 등)은 월별 매출 데이터로 인식
-           - 월별 매출 데이터가 있으면 반드시 sales_records 테이블을 포함해야 함
+           - YYYYMM 형식 컬럼(예: 202212, 202301, 202302 등)의 값이 매출 형태의 값(예: 48200, 50000 등)이라면 월별 매출 데이터로 인식
            - 월별 컬럼들은 sale_amount나 sale_date로 매핑하지 말고, 별도로 처리됨
            - sales_records의 column_mapping에는 기본 정보(employee_name, employee_number, customer_name, product_name)만 포함
            - 각 월별 컬럼은 개별 매출 기록으로 변환되어 저장됨
@@ -526,6 +604,16 @@ class Text2SQLTableClassifier:
            - 숫자만으로 구성된 고객명이나 제품명은 유효하지 않으므로 제외
         9. **데이터 정리 규칙**:
            - 제외할 행 예시: "총합계", "합계", "소계", "12345", "99999" 과 같이 기존 고객명 형태와 상이한 행
+
+        **sales_records 테이블 판단 기준:**
+        1. 월별 매출 데이터: 컬럼명이 6자리 숫자(예: 202212, 202301)로 월을 나타내는 경우
+        2. 월별 행 데이터: '월' 컬럼에 6자리 숫자(예: 202212, 202301)가 있는 경우
+        3. 매출 관련 컬럼: '매출', '매출액', '금액', '수량', '방문횟수', '예산', '환자수' 등의 컬럼이 있는 경우
+        
+        **주의사항:**
+        - 월별 컬럼 구조: 사번/담당자/거래처 + 월별 컬럼들
+        - 월별 행 구조: 거래처 + 월 + 매출 관련 컬럼들
+        - 두 구조 모두 sales_records에 적합함
 
         ## 응답 형식:
         {{
@@ -577,29 +665,10 @@ class Text2SQLTableClassifier:
 
 
     async def _insert_data_to_target_table(self, table_data: List[Dict[str, Any]], target_table: str, column_mapping: Dict[str, str], document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
-        """대상 테이블에 데이터 삽입"""
+        """대상 테이블에 데이터 삽입 - 모든 테이블에 processor 사용"""
         try:
-            if target_table == 'employee_info':
-                return await self._execute_with_session(self._insert_employee_info, table_data, column_mapping, document_id, uploader_id)
-            elif target_table in ['customers', 'products', 'sales_records']:
-                return await self._execute_with_session(self._insert_with_processor, table_data, target_table, column_mapping, document_id, uploader_id)
-            elif target_table == 'interaction_logs':
-                return await self._execute_with_session(self._insert_interaction_logs, table_data, column_mapping)
-            elif target_table == 'assignment_map':
-                return await self._execute_with_session(self._insert_assignment_map, table_data, column_mapping)
-            elif target_table == 'documents':
-                return await self._execute_with_session(self._insert_documents, table_data, column_mapping)
-            elif target_table == 'document_relations':
-                return await self._execute_with_session(self._insert_document_relations, table_data, column_mapping)
-            else:
-                return {
-                    'success': False,
-                    'message': f'지원하지 않는 테이블: {target_table}',
-                    'processed_count': 0,
-                    'created_count': 0,
-                    'updated_count': 0,
-                    'skipped_count': 0
-                }
+            # 모든 테이블에 대해 통합 processor 사용
+            return await self._execute_with_session(self._insert_with_processor, table_data, target_table, column_mapping, document_id, uploader_id)
         except Exception as e:
             logger.error(f"데이터 삽입 중 오류: {e}")
             return {
@@ -636,13 +705,16 @@ class Text2SQLTableClassifier:
     
     # === 데이터 삽입 메서드들 ===
     
-    async def _insert_with_processor(self, session: AsyncSession, table_data: List[Dict[str, Any]], table_name: str, column_mapping: Dict[str, str], document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
+    async def _insert_with_processor(self, session: AsyncSession, table_data: List[Dict[str, Any]], table_name: str, column_mapping: Dict[str, Any], document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
         """새로운 통합 처리기를 사용한 데이터 삽입"""
         try:
+            logger.info(f"🔄 {table_name} 테이블 처리기 시작: {len(table_data)}행, 컬럼 매핑: {column_mapping}")
             processor = get_table_processor(table_name, session)
-            return await processor.process_batch(table_data, column_mapping, document_id, uploader_id)
+            result = await processor.process_batch(table_data, column_mapping, document_id, uploader_id)
+            # 중복 로그 제거 - process_batch에서 이미 완료 메시지 출력
+            return result
         except Exception as e:
-            logger.error(f"{table_name} 테이블 처리 중 오류: {e}")
+            logger.error(f"❌ {table_name} 테이블 처리 중 오류: {e}")
             return {
                 'success': False,
                 'message': f'{table_name} 처리 중 오류: {str(e)}',
@@ -652,472 +724,8 @@ class Text2SQLTableClassifier:
                 'skipped_count': 0
             }
     
-    async def _insert_employee_info(self, session: AsyncSession, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str], document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
-        """직원 인사 정보 삽입 (사번으로만 조회)"""
-        processed_count = 0
-        skipped_count = 0
-        created_count = 0
-        updated_count = 0
-        
-        try:
-            for row in table_data:
-                # 사번 추출 (필수)
-                employee_number = None
-                if 'employee_number' in column_mapping and row.get(column_mapping['employee_number']):
-                    employee_number = str(row[column_mapping['employee_number']]).strip()
-                else:
-                    pass
-                
-                if not employee_number or employee_number == 'nan':
-                    skipped_count += 1
-                    continue
-                
-                # 이름 추출
-                name = str(row[column_mapping['name']]).strip() if 'name' in column_mapping and row.get(column_mapping['name']) else None
-                
-                if not name:
-                    skipped_count += 1
-                    continue
-                
-                # 사번으로만 기존 직원 확인
-                result = await session.execute(
-                    select(EmployeeInfo).filter(EmployeeInfo.employee_number == employee_number)
-                )
-                existing_employee = result.scalar_one_or_none()
-                
-                if existing_employee:
-                    # 기존 데이터와 입력 데이터 비교
-                    has_changes = self._compare_employee_data(existing_employee, row, column_mapping)
-                    
-                    if has_changes:
-                        # 변경사항이 있으면 업데이트
-                        self._update_employee_info(existing_employee, row, column_mapping)
-                        updated_count += 1
-                    else:
-                        # 동일한 데이터면 건너뛰기
-                        skipped_count += 1
-                else:
-                    # 새 직원 등록 (자동 생성)
-                    new_employee = self._create_employee_info(row, column_mapping)
-                    new_employee.is_auto_created = True  # 자동 생성 표시
-                    new_employee.approval_status = 'pending'  # 승인 대기 상태
-                    session.add(new_employee)
-                    await session.flush()  # ID 생성
-                    created_count += 1
-                
-                processed_count += 1
-            
-            return {
-                'success': True,
-                'message': f'직원 인사 정보 삽입 완료: {processed_count}명 처리됨, {created_count}명 생성, {updated_count}명 업데이트, {skipped_count}명 건너뜀',
-                'processed_count': processed_count,
-                'created_count': created_count,
-                'updated_count': updated_count,
-                'skipped_count': skipped_count
-            }
-            
-        except SQLAlchemyError as e:
-            logger.error(f"직원 인사 정보 삽입 중 DB 오류: {e}")
-            raise
-    
-    def _create_employee_info(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> EmployeeInfo:
-        """직원 정보 객체 생성"""
-        employee_data = {}
-        
-        # EmployeeInfo 모델의 유효한 필드들
-        valid_fields = {
-            'name', 'employee_number', 'team', 'position', 'business_unit', 'branch',
-            'contact_number', 'base_salary', 'incentive_pay', 'avg_monthly_budget',
-            'latest_evaluation', 'responsibilities', 'is_auto_created', 'approval_status',
-            'approved_by', 'approved_at', 'approval_notes'
-        }
-        
-        # 매핑된 컬럼에서 데이터 추출
-        for db_field, source_column in column_mapping.items():
-            if source_column in row and row[source_column] is not None:
-                value = str(row[source_column]).strip()
-                
-                # 숫자 필드 처리
-                if db_field in ['base_salary', 'incentive_pay', 'avg_monthly_budget']:
-                    try:
-                        value = int(str(value).replace(',', '').replace('₩', '').strip())
-                    except:
-                        value = None
-                
-                # employee_name을 name으로 매핑
-                if db_field == 'employee_name':
-                    employee_data['name'] = value
-                elif db_field in valid_fields:
-                    # EmployeeInfo 모델에 존재하는 필드만 허용
-                    employee_data[db_field] = value
-                else:
-                    # EmployeeInfo 모델에 존재하지 않는 필드는 무시
-                    logger.debug(f"EmployeeInfo에 존재하지 않는 필드 무시: {db_field}")
-        
-        return EmployeeInfo(**employee_data)
-    
-    def _compare_employee_data(self, existing_employee: EmployeeInfo, row: Dict[str, Any], column_mapping: Dict[str, str]) -> bool:
-        """기존 직원 데이터와 입력 데이터 비교하여 변경사항이 있는지 확인"""
-        for db_field, source_column in column_mapping.items():
-            if source_column in row and row[source_column] is not None:
-                new_value = str(row[source_column]).strip()
-                
-                # 숫자 필드 처리
-                if db_field in ['base_salary', 'incentive_pay', 'avg_monthly_budget']:
-                    try:
-                        new_value = int(str(new_value).replace(',', '').replace('₩', '').strip())
-                    except:
-                        new_value = None
-                
-                # 기존 값 가져오기
-                existing_value = getattr(existing_employee, db_field, None)
-                
-                # 문자열 필드는 문자열로 비교
-                if isinstance(existing_value, str):
-                    existing_value = existing_value.strip()
-                
-                # 값이 다르면 변경사항 있음
-                if existing_value != new_value:
-                    logger.debug(f"변경사항 발견 - {db_field}: '{existing_value}' → '{new_value}'")
-                    return True
-        
-        return False
-    
-
-    
-    def _update_employee_info(self, employee: EmployeeInfo, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """직원 정보 업데이트"""
-        for db_field, source_column in column_mapping.items():
-            if source_column in row and row[source_column] is not None:
-                value = str(row[source_column]).strip()
-                
-                # 숫자 필드 처리
-                if db_field in ['base_salary', 'incentive_pay', 'avg_monthly_budget']:
-                    try:
-                        value = int(str(value).replace(',', '').replace('₩', '').strip())
-                    except:
-                        value = None
-                
-                setattr(employee, db_field, value)
-    
-    # _create_customer과 _update_customer 메서드는 더 이상 사용되지 않음 (table_processors.py의 CustomerProcessor로 대체됨)
-    
-    # _insert_sales_records 메서드는 더 이상 사용되지 않음 (table_processors.py의 SalesRecordProcessor로 대체됨)
-    
-    async def _get_or_create_customer_id(self, session: AsyncSession, row: Dict[str, Any], column_mapping: Dict[str, str]) -> int:
-        """고객 ID를 안전하게 가져오거나 생성 (필수 값)"""
-        try:
-            # 고객명 추출
-            customer_name = None
-            if 'customer_name' in column_mapping and row.get(column_mapping['customer_name']):
-                customer_name = str(row[column_mapping['customer_name']]).strip()
-            
-            if not customer_name or customer_name == 'nan':
-                raise ValueError("고객명이 필수입니다.")
-            
-            # 기존 고객 확인 (고객명으로만 조회)
-            result = await session.execute(
-                select(Customer).filter(Customer.customer_name == customer_name)
-            )
-            existing_customer = result.scalar_one_or_none()
-            
-            if existing_customer:
-                return existing_customer.customer_id
-            else:
-                # 새 고객 생성 (CustomerProcessor 사용)
-                from .table_processors import get_table_processor
-                processor = get_table_processor('customers', session)
-                new_customer = await processor.create_new_record(row, column_mapping)
-                new_customer.is_auto_created = True
-                new_customer.approval_status = 'pending'
-                session.add(new_customer)
-                await session.flush()
-                return new_customer.customer_id
-                
-        except Exception as e:
-            logger.error(f"고객 ID 생성 중 오류: {e}")
-            raise ValueError(f"고객 ID 생성 실패: {str(e)}")
-
-    async def _get_or_create_employee_id(self, session: AsyncSession, row: Dict[str, Any], column_mapping: Dict[str, str]) -> int:
-        """직원 ID를 안전하게 가져오거나 생성 (필수 값)"""
-        try:
-            # 사번 추출
-            employee_number = None
-            if 'employee_number' in column_mapping and row.get(column_mapping['employee_number']):
-                employee_number = str(row[column_mapping['employee_number']]).strip()
-            
-            if not employee_number or employee_number == 'nan':
-                raise ValueError("사번이 필수입니다.")
-            
-            # 기존 직원 확인 (사번으로만 조회)
-            result = await session.execute(
-                select(EmployeeInfo).filter(EmployeeInfo.employee_number == employee_number)
-            )
-            existing_employee = result.scalar_one_or_none()
-            
-            if existing_employee:
-                return existing_employee.employee_info_id
-            else:
-                # 새 직원 생성
-                new_employee = self._create_employee_info(row, column_mapping)
-                new_employee.is_auto_created = True
-                new_employee.approval_status = 'pending'
-                session.add(new_employee)
-                await session.flush()
-                return new_employee.employee_info_id
-                
-        except Exception as e:
-            logger.error(f"직원 ID 생성 중 오류: {e}")
-            raise ValueError(f"직원 ID 생성 실패: {str(e)}")
-
-    async def _get_or_create_product_id(self, session: AsyncSession, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
-        """제품 ID를 안전하게 가져오거나 생성 (제품명으로만 조회)"""
-        try:
-            # 제품명 추출
-            product_name = None
-            if 'product_name' in column_mapping and row.get(column_mapping['product_name']):
-                product_name = str(row[column_mapping['product_name']]).strip()
-            
-            if not product_name or product_name == 'nan':
-                return None
-            
-            # 기존 제품 확인 (제품명으로만 조회)
-            result = await session.execute(
-                select(Product).filter(Product.product_name == product_name)
-            )
-            existing_product = result.scalar_one_or_none()
-            
-            if existing_product:
-                return existing_product.product_id
-            else:
-                # 새 제품 생성 (ProductProcessor 사용)
-                from .table_processors import get_table_processor
-                processor = get_table_processor('products', session)
-                new_product = await processor.create_new_record(row, column_mapping)
-                new_product.is_auto_created = True
-                new_product.approval_status = 'pending'
-                session.add(new_product)
-                await session.flush()
-                return new_product.product_id
-                
-        except Exception as e:
-            logger.error(f"제품 ID 생성 중 오류: {e}")
-            return None
-
-    # _insert_products, _create_product, _update_product 메서드는 더 이상 사용되지 않음 (table_processors.py의 ProductProcessor로 대체됨)
-    # _insert_sales_records 메서드도 table_processors.py의 SalesRecordProcessor로 대체됨
-
-    def _insert_interaction_logs(self, session: AsyncSession, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str]) -> Dict[str, Any]:
-        """상호작용 로그 삽입"""
-        processed_count = 0
-        
-        try:
-            for row in table_data:
-                # 날짜 추출
-                interaction_date = None
-                if 'interacted_at' in column_mapping and row.get(column_mapping['interacted_at']):
-                    interaction_date = self._parse_date(str(row[column_mapping['interacted_at']]))
-                
-                if not interaction_date:
-                    interaction_date = datetime.now()
-                
-                # 고객 ID 찾기 (customer_name으로만 조회 - address 정보가 없으므로)
-                customer_id = None
-                if 'customer_name' in column_mapping and row.get(column_mapping['customer_name']):
-                    customer_name = str(row[column_mapping['customer_name']]).strip()
-                    customer = session.query(Customer).filter(
-                        Customer.customer_name == customer_name
-                    ).first()
-                    if customer:
-                        customer_id = customer.customer_id
-                
-                if not customer_id:
-                    logger.warning(f"고객을 찾을 수 없는 행 건너뜀: {row}")
-                    continue
-                
-                # 기본 직원 찾기 (employee_info에서)
-                default_employee_info = session.query(EmployeeInfo).first()
-                if not default_employee_info:
-                    logger.warning("기본 직원이 없어 상호작용 로그를 생성할 수 없습니다.")
-                    continue
-                
-                # 상호작용 로그 생성
-                new_interaction = InteractionLog(
-                    employee_id=default_employee_info.employee_info_id,
-                    customer_id=customer_id,
-                    interaction_type=row.get(column_mapping.get('interaction_type', ''), '방문'),
-                    summary=row.get(column_mapping.get('summary', ''), ''),
-                    sentiment=row.get(column_mapping.get('sentiment', ''), 'neutral'),
-                    compliance_risk=row.get(column_mapping.get('compliance_risk', ''), 'low'),
-                    interacted_at=interaction_date
-                )
-                session.add(new_interaction)
-                processed_count += 1
-            
-            return {
-                'success': True,
-                'message': f'상호작용 로그 삽입 완료: {processed_count}건 처리됨',
-                'processed_count': processed_count
-            }
-            
-        except SQLAlchemyError as e:
-            logger.error(f"상호작용 로그 삽입 중 DB 오류: {e}")
-            raise
-    
-    def _insert_assignment_map(self, session: AsyncSession, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str]) -> Dict[str, Any]:
-        """직원-고객 배정 관계 삽입 (사번으로만 직원 조회)"""
-        processed_count = 0
-        skipped_count = 0
-        
-        try:
-            for row in table_data:
-                # 사번과 고객명 추출
-                employee_number = str(row[column_mapping['employee_id']]).strip() if 'employee_id' in column_mapping and row.get(column_mapping['employee_id']) else None
-                customer_name = str(row[column_mapping['customer_id']]).strip() if 'customer_id' in column_mapping and row.get(column_mapping['customer_id']) else None
-                
-                if not employee_number or not customer_name:
-                    logger.warning(f"사번 또는 고객명을 찾을 수 없는 행 건너뜀: {row}")
-                    skipped_count += 1
-                    continue
-                
-                # 직원 ID 찾기 (사번으로만 조회)
-                employee_info = session.query(EmployeeInfo).filter(
-                    EmployeeInfo.employee_number == employee_number
-                ).first()
-                
-                # 고객 ID 찾기 (customer_name으로만 조회 - address 정보가 없으므로)
-                customer = session.query(Customer).filter(
-                    Customer.customer_name == customer_name
-                ).first()
-                
-                if not employee_info or not customer:
-                    logger.warning(f"직원 또는 고객을 찾을 수 없음: 사번={employee_number}, 고객명={customer_name}")
-                    skipped_count += 1
-                    continue
-                
-                # 기존 배정 관계 확인
-                existing_assignment = session.query(AssignmentMap).filter(
-                    AssignmentMap.employee_id == employee_info.employee_info_id,
-                    AssignmentMap.customer_id == customer.customer_id
-                ).first()
-                
-                if existing_assignment:
-                    logger.info(f"배정 관계가 이미 존재함: {employee_info.name} (사번: {employee_number}) - {customer_name}")
-                    skipped_count += 1
-                else:
-                    # 새 배정 관계 생성
-                    new_assignment = AssignmentMap(
-                        employee_id=employee_info.employee_info_id,
-                        customer_id=customer.customer_id
-                    )
-                    session.add(new_assignment)
-                    logger.info(f"새 배정 관계 생성: {employee_info.name} (사번: {employee_number}) - {customer_name}")
-                
-                processed_count += 1
-            
-            return {
-                'success': True,
-                'message': f'배정 관계 삽입 완료: {processed_count}건 처리됨, {skipped_count}건 건너뜀',
-                'processed_count': processed_count,
-                'skipped_count': skipped_count
-            }
-            
-        except SQLAlchemyError as e:
-            logger.error(f"배정 관계 삽입 중 DB 오류: {e}")
-            raise
-    
-    def _insert_documents(self, session: AsyncSession, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str]) -> Dict[str, Any]:
-        """문서 메타데이터 삽입"""
-        processed_count = 0
-        
-        try:
-            for row in table_data:
-                # 필수 필드 추출
-                doc_title = str(row[column_mapping['doc_title']]).strip() if 'doc_title' in column_mapping and row.get(column_mapping['doc_title']) else None
-                uploader_id = int(row[column_mapping['uploader_id']]) if 'uploader_id' in column_mapping and row.get(column_mapping['uploader_id']) else None
-                file_path = str(row[column_mapping['file_path']]).strip() if 'file_path' in column_mapping and row.get(column_mapping['file_path']) else None
-                
-                if not doc_title or not uploader_id or not file_path:
-                    logger.warning(f"필수 필드가 없는 행 건너뜀: {row}")
-                    continue
-                
-                # 선택 필드 추출
-                doc_type = str(row[column_mapping['doc_type']]).strip() if 'doc_type' in column_mapping and row.get(column_mapping['doc_type']) else None
-                version = str(row[column_mapping['version']]).strip() if 'version' in column_mapping and row.get(column_mapping['version']) else None
-                
-                # 새 문서 생성
-                new_document = Document(
-                    doc_title=doc_title,
-                    uploader_id=uploader_id,
-                    file_path=file_path,
-                    doc_type=doc_type,
-                    version=version
-                )
-                session.add(new_document)
-                logger.info(f"새 문서 메타데이터 생성: {doc_title}")
-                
-                processed_count += 1
-            
-            return {
-                'success': True,
-                'message': f'문서 메타데이터 삽입 완료: {processed_count}건 처리됨',
-                'processed_count': processed_count
-            }
-            
-        except SQLAlchemyError as e:
-            logger.error(f"문서 메타데이터 삽입 중 DB 오류: {e}")
-            raise
-    
-    def _insert_document_relations(self, session: AsyncSession, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str]) -> Dict[str, Any]:
-        """문서 관계 삽입"""
-        processed_count = 0
-        
-        try:
-            for row in table_data:
-                # 필수 필드 추출
-                doc_id = int(row[column_mapping['doc_id']]) if 'doc_id' in column_mapping and row.get(column_mapping['doc_id']) else None
-                related_entity_type = str(row[column_mapping['related_entity_type']]).strip() if 'related_entity_type' in column_mapping and row.get(column_mapping['related_entity_type']) else None
-                related_entity_id = int(row[column_mapping['related_entity_id']]) if 'related_entity_id' in column_mapping and row.get(column_mapping['related_entity_id']) else None
-                
-                if not doc_id or not related_entity_type or not related_entity_id:
-                    logger.warning(f"필수 필드가 없는 행 건너뜀: {row}")
-                    continue
-                
-                # 선택 필드 추출
-                confidence_score = int(row[column_mapping['confidence_score']]) if 'confidence_score' in column_mapping and row.get(column_mapping['confidence_score']) else 100
-                
-                # 기존 관계 확인
-                existing_relation = session.query(DocumentRelation).filter(
-                    DocumentRelation.doc_id == doc_id,
-                    DocumentRelation.related_entity_type == related_entity_type,
-                    DocumentRelation.related_entity_id == related_entity_id
-                ).first()
-                
-                if existing_relation:
-                    logger.info(f"문서 관계가 이미 존재함: doc_id={doc_id}, entity_type={related_entity_type}, entity_id={related_entity_id}")
-                    continue
-                
-                # 새 문서 관계 생성
-                new_relation = DocumentRelation(
-                    doc_id=doc_id,
-                    related_entity_type=related_entity_type,
-                    related_entity_id=related_entity_id,
-                    confidence_score=confidence_score
-                )
-                session.add(new_relation)
-                logger.info(f"새 문서 관계 생성: doc_id={doc_id}, entity_type={related_entity_type}, entity_id={related_entity_id}")
-                
-                processed_count += 1
-            
-            return {
-                'success': True,
-                'message': f'문서 관계 삽입 완료: {processed_count}건 처리됨',
-                'processed_count': processed_count
-            }
-            
-        except SQLAlchemyError as e:
-            logger.error(f"문서 관계 삽입 중 DB 오류: {e}")
-            raise
+    # 모든 개별 insert 메서드들은 _insert_with_processor로 통합되어 더 이상 필요하지 않음
+    # table_processors.py의 각 Processor 클래스가 처리를 담당
     
 
     
@@ -1130,6 +738,7 @@ class Text2SQLTableClassifier:
         
         # 테이블별 단위 매핑
         table_units = {
+            'branches': '개',
             'employee_info': '명',
             'customers': '건', 
             'products': '개',
@@ -1157,8 +766,9 @@ class Text2SQLTableClassifier:
             updated = result.get('updated_count', 0)
             skipped = result.get('skipped_count', 0)
             
+            # 모든 테이블을 요약에 포함 (processed_count가 0이어도)
+            summary_parts = []
             if processed > 0:
-                summary_parts = []
                 if created > 0:
                     summary_parts.append(f"{created}{unit} 생성")
                 if updated > 0:
@@ -1172,6 +782,11 @@ class Text2SQLTableClassifier:
                         table_summaries.append(f"{table_name}({created}{unit} 생성 - {processed}행에서 생성)")
                     else:
                         table_summaries.append(f"{table_name}({', '.join(summary_parts)})")
+                else:
+                    table_summaries.append(f"{table_name}({processed}행 처리됨)")
+            else:
+                # processed_count가 0인 경우도 표시
+                table_summaries.append(f"{table_name}(0행 처리됨)")
         
         # 통합 요약 로그 출력
         if table_summaries:

@@ -12,6 +12,7 @@ from app.routers.chat_history_router import router as chat_history_router
 from app.routers.dashboard_router import router as dashboard_router
 from app.routers.approval_router import router as approval_router
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.services.external.opensearch_service import initialize_search_pipeline
 
 # 로깅 설정 - 터미널에서 모든 로그 보이도록
@@ -97,6 +98,15 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 FastAPI 앱 종료 중...")
 
 app = FastAPI(lifespan=lifespan)
+
+# CORS 미들웨어 추가 - 모든 도메인에서 접근 허용
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(document_router, prefix="", tags=["Documents"])
 app.include_router(user_router, prefix="/user", tags=["User"])

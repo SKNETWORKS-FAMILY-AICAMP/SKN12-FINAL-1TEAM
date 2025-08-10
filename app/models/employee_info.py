@@ -16,10 +16,8 @@ class EmployeeInfo(Base):
     employee_number = Column(String, unique=True)  # 사번 (고유값, 동명이인 구분용)
     
     # 조직 정보
-    team = Column(String)  # 소속 팀명 (예: 영업팀, 마케팅팀)
     position = Column(String)  # 직급 (예: 대리, 과장, 차장)
-    business_unit = Column(String)  # 사업부 (예: 제약사업부, 의료사업부)
-    branch = Column(String)  # 지점/지사명
+    branch_id = Column(Integer, ForeignKey("branches.branch_id"), nullable=True)  # 지점 ID (외래키)
     
     # 연락처 정보
     contact_number = Column(String)  # 연락처 전화번호
@@ -48,6 +46,7 @@ class EmployeeInfo(Base):
     
     # 관계 설정 (선택적)
     employee = relationship("Employee", back_populates="employee_info", foreign_keys=[employee_id])
+    branch = relationship("Branch", backref="employees")  # 지점과의 관계
     
     def __repr__(self):
         return f"<EmployeeInfo(name='{self.name}', team='{self.team}', position='{self.position}')>" 

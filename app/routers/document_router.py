@@ -40,6 +40,10 @@ except ImportError:
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# 상수 정의
+MAX_FILE_SIZE_MB = 10
+TRANSACTION_ISOLATION_LEVEL = "SERIALIZABLE"
+
 class TableUploadResult(BaseModel):
     doc_title: str
     doc_type: str
@@ -191,6 +195,44 @@ FILE_PROCESSORS = {
     '.pdf': _extract_pdf_data,
 }
 
+def validate_file_size(file: UploadFile, max_size_mb: int = MAX_FILE_SIZE_MB) -> bytes:
+    """
+    파일 크기를 검증하고 파일 바이트를 반환합니다.
+    
+    Args:
+        file: 업로드된 파일
+        max_size_mb: 최대 파일 크기 (MB)
+        
+    Returns:
+        bytes: 파일 바이트 데이터
+        
+    Raises:
+        HTTPException: 파일 크기 초과 시
+    """
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    file.file.seek(0)
+    
+    if file_size > max_size_mb * 1024 * 1024:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"파일 크기가 너무 큽니다. 최대 {max_size_mb}MB까지 업로드 가능합니다."
+        )
+    
+    return file.file.read()
+
+def extract_doc_title(filename: str) -> str:
+    """
+    파일명에서 문서 제목을 추출합니다.
+    
+    Args:
+        filename: 파일명
+        
+    Returns:
+        str: 문서 제목 (확장자 제외)
+    """
+    return filename.rsplit('.', 1)[0] if '.' in filename else filename
+
 def extract_text_and_table(file_bytes: bytes, filename: str):
     """
     파일 확장자에 따라 텍스트/테이블 데이터를 추출한다.
@@ -227,6 +269,173 @@ def extract_text_and_table(file_bytes: bytes, filename: str):
     
     return text, table_data, is_table_file
 
+async def process_table_document(
+    file_bytes: bytes,
+    filename: str,
+    doc_title: str,
+    table_data: list,
+    uploader_id: int,
+    version: str = None,
+    session: Session = None
+) -> TableUploadResult:
+    """
+    테이블 문서를 처리합니다.
+    
+    Args:
+        file_bytes: 파일 바이트 데이터
+        filename: 파일명
+        doc_title: 문서 제목
+        table_data: 테이블 데이터
+        uploader_id: 업로더 ID
+        version: 문서 버전
+        session: 데이터베이스 세션
+        
+    Returns:
+        TableUploadResult: 테이블 업로드 결과
+    """
+    logger.info(f"테이블 문서 Text2SQL 처리 시작: {filename}")
+    
+    # Text2SQL 분류기로 처리
+    result = await text2sql_classifier.classify_table_with_text2sql(
+        table_data=table_data,
+        table_description=doc_title,
+        document_id=None,
+        uploader_id=uploader_id
+    )
+    
+    if not result['success']:
+        logger.error(f"Text2SQL 분류 실패: {result['message']}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"문서 분류 중 오류가 발생했습니다: {result['message']}"
+        )
+    
+    logger.info(f"Text2SQL 분류 완료: {result['message']}")
+    logger.info(f"분류 결과: {filename} -> {result['target_table']} (신뢰도: {result['confidence']:.2f})")
+    
+    # S3에 파일 저장
+    file_path = upload_file(file_bytes, filename, "application/octet-stream")
+    
+    # 문서 메타데이터 생성
+    meta = DocumentBase(
+        doc_title=doc_title,
+        doc_type=f"text2sql_{result['target_table']}",
+        file_path=file_path,
+        uploader_id=uploader_id,
+        version=version,
+        created_at=datetime.now()
+    )
+    
+    # 세션이 제공된 경우 세션 사용, 아니면 새로 저장
+    if session:
+        db_doc = Document(**meta.dict())
+        session.add(db_doc)
+        session.flush()
+    else:
+        db_doc = save_document(meta)
+    
+    # 문서 타입 업데이트
+    try:
+        if session:
+            await DocumentTypeUpdater.update_after_success(db_doc, result, session)
+        else:
+            from app.services.utils.db import create_db_session
+            with create_db_session() as update_session:
+                doc_to_update = get_document_by_id(db_doc.doc_id)
+                if doc_to_update:
+                    await DocumentTypeUpdater.update_after_success(doc_to_update, result, update_session)
+                    update_session.commit()
+        logger.info(f"문서 타입 업데이트 완료: {db_doc.doc_id}")
+    except Exception as e:
+        logger.error(f"문서 타입 업데이트 실패: {e}")
+    
+    logger.info(f"테이블 문서 업로드 완료: {db_doc.doc_id}")
+    
+    return TableUploadResult(
+        doc_title=doc_title,
+        doc_type=f"text2sql_{result['target_table']}",
+        uploader_id=uploader_id,
+        version=version,
+        created_at=datetime.now(),
+        message=f"{result['message']} (문서 ID: {db_doc.doc_id})",
+        analysis={
+            'target_table': result['target_table'],
+            'confidence': result['confidence'],
+            'reasoning': result.get('reasoning', ''),
+            'column_mapping': result.get('column_mapping', {}),
+            'doc_id': db_doc.doc_id
+        }
+    )
+
+async def process_text_document(
+    file_bytes: bytes,
+    filename: str,
+    doc_title: str,
+    text: str,
+    file_extension: str,
+    uploader_id: int,
+    version: str = None,
+    session: Session = None
+) -> DocumentInfo:
+    """
+    텍스트 문서를 처리합니다.
+    
+    Args:
+        file_bytes: 파일 바이트 데이터
+        filename: 파일명
+        doc_title: 문서 제목
+        text: 추출된 텍스트
+        file_extension: 파일 확장자
+        uploader_id: 업로더 ID
+        version: 문서 버전
+        session: 데이터베이스 세션
+        
+    Returns:
+        DocumentInfo: 문서 정보
+    """
+    logger.info(f"텍스트 문서 처리 시작: {filename}")
+    
+    # 문서 타입 분석
+    analyzed_doc_type = document_analyzer.analyze_document(text, filename)
+    logger.info(f"문서 분석 결과: {filename} -> {analyzed_doc_type}")
+    
+    # S3 업로드
+    file_path = upload_file(file_bytes, filename, "application/octet-stream")
+    
+    # 문서 메타데이터 생성
+    meta = DocumentBase(
+        doc_title=doc_title,
+        doc_type=analyzed_doc_type,
+        file_path=file_path,
+        uploader_id=uploader_id,
+        version=version,
+        created_at=datetime.now()
+    )
+    
+    # 세션이 제공된 경우 세션 사용, 아니면 새로 저장
+    if session:
+        db_doc = Document(**meta.dict())
+        session.add(db_doc)
+        session.flush()
+    else:
+        db_doc = save_document(meta)
+    
+    # OpenSearch 인덱싱 (텍스트 문서만)
+    if file_extension in document_analyzer.supported_extensions["text"]:
+        chunking_type = document_analyzer.get_chunking_type(analyzed_doc_type)
+        index_document_chunks(
+            doc_id=db_doc.doc_id,
+            doc_title=doc_title,
+            file_name=filename,
+            text=text,
+            document_type=chunking_type
+        )
+        logger.info(f"텍스트 문서 업로드 완료: {db_doc.doc_id} (타입: {analyzed_doc_type}, 청킹: {chunking_type})")
+    else:
+        logger.info(f"문서 업로드 완료: {db_doc.doc_id} (타입: {analyzed_doc_type})")
+    
+    return DocumentInfo.model_validate(db_doc)
+
 async def process_single_document(file: UploadFile, uploader_id: int, version: str = None) -> Union[DocumentInfo, TableUploadResult]:
     """
     단일 문서를 처리하는 공통 함수
@@ -238,137 +447,9 @@ async def process_single_document(file: UploadFile, uploader_id: int, version: s
         
     Returns:
         DocumentInfo 또는 TableUploadResult: 처리 결과
-        
-    Raises:
-        HTTPException: 파일 크기 초과, 지원하지 않는 형식, 처리 오류 등
     """
-    # 파일 크기 검증 (10MB 제한)
-    file.file.seek(0, 2)
-    file_size = file.file.tell()
-    file.file.seek(0)
-    
-    if file_size > 10 * 1024 * 1024:  # 10MB
-        raise HTTPException(status_code=400, detail="파일 크기가 너무 큽니다. 최대 10MB까지 업로드 가능합니다.")
-    
-    file_bytes = file.file.read()
-    file_extension = document_analyzer._get_file_extension(file.filename)
-    text, table_data, is_table_file = extract_text_and_table(file_bytes, file.filename)
-    
-    # 문서 제목이 없으면 파일명 사용 (확장자 제외)
-    doc_title = file.filename.rsplit('.', 1)[0] if '.' in file.filename else file.filename
-    
-    # 테이블 문서 처리 - Text2SQL 분류기 사용
-    if is_table_file and table_data:
-        logger.info(f"테이블 문서 Text2SQL 처리 시작: {file.filename}")
-        
-        # 1. Text2SQL 분류기로 처리 (저장 전에 먼저 분류)
-        try:
-            result = await text2sql_classifier.classify_table_with_text2sql(
-                table_data=table_data,
-                table_description=doc_title,
-                document_id=None,  # 아직 저장하지 않았으므로 None
-                uploader_id=uploader_id
-            )
-            
-            if result['success']:
-                logger.info(f"Text2SQL 분류 완료: {result['message']}")
-                logger.info(f"분류 결과: {file.filename} -> {result['target_table']} (신뢰도: {result['confidence']:.2f})")
-                
-                # 2. 성공 시에만 S3에 파일 저장
-                file_path = upload_file(file_bytes, file.filename, file.content_type)
-                
-                # 3. 성공 시에만 PostgreSQL에 메타데이터 저장
-                meta = DocumentBase(
-                    doc_title=doc_title,
-                    doc_type=f"text2sql_{result['target_table']}",  # 최종 타입으로 저장
-                    file_path=file_path,
-                    uploader_id=uploader_id,
-                    version=version,
-                    created_at=datetime.now()
-                )
-                doc = save_document(meta)
-                
-                # 4. 문서 타입 업데이트 (처리 상태 정보 추가)
-                try:
-                    # 별도 세션으로 문서 업데이트
-                    from app.services.utils.db import create_db_session
-                    with create_db_session() as update_session:
-                        # 문서를 다시 조회하여 업데이트
-                        from app.services.external.postgres_service import get_document_by_id
-                        doc_to_update = get_document_by_id(doc.doc_id)
-                        if doc_to_update:
-                            await DocumentTypeUpdater.update_after_success(doc_to_update, result, update_session)
-                            update_session.commit()
-                            logger.info(f"문서 타입 업데이트 완료: {doc.doc_id} -> {doc_to_update.doc_type}")
-                        else:
-                            logger.error(f"업데이트할 문서를 찾을 수 없음: {doc.doc_id}")
-                except Exception as e:
-                    logger.error(f"문서 타입 업데이트 실패: {e}")
-                    # 업데이트 실패해도 계속 진행
-                
-                logger.info(f"테이블 문서 업로드 완료: {doc.doc_id} (타입: {result['target_table']})")
-                
-                return TableUploadResult(
-                    doc_title=doc_title,
-                    doc_type=f"text2sql_{result['target_table']}",
-                    uploader_id=uploader_id,
-                    version=version,
-                    created_at=datetime.now(),
-                    message=f"{result['message']} (문서 ID: {doc.doc_id})",
-                    analysis={
-                        'target_table': result['target_table'],
-                        'confidence': result['confidence'],
-                        'reasoning': result.get('reasoning', ''),
-                        'column_mapping': result.get('column_mapping', {}),
-                        'doc_id': doc.doc_id
-                    }
-                )
-            else:
-                logger.error(f"Text2SQL 분류 실패: {result['message']}")
-                # 실패 시에는 아무것도 저장하지 않고 바로 예외 발생
-                raise HTTPException(status_code=500, detail=f"문서 분류 중 오류가 발생했습니다: {result['message']}")
-                
-        except Exception as e:
-            logger.error(f"Text2SQL 분류기 실행 실패: {e}")
-            raise HTTPException(status_code=500, detail=f"문서 처리 중 오류가 발생했습니다: {str(e)}")
-    
-    # 텍스트 문서 처리
-    else:
-        logger.info(f"텍스트 문서 처리 시작: {file.filename}")
-        
-        # 문서 타입 분석 (텍스트 문서용)
-        analyzed_doc_type = document_analyzer.analyze_document(text, file.filename)
-        logger.info(f"문서 분석 결과: {file.filename} -> {analyzed_doc_type}")
-        
-        # S3 업로드
-        file_path = upload_file(file_bytes, file.filename, file.content_type)
-        
-        # 문서 메타데이터 저장
-        meta = DocumentBase(
-            doc_title=doc_title,
-            doc_type=analyzed_doc_type,
-            file_path=file_path,
-            uploader_id=uploader_id,
-            version=version,
-            created_at=datetime.now()
-        )
-        doc = save_document(meta)
-        
-        # OpenSearch 인덱싱 (텍스트 문서만)
-        if file_extension in document_analyzer.supported_extensions["text"]:
-            chunking_type = document_analyzer.get_chunking_type(analyzed_doc_type)
-            index_document_chunks(
-                doc_id=doc.doc_id,
-                doc_title=doc_title,
-                file_name=file.filename,
-                text=text,
-                document_type=chunking_type
-            )
-            logger.info(f"텍스트 문서 업로드 완료: {doc.doc_id} (타입: {analyzed_doc_type}, 청킹: {chunking_type})")
-        else:
-            logger.info(f"문서 업로드 완료: {doc.doc_id} (타입: {analyzed_doc_type})")
-        
-        return DocumentInfo.model_validate(doc)
+    # 세션 없이 호출 (기본 동작)
+    return await process_single_document_with_session(file, uploader_id, version, None)
 
 
 @router.post("/documents/upload", response_model=Union[DocumentInfo, TableUploadResult])
@@ -428,7 +509,7 @@ async def upload_documents_batch(files: List[UploadFile] = File(...), uploader_i
             with create_db_session() as session:
                 try:
                     # 트랜잭션 격리 레벨 설정
-                    session.execute(text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"))
+                    session.execute(text(f"SET TRANSACTION ISOLATION LEVEL {TRANSACTION_ISOLATION_LEVEL}"))
                     
                     # 파일 처리 (세션 전달)
                     result = await process_single_document_with_session(file, uploader_id, version, session)
@@ -442,14 +523,19 @@ async def upload_documents_batch(files: List[UploadFile] = File(...), uploader_i
                     session.rollback()
                     raise e
                     
+        except HTTPException as e:
+            # HTTP 예외는 상세 메시지 보존
+            errors.append({"filename": file.filename, "error": e.detail})
+            failed_uploads += 1
+            logger.error(f"배치 업로드 중 오류 ({file.filename}): {e.detail}")
         except Exception as e:
+            # 기타 예외
             error_msg = f"문서 업로드 실패: {str(e)}"
             errors.append({"filename": file.filename, "error": error_msg})
             failed_uploads += 1
             logger.error(f"배치 업로드 중 오류 ({file.filename}): {e}")
-            
-            # 개별 파일 실패 시에도 계속 진행
-            continue
+        
+        # 개별 파일 실패 시에도 계속 진행
     
     logger.info(f"배치 업로드 완료: 성공 {successful_uploads}/{total_files}, 실패 {failed_uploads}")
     
@@ -464,125 +550,50 @@ async def upload_documents_batch(files: List[UploadFile] = File(...), uploader_i
 async def process_single_document_with_session(file: UploadFile, uploader_id: int, version: str = None, session: Session = None) -> Union[DocumentInfo, TableUploadResult]:
     """
     세션을 받아서 단일 문서를 처리하는 함수 (트랜잭션 격리용)
+    
+    Args:
+        file: 업로드할 파일
+        uploader_id: 업로더 ID
+        version: 문서 버전
+        session: 데이터베이스 세션 (옵션)
+        
+    Returns:
+        DocumentInfo 또는 TableUploadResult: 처리 결과
     """
-    # 기존 process_single_document 로직을 세션 기반으로 수정
-    file.file.seek(0, 2)
-    file_size = file.file.tell()
-    file.file.seek(0)
+    # 파일 크기 검증
+    file_bytes = validate_file_size(file)
     
-    if file_size > 10 * 1024 * 1024:  # 10MB
-        raise HTTPException(status_code=400, detail="파일 크기가 너무 큽니다. 최대 10MB까지 업로드 가능합니다.")
-    
-    file_bytes = file.file.read()
+    # 파일 분석
     file_extension = document_analyzer._get_file_extension(file.filename)
     text, table_data, is_table_file = extract_text_and_table(file_bytes, file.filename)
     
-    doc_title = file.filename.rsplit('.', 1)[0] if '.' in file.filename else file.filename
+    # 문서 제목 추출
+    doc_title = extract_doc_title(file.filename)
     
     # 테이블 문서 처리
     if is_table_file and table_data:
-        logger.info(f"테이블 문서 Text2SQL 처리 시작: {file.filename}")
-        
-        # Text2SQL 분류기로 처리 (저장 전에 먼저 분류)
-        try:
-            result = await text2sql_classifier.classify_table_with_text2sql(
-                table_data=table_data,
-                table_description=doc_title,
-                document_id=None,  # 아직 저장하지 않았으므로 None
-                uploader_id=uploader_id
-            )
-            
-            if result['success']:
-                logger.info(f"Text2SQL 분류 완료: {result['message']}")
-                
-                # 성공 시에만 S3에 파일 저장
-                file_path = upload_file(file_bytes, file.filename, file.content_type)
-                
-                # 성공 시에만 PostgreSQL에 메타데이터 저장 (세션 사용)
-                meta = DocumentBase(
-                    doc_title=doc_title,
-                    doc_type=f"text2sql_{result['target_table']}",  # 최종 타입으로 저장
-                    file_path=file_path,
-                    uploader_id=uploader_id,
-                    version=version,
-                    created_at=datetime.now()
-                )
-                
-                # 세션을 사용하여 문서 저장
-                db_doc = Document(**meta.dict())
-                session.add(db_doc)
-                session.flush()  # ID 생성을 위해 flush
-                
-                # 문서 타입 업데이트 (처리 상태 정보 추가)
-                try:
-                    await DocumentTypeUpdater.update_after_success(db_doc, result, session)
-                    logger.info(f"문서 타입 업데이트 완료: {db_doc.doc_id} -> {db_doc.doc_type}")
-                except Exception as e:
-                    logger.error(f"문서 타입 업데이트 실패: {e}")
-                    # 업데이트 실패해도 계속 진행
-                
-                return TableUploadResult(
-                    doc_title=doc_title,
-                    doc_type=f"text2sql_{result['target_table']}",
-                    uploader_id=uploader_id,
-                    version=version,
-                    created_at=datetime.now(),
-                    message=f"{result['message']} (문서 ID: {db_doc.doc_id})",
-                    analysis={
-                        'target_table': result['target_table'],
-                        'confidence': result['confidence'],
-                        'reasoning': result.get('reasoning', ''),
-                        'column_mapping': result.get('column_mapping', {}),
-                        'doc_id': db_doc.doc_id
-                    }
-                )
-            else:
-                logger.error(f"Text2SQL 분류 실패: {result['message']}")
-                # 실패 시에는 아무것도 저장하지 않고 바로 예외 발생
-                raise HTTPException(status_code=500, detail=f"문서 분류 중 오류가 발생했습니다: {result['message']}")
-                
-        except Exception as e:
-            logger.error(f"Text2SQL 분류기 실행 실패: {e}")
-            raise HTTPException(status_code=500, detail=f"문서 처리 중 오류가 발생했습니다: {str(e)}")
+        return await process_table_document(
+            file_bytes=file_bytes,
+            filename=file.filename,
+            doc_title=doc_title,
+            table_data=table_data,
+            uploader_id=uploader_id,
+            version=version,
+            session=session
+        )
     
     # 텍스트 문서 처리
     else:
-        logger.info(f"텍스트 문서 처리 시작: {file.filename}")
-        
-        analyzed_doc_type = document_analyzer.analyze_document(text, file.filename)
-        logger.info(f"문서 분석 결과: {file.filename} -> {analyzed_doc_type}")
-        
-        file_path = upload_file(file_bytes, file.filename, file.content_type)
-        
-        meta = DocumentBase(
+        return await process_text_document(
+            file_bytes=file_bytes,
+            filename=file.filename,
             doc_title=doc_title,
-            doc_type=analyzed_doc_type,
-            file_path=file_path,
+            text=text,
+            file_extension=file_extension,
             uploader_id=uploader_id,
             version=version,
-            created_at=datetime.now()
+            session=session
         )
-        
-        # 세션을 사용하여 문서 저장
-        db_doc = Document(**meta.dict())
-        session.add(db_doc)
-        session.flush()
-        
-        # OpenSearch 인덱싱 (텍스트 문서만)
-        if file_extension in document_analyzer.supported_extensions["text"]:
-            chunking_type = document_analyzer.get_chunking_type(analyzed_doc_type)
-            index_document_chunks(
-                doc_id=db_doc.doc_id,
-                doc_title=doc_title,
-                file_name=file.filename,
-                text=text,
-                document_type=chunking_type
-            )
-            logger.info(f"텍스트 문서 업로드 완료: {db_doc.doc_id} (타입: {analyzed_doc_type}, 청킹: {chunking_type})")
-        else:
-            logger.info(f"문서 업로드 완료: {db_doc.doc_id} (타입: {analyzed_doc_type})")
-        
-        return DocumentInfo.model_validate(db_doc)
 
 @router.get("/documents/", response_model=List[DocumentInfo])
 def list_documents(user=Depends(get_current_user)):

@@ -1,9 +1,15 @@
 {
+  "branches": {
+    "description": "지점 정보 테이블. 본부, 부서, 지점명 등 조직 구조를 관리합니다. employee_info 테이블의 선행 테이블로 먼저 생성되어야 합니다. 지점별 실적 관리 및 조직 체계의 기초 데이터입니다. 주요 컬럼: branch_name(지점명, 지사명, 필수), headquarters(본부, 사업부, 필수), department(부서, 팀, 필수), contact_number(연락처), status(운영 상태), notes(비고). 필수 컬럼: branch_name, headquarters, department.",
+    "columns": ["branch_name", "headquarters", "department", "contact_number", "status", "notes"],
+    "required_columns": ["branch_name", "headquarters", "department"],
+    "sample_data": ["강남지점", "서울본부", "영업1팀", "02-1234-5678", "active", "주력 지점"]
+  },
   "employee_info": {
-    "description": "직원 기본정보 테이블. 담당자, 직원명, 사번을 포함한 핵심 인사 정보를 관리합니다. 실적자료의 담당자 정보, 사번 정보가 이 테이블에 저장됩니다. 매출실적, 영업활동의 기초가 되는 담당자 마스터 데이터입니다. sales_records, interaction_logs, assignment_map 테이블의 선행 테이블로 먼저 생성되어야 합니다. 주요 컬럼: name(직원명, 담당자명, 필수), employee_number(사번, 직원번호, 고유값), team(소속 팀), position(직급), business_unit(사업부), branch(지점), contact_number(연락처), base_salary(기본급), incentive_pay(인센티브), avg_monthly_budget(월 평균 예산), latest_evaluation(최근 평가), responsibilities(책임업무), is_auto_created(자동 생성 여부), approval_status(승인 상태). 필수 컬럼: name.",
-    "columns": ["name", "employee_number", "team", "position", "business_unit", "branch", "contact_number", "base_salary", "incentive_pay", "avg_monthly_budget", "latest_evaluation", "responsibilities", "is_auto_created", "approval_status"],
-    "required_columns": ["name"],
-    "sample_data": ["김철수", "1004", "영업팀", "대리", "제약사업부", "강남지점", "010-1234-5678", "3000000", "500000", "1000000", "A", "고객 관리", true, "pending"]
+    "description": "직원 기본정보 테이블. 담당자, 직원명, 사번을 포함한 핵심 인사 정보를 관리합니다. branches 테이블과 연결되어 지점 정보를 참조합니다. 실적자료의 담당자 정보, 사번 정보가 이 테이블에 저장됩니다. 매출실적, 영업활동의 기초가 되는 담당자 마스터 데이터입니다. sales_records, interaction_logs, assignment_map 테이블의 선행 테이블로 먼저 생성되어야 합니다. 주요 컬럼: name(직원명, 담당자명, 필수), employee_number(사번, 직원번호, 고유값), position(직급), branch_id(지점 ID), contact_number(연락처), base_salary(기본급), incentive_pay(인센티브), avg_monthly_budget(월 평균 예산), latest_evaluation(최근 평가), responsibilities(책임업무), is_auto_created(자동 생성 여부), approval_status(승인 상태). 필수 컬럼: name, employee_number.",
+    "columns": ["name", "employee_number", "position", "branch_id", "contact_number", "base_salary", "incentive_pay", "avg_monthly_budget", "latest_evaluation", "responsibilities", "is_auto_created", "approval_status"],
+    "required_columns": ["name", "employee_number"],
+    "sample_data": ["김철수", "1004", "대리", "1", "010-1234-5678", "3000000", "500000", "1000000", "A", "고객 관리", true, "pending"]
   },
   "customers": {
     "description": "거래처 고객정보 테이블. 거래처명, ID, 의료기관 정보를 관리합니다. 실적자료의 거래처 정보, 고객 ID가 이 테이블에 저장됩니다. 매출실적의 기초가 되는 거래처 마스터 데이터입니다. sales_records, interaction_logs, assignment_map 테이블의 선행 테이블로 먼저 생성되어야 합니다. 주요 컬럼: customer_name(고객명, 거래처명, 기관명, 필수), address(고객 주소), doctor_name(담당 의사명), total_patients(총 환자 수), customer_grade(고객 등급 A/B/C/VIP), notes(고객 관련 특이사항), is_auto_created(자동 생성 여부), approval_status(승인 상태), is_deleted(논리적 삭제 상태). 필수 컬럼: customer_name.",
@@ -34,5 +40,11 @@
     "columns": ["employee_id", "customer_id"],
     "required_columns": ["employee_id", "customer_id"],
     "sample_data": ["1", "1"]
+  },
+  "branch_targets": {
+    "description": "지점별 목표 및 실적 테이블. 지점별, 직원별 월간 목표와 실적을 관리합니다. 목표, 실적, 달성률 데이터가 포함된 문서에서 자동으로 추출됩니다. YYYYMM 형식의 월별 컬럼(202312, 202401 등)이 있는 목표 데이터에 최적화되어 있습니다. branches, employee_info 테이블에 의존합니다. 주요 컬럼: branch_id(지점 ID), employee_info_id(직원 ID), target_year(목표 년도), target_month(목표 월), target_amount(목표 금액), actual_amount(실적 금액), achievement_rate(달성률), notes(비고). 월별 컬럼 패턴이나 목표/실적 관련 컬럼이 있으면 자동으로 인식됩니다.",
+    "columns": ["branch_id", "employee_info_id", "target_year", "target_month", "target_amount", "actual_amount", "achievement_rate", "notes"],
+    "required_columns": [],
+    "sample_data": ["1", "1", "2024", "1", "10000000", "8500000", "85.0", "1월 실적"]
   }
 } 

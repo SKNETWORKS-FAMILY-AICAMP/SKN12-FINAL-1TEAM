@@ -202,15 +202,6 @@ class VectorSimilarityService:
     
     async def find_relevant_tables(self, session: Session, columns: List[str], 
                                  similarity_threshold: float = 0.3) -> List[Dict[str, Any]]:
-        """업로드된 컬럼과 관련된 테이블들을 찾아서 반환
-
-        변경: 컬럼들을 하나의 문자열로 합쳐 한 번 검색하던 기존 방식을 주석 처리하고,
-        컬럼별 임베딩 → 개별 벡터 검색 → 테이블 단위로 점수 집계하는 방식으로 수정.
-
-        집계 점수: boost * (0.6*max_sim + 0.3*mean_top3 + 0.1*joint_sim)
-        - joint_sim: 모든 컬럼을 합친 문장 임베딩으로 검색한 유사도(테이블별 top-1)
-        - LIMIT로 상위 K(기본 10)만 뽑고, 임계치 필터링은 애플리케이션에서 수행
-        """
         try:
             # 모든 컬럼명을 문자열로 변환 (안전장치)
             columns = self._ensure_string_list(columns)
@@ -311,19 +302,12 @@ class VectorSimilarityService:
                     'columns': table_columns,
                     'sample_data': table_info.get('sample_data', [])
                 })
-            
-            # 4단계: 매핑 결과도 유사도 기준으로 정렬
-            table_mappings.sort(key=lambda x: x['similarity'], reverse=True)
-            final_mappings = [(t['table_name'], f"{t['similarity']:.3f}") for t in table_mappings]
-            logger.info(f"📊 최종 테이블 매핑 순서: {final_mappings}")
-            
-            # 3단계: 테이블 간 의존성 분석
-            dependency_analysis = self._analyze_table_dependencies(table_mappings)
-            
+
+            logger.info(f"📊 최종 테이블 매핑 순서: {table_mappings}")
+
             return {
                 'success': True,
                 'table_mappings': table_mappings,
-                'dependency_analysis': dependency_analysis,
                 'total_tables': len(table_mappings)
             }
             
@@ -339,37 +323,6 @@ class VectorSimilarityService:
                                           target_columns: List[str]) -> Dict[str, str]:
         """특정 테이블에 대한 컬럼 매핑 찾기 (통합된 메서드 호출)"""
         return await self.find_column_mapping(session, table_name, uploaded_columns, target_columns)
-    
-    def _analyze_table_dependencies(self, table_mappings: List[Dict]) -> Dict[str, Any]:
-        """테이블 간 의존성 분석"""
-        dependencies = {
-            'primary_tables': [],  # 독립적으로 생성 가능한 테이블
-            'dependent_tables': [],  # 다른 테이블에 의존하는 테이블
-            'creation_order': []  # 생성 순서 제안
-        }
-        
-        # 테이블 의존성 정의
-        table_deps = {
-            'sales_records': ['employee_info', 'customers', 'products'],
-            'interaction_logs': ['employee_info', 'customers'],
-            'assignment_map': ['employee_info', 'customers']
-        }
-        
-        # 독립 테이블들
-        independent_tables = ['employee_info', 'customers', 'products']
-        
-        for mapping in table_mappings:
-            table_name = mapping['table_name']
-            
-            if table_name in independent_tables:
-                dependencies['primary_tables'].append(table_name)
-            else:
-                dependencies['dependent_tables'].append(table_name)
-        
-        # 생성 순서 제안
-        dependencies['creation_order'] = dependencies['primary_tables'] + dependencies['dependent_tables']
-        
-        return dependencies
     
     def _create_prompt_info(self, table_mappings: List[Dict], uploaded_columns: List[str]) -> Dict[str, Any]:
         """LLM 프롬프트 구성용 정보 생성"""

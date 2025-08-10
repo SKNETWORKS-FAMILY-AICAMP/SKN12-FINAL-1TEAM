@@ -15,4 +15,5 @@ from .chat_sessions import ChatSession
 from .system_trace_logs import SystemTraceLog
 from .assignment_map import AssignmentMap
 from .document_relations import DocumentRelation
- 
+from .branches import Branch
+from .branch_targets import BranchTarget
