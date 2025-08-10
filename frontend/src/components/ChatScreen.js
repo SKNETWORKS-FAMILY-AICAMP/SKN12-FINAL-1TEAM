@@ -77,6 +77,72 @@ const ChatScreen = () => {
     }
   };
 
+  // ===== Backend API를 통한 데이터베이스 접근 (CORS 우회) =====
+  const dbApi = {
+    // 대화 내역 조회 - backend의 /v1/chat/history/{session_id} 사용
+    getHistory: async (sessionId) => {
+      try {
+        const response = await fetch(`/api/v1/chat/history/${sessionId}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ DB에서 ${data.count || 0}개 메시지 조회`);
+          return data.messages || [];
+        }
+      } catch (error) {
+        console.error('DB 조회 실패:', error);
+      }
+      return [];
+    },
+
+    // 사용자 세션 목록 조회 - backend의 /v1/chat/sessions/user/{employee_id} 사용
+    getUserSessions: async (employeeId = 1) => {
+      try {
+        const response = await fetch(`/api/v1/chat/sessions/user/${employeeId}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ DB에서 ${data.count || 0}개 세션 조회`);
+          return data.sessions || [];
+        }
+      } catch (error) {
+        console.error('DB 세션 조회 실패:', error);
+      }
+      return [];
+    },
+
+    // 세션 삭제 - backend의 /v1/chat/session/{session_id} 사용
+    deleteSession: async (sessionId, employeeId = 1) => {
+      try {
+        const response = await fetch(
+          `/api/v1/chat/session/${sessionId}?employee_id=${employeeId}`,
+          { method: 'DELETE' }
+        );
+        if (response.ok) {
+          console.log('✅ DB 세션 삭제 성공');
+          return true;
+        }
+      } catch (error) {
+        console.error('DB 삭제 실패:', error);
+      }
+      return false;
+    },
+
+    // 헬스 체크 - backend의 /v1/health 사용
+    checkHealth: async () => {
+      try {
+        const response = await fetch('/api/v1/health');
+        return response.ok;
+      } catch {
+        return false;
+      }
+    }
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -103,11 +169,10 @@ const ChatScreen = () => {
     }
   };
 
-  // 초기 안내 메시지
+  // 초기화 - 8010 포트에서 세션 불러오기
   useEffect(() => {
     const initializeChat = async () => {
-      // 초기에는 메시지를 비워두어 예시 프롬프트가 표시되도록 함
-      // 시스템 메시지 제거
+      console.log('🚀 8010 포트에서 세션 로드 중...');
       
       // 에이전트 선택 메시지 (H2H와 동일한 형태) - 사용하지 않음
       const agentSelectionMessage = {
@@ -145,26 +210,35 @@ const ChatScreen = () => {
         }
       };
       
-      // 로컬 스토리지에서 채팅 내역 불러오기
-      const history = loadChatHistoryFromLocal();
+      // 8010 포트에서 세션 목록 조회
+      const dbSessions = await dbApi.getUserSessions(1);
       
-      // 세션이 있으면 첫 번째 세션 선택, 없으면 새 채팅 시작
-      if (history.length > 0) {
-        console.log(`📚 ${history.length}개의 세션 발견`);
+      if (dbSessions && dbSessions.length > 0) {
+        console.log(`✅ 8010에서 ${dbSessions.length}개 세션 발견`);
+        
+        // DB 세션을 UI 형식으로 변환
+        const formattedSessions = dbSessions.map(session => ({
+          id: session.session_id,
+          sessionId: session.session_id,
+          title: session.session_title || `채팅 ${new Date(session.created_at).toLocaleString()}`,
+          messages: [], // 선택 시 로드
+          createdAt: session.created_at
+        }));
+        
+        setChatHistory(formattedSessions);
+        
         // 가장 최근 세션 선택
-        const mostRecentSession = history[0];
-        if (mostRecentSession.sessionId) {
-          await selectChat(mostRecentSession.id);
-        } else {
-          // 메시지를 비워두어 예시 프롬프트가 표시되도록 함
-          setMessages([]);
+        if (formattedSessions.length > 0) {
+          await selectChat(formattedSessions[0].id);
         }
       } else {
-        console.log('📝 세션이 없음, 새 채팅 시작');
-        // 메시지를 비워두어 예시 프롬프트가 표시되도록 함
+        console.log('📭 8010에 저장된 세션 없음');
+        setChatHistory([]);
         setMessages([]);
-        startNewChat();
       }
+      
+      // localStorage 삭제 (더 이상 사용 안 함)
+      localStorage.removeItem('chatHistory');
     };
     
     initializeChat();
@@ -191,48 +265,50 @@ const ChatScreen = () => {
     
     const updatedHistory = [newChat, ...chatHistory];
     setChatHistory(updatedHistory);
-    localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+    // localStorage 사용 안 함 - 8010만 사용
   };
 
-  // 채팅 내역 선택
+  // 채팅 내역 선택 - 8010에서 대화 내역 로드
   const selectChat = async (chatId) => {
     const selectedChat = chatHistory.find(chat => chat.id === chatId);
     if (selectedChat) {
       setCurrentChatId(chatId);
       setSessionId(selectedChat.sessionId);
       
-      // 메시지가 이미 로드되어 있으면 바로 사용
-      if (selectedChat.messages && selectedChat.messages.length > 0) {
-        setMessages(selectedChat.messages);
+      // 8010 포트에서 대화 내역 조회
+      console.log(`🔍 8010에서 대화 조회: ${selectedChat.sessionId}`);
+      const dbMessages = await dbApi.getHistory(selectedChat.sessionId);
+      
+      if (dbMessages && dbMessages.length > 0) {
+        console.log(`✅ 8010에서 ${dbMessages.length}개 메시지 로드`);
+        
+        // DB 메시지를 UI 형식으로 변환
+        const formattedMessages = dbMessages.map(msg => ({
+          type: msg.role === 'user' ? 'user' : 'bot',
+          content: msg.message_text || msg.content || msg.message,  // DB 필드명 호환성
+          timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString(),
+          agent: 'Router Agent'
+        }));
+        
+        setMessages(formattedMessages);
       } else {
-        // 백엔드에서 메시지 불러오기 - DB에서 직접 조회
-        try {
-          // sessionId가 있는지 확인
-          if (!selectedChat.sessionId) {
-            console.error('세션 ID가 없습니다:', selectedChat);
-            setMessages(selectedChat.messages || []);
-            return;
-          }
-          
-          // 로컬 데이터에서 메시지 복원
-          if (selectedChat.messages && selectedChat.messages.length > 0) {
-            console.log(`✅ ${selectedChat.messages.length}개 메시지 복원`);
-            setMessages(selectedChat.messages);
-          } else {
-            console.log('해당 세션에 메시지가 없습니다.');
-            setMessages([]);
-          }
-        } catch (error) {
-          console.error('메시지 불러오기 오류:', error);
-          setMessages(selectedChat.messages || []);
-        }
+        console.log('📭 해당 세션에 메시지 없음');
+        setMessages([]);
       }
     }
   };
 
-  // 채팅 내역 초기화
-  const clearAllChats = () => {
+  // 채팅 내역 초기화 - DB에서도 삭제
+  const clearAllChats = async () => {
     if (window.confirm('모든 채팅 내역을 삭제하시겠습니까?')) {
+      // 모든 세션을 DB에서 삭제
+      const deletePromises = chatHistory.map(chat => 
+        dbApi.deleteSession(chat.sessionId, 1)
+      );
+      
+      await Promise.all(deletePromises);
+      console.log('✅ 모든 세션 DB에서 삭제 완료');
+      
       setChatHistory([]);
       localStorage.removeItem('chatHistory');
       startNewChat();

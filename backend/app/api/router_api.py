@@ -563,6 +563,45 @@ async def get_user_sessions(employee_id: int):
         )
 
 
+@router.delete("/chat/session/{session_id}")
+async def delete_session(session_id: str, employee_id: int = 1):
+    """
+    특정 세션을 삭제합니다.
+    
+    Args:
+        session_id: 세션 ID
+        employee_id: 직원 ID
+        
+    Returns:
+        Dict: 삭제 결과
+    """
+    try:
+        from app.services.common.conversation_storage import ConversationStorage
+        
+        storage = ConversationStorage()
+        success = await storage.delete_session(session_id, employee_id)
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"세션 {session_id}이(가) 삭제되었습니다."
+            }
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"세션 {session_id}을(를) 찾을 수 없습니다."
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[DELETE_SESSION] 오류 발생: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"세션 삭제 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
 # 개발용 테스트 엔드포인트
 if __name__ == "__main__":
     # 테스트를 위한 간단한 예제

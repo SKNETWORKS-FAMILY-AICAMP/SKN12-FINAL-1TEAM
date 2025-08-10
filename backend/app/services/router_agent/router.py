@@ -20,7 +20,7 @@ from .graph import RouterState, create_graph
 from ..tools.router_tools import create_tools_from_config
 
 # 대화 저장 시스템 import
-from ..common.conversation_storage import ConversationStorage
+from ..common.conversation_storage import ConversationStorage, save_message_sync
 
 logger = logging.getLogger(__name__)
 
@@ -325,17 +325,19 @@ class RouterAgent:
         if not session_id:
             session_id = str(uuid.uuid4())
         
-        # 사용자 메시지를 PostgreSQL에 저장 (비동기를 동기로 실행)
+        # 사용자 메시지를 PostgreSQL에 저장 (동기 함수 사용)
         try:
-            asyncio.run(self.conversation_storage.save_message(
+            result = save_message_sync(
                 session_id=session_id,
                 role="user",
                 message=user_input
-            ))
-        except RuntimeWarning:
-            pass  # RuntimeWarning 무시
+            )
+            if result:
+                logger.info(f"사용자 메시지 저장 성공: session_id={session_id}")
+            else:
+                logger.warning(f"사용자 메시지 저장 실패: session_id={session_id}")
         except Exception as e:
-            logger.warning(f"사용자 메시지 저장 실패: {e}")
+            logger.error(f"사용자 메시지 저장 오류: {e}", exc_info=True)
         
         initial_state = RouterState(
             messages=[],
@@ -402,15 +404,17 @@ class RouterAgent:
                 
                 # AI 응답 저장
                 try:
-                    asyncio.run(self.conversation_storage.save_message(
+                    result = save_message_sync(
                         session_id=session_id,
                         role="assistant",
                         message=response_text
-                    ))
-                except RuntimeWarning:
-                    pass  # RuntimeWarning 무시
+                    )
+                    if result:
+                        logger.info(f"AI 응답 저장 성공: session_id={session_id}")
+                    else:
+                        logger.warning(f"AI 응답 저장 실패: session_id={session_id}")
                 except Exception as e:
-                    logger.warning(f"AI 응답 저장 실패: {e}")
+                    logger.error(f"AI 응답 저장 오류: {e}", exc_info=True)
                 
                 return {
                     "success": True,
@@ -423,15 +427,17 @@ class RouterAgent:
             response_text = result.get("response", "") if result else ""
             if response_text:
                 try:
-                    asyncio.run(self.conversation_storage.save_message(
+                    result = save_message_sync(
                         session_id=session_id,
                         role="assistant",
                         message=response_text
-                    ))
-                except RuntimeWarning:
-                    pass  # RuntimeWarning 무시
+                    )
+                    if result:
+                        logger.info(f"AI 응답 저장 성공: session_id={session_id}")
+                    else:
+                        logger.warning(f"AI 응답 저장 실패: session_id={session_id}")
                 except Exception as e:
-                    logger.warning(f"AI 응답 저장 실패: {e}")
+                    logger.error(f"AI 응답 저장 오류: {e}", exc_info=True)
             
             return {
                 "success": True,

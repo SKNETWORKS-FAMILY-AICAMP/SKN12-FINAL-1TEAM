@@ -220,6 +220,41 @@ class ConversationStorage:
             logger.error(f"세션 제목 업데이트 중 오류: {e}")
             return None
     
+    async def delete_session(
+        self,
+        session_id: str,
+        employee_id: Optional[int] = None
+    ) -> bool:
+        """
+        세션 삭제
+        
+        Args:
+            session_id: 세션 ID
+            employee_id: 직원 ID
+            
+        Returns:
+            삭제 성공 여부
+        """
+        try:
+            emp_id = employee_id or self.employee_id
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.delete(
+                    f"{self.base_url}/api/chat-history/session/{session_id}",
+                    params={"employee_id": emp_id},
+                    headers=self._get_headers()
+                )
+                
+                if response.status_code == 200:
+                    logger.info(f"세션 삭제 성공: session_id={session_id}")
+                    return True
+                else:
+                    logger.warning(f"세션 삭제 실패: {response.status_code} - {response.text}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"세션 삭제 중 오류: {e}")
+            return False
+    
     async def health_check(self) -> bool:
         """
         API 상태 확인
@@ -236,11 +271,21 @@ class ConversationStorage:
 
 
 # 동기 래퍼 함수 (필요시 사용)
-def save_message_sync(session_id: str, role: str, message: str) -> Optional[Dict[str, Any]]:
+def save_message_sync(session_id: str, role: str, message: str, employee_id: int = 1) -> Optional[Dict[str, Any]]:
     """동기 방식으로 메시지 저장"""
     import asyncio
-    storage = ConversationStorage()
-    return asyncio.run(storage.save_message(session_id, role, message))
+    import nest_asyncio
+    
+    # 이미 실행 중인 이벤트 루프에서도 작동하도록 처리
+    try:
+        nest_asyncio.apply()
+        storage = ConversationStorage()
+        return asyncio.run(storage.save_message(session_id, role, message, employee_id))
+    except RuntimeError:
+        # 이미 실행 중인 이벤트 루프가 있는 경우
+        loop = asyncio.get_event_loop()
+        storage = ConversationStorage()
+        return loop.run_until_complete(storage.save_message(session_id, role, message, employee_id))
 
 
 def get_conversation_sync(session_id: str) -> List[Dict[str, Any]]:
