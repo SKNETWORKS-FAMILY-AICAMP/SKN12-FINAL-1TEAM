@@ -90,7 +90,7 @@ class DocumentAnalyzer:
             prompt = self._create_table_document_prompt(text, filename)
             
             # LLM 호출
-            response = openai_service.chat_completion(
+            response = openai_service.create_chat_completion(
                 messages=[
                     {"role": "system", "content": "당신은 문서 분류 전문가입니다. 주어진 문서를 정확히 분류해주세요."},
                     {"role": "user", "content": prompt}
@@ -121,7 +121,7 @@ class DocumentAnalyzer:
             prompt = self._create_text_document_prompt(text, filename)
             
             # LLM 호출
-            response = openai_service.chat_completion(
+            response = openai_service.create_chat_completion(
                 messages=[
                     {"role": "system", "content": "당신은 문서 분류 전문가입니다. 주어진 문서를 정확히 분류해주세요."},
                     {"role": "user", "content": prompt}

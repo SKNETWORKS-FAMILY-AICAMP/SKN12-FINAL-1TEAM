@@ -7,6 +7,7 @@ import logging
 import openai
 from typing import Optional, List, Dict, Any
 import json
+import re
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -84,7 +85,8 @@ class OpenAIService:
     def create_chat_completion(self, messages: List[Dict[str, str]], 
                               model: str = "gpt-3.5-turbo", 
                               max_tokens: int = 1000, 
-                              temperature: float = 0.1) -> Optional[str]:
+                              temperature: float = 0.1,
+                              response_format: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """
         채팅 완성 생성
         
@@ -102,12 +104,16 @@ class OpenAIService:
             return None
         
         try:
-            response = self._client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature
-            )
+            kwargs: Dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+            if response_format is not None:
+                kwargs["response_format"] = response_format
+
+            response = self._client.chat.completions.create(**kwargs)
             return response.choices[0].message.content
             
         except Exception as e:
@@ -130,15 +136,34 @@ class OpenAIService:
         Returns:
             Optional[Dict[str, Any]]: 파싱된 JSON 응답
         """
-        response_text = self.create_chat_completion(messages, model, max_tokens, temperature)
-        
+        response_text = self.create_chat_completion(
+            messages,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            response_format={"type": "json_object"}
+        )
+
         if not response_text:
+            logger.error("JSON 모드 응답이 비어있습니다.")
             return None
-        
+
+        cleaned = response_text.strip()
+        # 백틱 코드펜스 제거
+        if cleaned.startswith("```") and cleaned.endswith("```"):
+            cleaned = cleaned.strip("`").strip()
+
         try:
-            return json.loads(response_text)
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON 파싱 실패: {e}")
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            # 본문에서 첫 번째 JSON 오브젝트 추출 시도
+            match = re.search(r"\{[\s\S]*\}", cleaned)
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except Exception:
+                    pass
+            logger.error("JSON 파싱 실패: 응답 앞부분=" + cleaned[:300])
             return None
 
 # 전역 인스턴스

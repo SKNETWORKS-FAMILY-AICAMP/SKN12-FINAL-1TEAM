@@ -12,6 +12,7 @@ from app.services.core.document_relation_analyzer import document_relation_analy
 
 from app.services.core.document_analyzer import document_analyzer
 from app.services.core.text2sql_classifier import text2sql_classifier
+from app.services.processors.document_type_updater import DocumentTypeUpdater
 from app.routers.user_router import get_current_user, get_current_admin_user
 from pydantic import BaseModel
 import logging
@@ -60,6 +61,8 @@ def _extract_csv_data(file_bytes: bytes) -> tuple[str, list]:
     if not PANDAS_AVAILABLE:
         raise ImportError("pandas 라이브러리가 설치되지 않았습니다.")
     df = pd.read_csv(io.BytesIO(file_bytes))
+    # 모든 컬럼명을 문자열로 변환
+    df.columns = df.columns.astype(str)
     return "", df.to_dict('records')
 
 def _extract_excel_data(file_bytes: bytes) -> tuple[str, list]:
@@ -67,6 +70,8 @@ def _extract_excel_data(file_bytes: bytes) -> tuple[str, list]:
     if not PANDAS_AVAILABLE:
         raise ImportError("pandas 라이브러리가 설치되지 않았습니다.")
     df = pd.read_excel(io.BytesIO(file_bytes))
+    # 모든 컬럼명을 문자열로 변환
+    df.columns = df.columns.astype(str)
     return "", df.to_dict('records')
 
 def _extract_text_data(file_bytes: bytes) -> tuple[str, list]:
@@ -80,7 +85,83 @@ def _extract_docx_data(file_bytes: bytes) -> tuple[str, list]:
         raise ImportError("python-docx 라이브러리가 설치되지 않았습니다.")
     try:
         doc = DocxDocument(io.BytesIO(file_bytes))
-        text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+
+        def _collapse_spaces(s: str) -> str:
+            return " ".join(s.split())
+
+        def _normalize_label(s: str) -> str:
+            import re
+            # 불릿/구분 기호 제거 후 공백 정규화
+            s = s.replace('■', ' ').replace(':', ' ').strip()
+            label = _collapse_spaces(s)
+            # 한글 라벨의 경우 단어 사이 임의 공백 제거(일반화)
+            # 예) "연 락 처" → "연락처", "소    속" → "소속"
+            if re.fullmatch(r'[가-힣\s]{2,}', label):
+                compact = label.replace(' ', '')
+                # 너무 길면 원형 유지(영문 혼합/문장 가능성)
+                if len(compact) <= 10:
+                    label = compact
+            return label
+
+        def _normalize_value(s: str) -> str:
+            # 값은 기호/콜론 등 보존, 공백만 접기
+            return _collapse_spaces(s.strip())
+
+        parts: list[str] = []
+
+        # 1) 일반 문단 텍스트 수집
+        paragraph_texts = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
+        if paragraph_texts:
+            parts.append("\n".join(paragraph_texts))
+
+        # 2) 표 내용을 텍스트로 평탄화하여 수집
+        table_lines: list[str] = []
+        seen_recent: set[str] = set()
+        for table in doc.tables:
+            for row in table.rows:
+                raw_cells = [c.text.strip() for c in row.cells]
+                cells = [c for c in raw_cells if c and c.strip()]
+                if not cells:
+                    continue
+
+                # 같은 문구 반복만 있는 행은 한 번만 기록
+                if len(set(_normalize_value(c) for c in cells)) == 1:
+                    line = _normalize_value(cells[0])
+                    if line and line not in seen_recent:
+                        table_lines.append(line)
+                        seen_recent = {line}
+                    continue
+
+                # 짝수 개 컬럼은 라벨:값 페어링으로 변환
+                if len(cells) % 2 == 0 and len(cells) <= 8:
+                    pairs = []
+                    for i in range(0, len(cells), 2):
+                        label = _normalize_label(cells[i])
+                        value = _normalize_value(cells[i + 1])
+                        if label or value:
+                            pairs.append(f"{label}: {value}" if value else label)
+                    line = " | ".join([p for p in pairs if p])
+                else:
+                    # 다열 표는 공백/중복 제거 후 결합
+                    non_empty = []
+                    for c in cells:
+                        val = _normalize_value(c)
+                        if val and (not non_empty or val != non_empty[-1]):
+                            non_empty.append(val)
+                    line = " | ".join(non_empty)
+
+                line = line.strip()
+                if line and (not table_lines or line != table_lines[-1]):
+                    table_lines.append(line)
+
+            # 표 간 구분 빈 줄 추가
+            if table_lines and table_lines[-1] != "":
+                table_lines.append("")
+
+        if table_lines:
+            parts.append("\n".join(table_lines))
+
+        text = "\n".join(parts).strip()
         return text, []
     except Exception as e:
         logger.error(f"DOCX 파일 텍스트 추출 실패: {e}")
@@ -180,26 +261,12 @@ async def process_single_document(file: UploadFile, uploader_id: int, version: s
     if is_table_file and table_data:
         logger.info(f"테이블 문서 Text2SQL 처리 시작: {file.filename}")
         
-        # 1. 원본 파일을 S3에 저장
-        file_path = upload_file(file_bytes, file.filename, file.content_type)
-        
-        # 2. 문서 메타데이터를 documents 테이블에 저장 (먼저 저장)
-        meta = DocumentBase(
-            doc_title=doc_title,
-            doc_type="text2sql_pending",  # 임시 타입
-            file_path=file_path,
-            uploader_id=uploader_id,
-            version=version,
-            created_at=datetime.now(timezone.utc)
-        )
-        doc = save_document(meta)
-        
-        # 3. Text2SQL 분류기로 처리 (document_id와 uploader_id 전달)
+        # 1. Text2SQL 분류기로 처리 (저장 전에 먼저 분류)
         try:
             result = await text2sql_classifier.classify_table_with_text2sql(
                 table_data=table_data,
                 table_description=doc_title,
-                document_id=doc.doc_id,
+                document_id=None,  # 아직 저장하지 않았으므로 None
                 uploader_id=uploader_id
             )
             
@@ -207,10 +274,37 @@ async def process_single_document(file: UploadFile, uploader_id: int, version: s
                 logger.info(f"Text2SQL 분류 완료: {result['message']}")
                 logger.info(f"분류 결과: {file.filename} -> {result['target_table']} (신뢰도: {result['confidence']:.2f})")
                 
-                # 4. 문서 타입 업데이트
-                doc.doc_type = f"text2sql_{result['target_table']}"
-                # 여기서 문서 업데이트 로직이 필요하지만, 현재 save_document는 새로 생성만 함
-                # 실제로는 별도의 업데이트 함수가 필요할 수 있음
+                # 2. 성공 시에만 S3에 파일 저장
+                file_path = upload_file(file_bytes, file.filename, file.content_type)
+                
+                # 3. 성공 시에만 PostgreSQL에 메타데이터 저장
+                meta = DocumentBase(
+                    doc_title=doc_title,
+                    doc_type=f"text2sql_{result['target_table']}",  # 최종 타입으로 저장
+                    file_path=file_path,
+                    uploader_id=uploader_id,
+                    version=version,
+                    created_at=datetime.now(timezone.utc)
+                )
+                doc = save_document(meta)
+                
+                # 4. 문서 타입 업데이트 (처리 상태 정보 추가)
+                try:
+                    # 별도 세션으로 문서 업데이트
+                    from app.services.utils.db import create_db_session
+                    with create_db_session() as update_session:
+                        # 문서를 다시 조회하여 업데이트
+                        from app.services.external.postgres_service import get_document_by_id
+                        doc_to_update = get_document_by_id(doc.doc_id)
+                        if doc_to_update:
+                            await DocumentTypeUpdater.update_after_success(doc_to_update, result, update_session)
+                            update_session.commit()
+                            logger.info(f"문서 타입 업데이트 완료: {doc.doc_id} -> {doc_to_update.doc_type}")
+                        else:
+                            logger.error(f"업데이트할 문서를 찾을 수 없음: {doc.doc_id}")
+                except Exception as e:
+                    logger.error(f"문서 타입 업데이트 실패: {e}")
+                    # 업데이트 실패해도 계속 진행
                 
                 logger.info(f"테이블 문서 업로드 완료: {doc.doc_id} (타입: {result['target_table']})")
                 
@@ -231,6 +325,7 @@ async def process_single_document(file: UploadFile, uploader_id: int, version: s
                 )
             else:
                 logger.error(f"Text2SQL 분류 실패: {result['message']}")
+                # 실패 시에는 아무것도 저장하지 않고 바로 예외 발생
                 raise HTTPException(status_code=500, detail=f"문서 분류 중 오류가 발생했습니다: {result['message']}")
                 
         except Exception as e:
@@ -388,39 +483,43 @@ async def process_single_document_with_session(file: UploadFile, uploader_id: in
     if is_table_file and table_data:
         logger.info(f"테이블 문서 Text2SQL 처리 시작: {file.filename}")
         
-        # S3 업로드
-        file_path = upload_file(file_bytes, file.filename, file.content_type)
-        
-        # 문서 메타데이터 저장 (세션 사용)
-        meta = DocumentBase(
-            doc_title=doc_title,
-            doc_type="text2sql_pending",
-            file_path=file_path,
-            uploader_id=uploader_id,
-            version=version,
-            created_at=datetime.now(timezone.utc)
-        )
-        
-        # 세션을 사용하여 문서 저장
-        db_doc = Document(**meta.dict())
-        session.add(db_doc)
-        session.flush()  # ID 생성을 위해 flush
-        
-        # Text2SQL 분류기로 처리 (세션 전달)
+        # Text2SQL 분류기로 처리 (저장 전에 먼저 분류)
         try:
             result = await text2sql_classifier.classify_table_with_text2sql(
                 table_data=table_data,
                 table_description=doc_title,
-                document_id=db_doc.doc_id,
+                document_id=None,  # 아직 저장하지 않았으므로 None
                 uploader_id=uploader_id
             )
             
             if result['success']:
                 logger.info(f"Text2SQL 분류 완료: {result['message']}")
                 
-                # 문서 타입 업데이트
-                db_doc.doc_type = f"text2sql_{result['target_table']}"
-                session.flush()
+                # 성공 시에만 S3에 파일 저장
+                file_path = upload_file(file_bytes, file.filename, file.content_type)
+                
+                # 성공 시에만 PostgreSQL에 메타데이터 저장 (세션 사용)
+                meta = DocumentBase(
+                    doc_title=doc_title,
+                    doc_type=f"text2sql_{result['target_table']}",  # 최종 타입으로 저장
+                    file_path=file_path,
+                    uploader_id=uploader_id,
+                    version=version,
+                    created_at=datetime.now(timezone.utc)
+                )
+                
+                # 세션을 사용하여 문서 저장
+                db_doc = Document(**meta.dict())
+                session.add(db_doc)
+                session.flush()  # ID 생성을 위해 flush
+                
+                # 문서 타입 업데이트 (처리 상태 정보 추가)
+                try:
+                    await DocumentTypeUpdater.update_after_success(db_doc, result, session)
+                    logger.info(f"문서 타입 업데이트 완료: {db_doc.doc_id} -> {db_doc.doc_type}")
+                except Exception as e:
+                    logger.error(f"문서 타입 업데이트 실패: {e}")
+                    # 업데이트 실패해도 계속 진행
                 
                 return TableUploadResult(
                     doc_title=doc_title,
@@ -438,6 +537,8 @@ async def process_single_document_with_session(file: UploadFile, uploader_id: in
                     }
                 )
             else:
+                logger.error(f"Text2SQL 분류 실패: {result['message']}")
+                # 실패 시에는 아무것도 저장하지 않고 바로 예외 발생
                 raise HTTPException(status_code=500, detail=f"문서 분류 중 오류가 발생했습니다: {result['message']}")
                 
         except Exception as e:
