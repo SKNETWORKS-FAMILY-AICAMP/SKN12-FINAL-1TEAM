@@ -27,7 +27,7 @@ const Setting = ({ isOpen, onClose, onLogout, currentUser }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="settings-modal-overlay" onClick={onClose}>
       <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>⚙️ 설정</h2>

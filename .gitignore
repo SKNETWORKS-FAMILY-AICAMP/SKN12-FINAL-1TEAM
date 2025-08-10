@@ -281,3 +281,4 @@ credentials.json
 # Docker compose override files (local development)
 docker-compose.override.yml
 docker-compose.local.yml 
+venv/

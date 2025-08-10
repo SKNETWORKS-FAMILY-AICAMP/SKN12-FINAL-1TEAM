@@ -77,7 +77,7 @@
   gap: 20px;
 }
 
-.stat-card {
+.admin-stat-card {
   background: white;
   border: 1px solid #e9ecef;
   border-radius: 8px;
@@ -86,19 +86,19 @@
   transition: all 0.3s ease;
 }
 
-.stat-card:hover {
+.admin-stat-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.stat-card h3 {
+.admin-stat-card h3 {
   margin: 0 0 10px 0;
   color: #666;
   font-size: 0.9rem;
   font-weight: 500;
 }
 
-.stat-card .stat-value {
+.admin-stat-card .stat-value {
   font-size: 2rem;
   font-weight: bold;
   color: #6c5ce7;

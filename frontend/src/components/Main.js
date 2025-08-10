@@ -1,8 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './Main.css';
 
-const Main = ({ currentUser }) => {
+const Main = ({ currentUser, schedules = [] }) => {
   const isAdmin = currentUser?.role === 'admin';
+
+  // 오늘 날짜 가져오기
+  const getTodayDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // 오늘 일정만 필터링
+  const todaySchedules = schedules.filter(schedule => schedule.date === getTodayDate());
+  
+  // 최근 활동 상태 관리 (필요시 나중에 구현)
+  const userActivities = [];
+  const adminActivities = [];
 
   // 관리자용 요약 카드
   const adminSummaryCards = [
@@ -13,62 +29,17 @@ const Main = ({ currentUser }) => {
 
   // 일반 사용자용 요약 카드
   const userSummaryCards = [
-    { title: '오늘 방문 일정', value: '3건', color: '#6f42c1' },
-    { title: '미제출 보고서', value: '1건', color: '#dc3545' },
-    { title: '이번 주 실적 달성률', value: '85%', color: '#28a745' },
+    { title: '오늘 방문 일정', value: `${todaySchedules.length}건`, color: '#6f42c1' },
+    { title: '미제출 보고서', value: '0건', color: '#dc3545' },
+    { title: '이번 주 실적 달성률', value: '0%', color: '#28a745' },
   ];
 
   const summaryCards = isAdmin ? adminSummaryCards : userSummaryCards;
 
-  // 관리자용 일정
-  const adminSchedule = [
-    { time: '오전 9:00 - 10:00', location: '시스템 백업 점검' },
-    { time: '오후 2:00 - 3:00', location: '사용자 계정 관리' },
-    { time: '오후 4:00 - 5:00', location: '데이터베이스 최적화' },
-  ];
+  // 현재 일정 (관리자/사용자 구분)
+  const dailySchedule = isAdmin ? [] : todaySchedules;
 
-  // 일반 사용자용 일정
-  const userSchedule = [
-    { time: '오전 10:00 - 11:00', location: 'A병원' },
-    { time: '오후 1:00 - 2:00', location: 'B약국' },
-    { time: '오후 3:00 - 4:00', location: 'C의원' },
-  ];
-
-  const dailySchedule = isAdmin ? adminSchedule : userSchedule;
-
-  // 관리자용 최근 활동
-  const adminActivities = [
-    { 
-      icon: '🔧', 
-      activity: '시스템 설정 업데이트', 
-      date: '2024년 7월 15일' 
-    },
-    { 
-      icon: '👥', 
-      activity: '새 사용자 계정 3개 생성', 
-      date: '2024년 7월 14일' 
-    },
-    { 
-      icon: '📊', 
-      activity: '월간 시스템 리포트 생성', 
-      date: '2024년 7월 13일' 
-    },
-  ];
-
-  // 일반 사용자용 최근 활동
-  const userActivities = [
-    { 
-      icon: '📄', 
-      activity: 'A병원 방문 보고서 제출', 
-      date: '2024년 7월 15일' 
-    },
-    { 
-      icon: '💬', 
-      activity: 'B약국 담당자와의 채팅', 
-      date: '2024년 7월 14일' 
-    },
-  ];
-
+  // 현재 활동 (관리자/사용자 구분)
   const recentActivities = isAdmin ? adminActivities : userActivities;
 
   // AI 제안 내용
@@ -124,16 +95,24 @@ const Main = ({ currentUser }) => {
       <div className="daily-plan">
         <h3>{scheduleTitle}</h3>
         <div className="schedule-list">
-          {dailySchedule.map((schedule, index) => (
-            <div key={index} className="schedule-item">
-              <div className="schedule-icon">{scheduleIcon}</div>
-              <div className="schedule-details">
-                <div className="schedule-time">{schedule.time}</div>
-                <div className="schedule-location">{schedule.location}</div>
+          {dailySchedule.length > 0 ? (
+            dailySchedule.map((schedule, index) => (
+              <div key={index} className="schedule-item">
+                <div className="schedule-icon">{scheduleIcon}</div>
+                <div className="schedule-details">
+                  <div className="schedule-time">{schedule.time}</div>
+                  <div className="schedule-location">{schedule.location}</div>
+                </div>
+                {index < dailySchedule.length - 1 && <div className="schedule-connector"></div>}
               </div>
-              {index < dailySchedule.length - 1 && <div className="schedule-connector"></div>}
+            ))
+          ) : (
+            <div className="no-schedule">
+              <p style={{ color: '#999', textAlign: 'center', padding: '20px' }}>
+                등록된 일정이 없습니다. 일정 관리 페이지에서 일정을 추가해주세요.
+              </p>
             </div>
-          ))}
+          )}
         </div>
       </div>
 
@@ -141,15 +120,23 @@ const Main = ({ currentUser }) => {
       <div className="recent-activities">
         <h3>{isAdmin ? "최근 관리 활동" : "최근 활동"}</h3>
         <div className="activity-list">
-          {recentActivities.map((activity, index) => (
-            <div key={index} className="activity-item">
-              <div className="activity-icon">{activity.icon}</div>
-              <div className="activity-details">
-                <div className="activity-text">{activity.activity}</div>
-                <div className="activity-date">{activity.date}</div>
+          {recentActivities.length > 0 ? (
+            recentActivities.map((activity, index) => (
+              <div key={index} className="activity-item">
+                <div className="activity-icon">{activity.icon}</div>
+                <div className="activity-details">
+                  <div className="activity-text">{activity.activity}</div>
+                  <div className="activity-date">{activity.date}</div>
+                </div>
               </div>
+            ))
+          ) : (
+            <div className="no-activities">
+              <p style={{ color: '#999', textAlign: 'center', padding: '20px' }}>
+                최근 활동이 없습니다.
+              </p>
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>

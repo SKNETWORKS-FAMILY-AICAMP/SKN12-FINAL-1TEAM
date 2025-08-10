@@ -1,9 +1,9 @@
-.modal-overlay {
+.settings-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
+  width: 100vw;
+  height: 100vh;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
@@ -16,23 +16,28 @@
   background: white;
   border-radius: 16px;
   width: 90%;
-  max-width: 500px;
-  max-height: 85vh;
+  max-width: 450px;
+  max-height: 70vh;
   overflow: hidden;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
   animation: modalSlideIn 0.3s ease-out;
   display: flex;
   flex-direction: column;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1001;
 }
 
 @keyframes modalSlideIn {
   from {
     opacity: 0;
-    transform: translateY(-20px) scale(0.95);
+    transform: translate(-50%, -50%) translateY(-20px) scale(0.95);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translate(-50%, -50%) translateY(0) scale(1);
   }
 }
 
@@ -73,9 +78,11 @@
 }
 
 .modal-content {
-  padding: 24px;
+  padding: 20px 24px;
   flex: 1;
   overflow-y: auto;
+  max-height: calc(70vh - 140px);
+  min-height: 0;
 }
 
 .setting-section {
@@ -292,8 +299,9 @@
 /* 반응형 */
 @media (max-width: 768px) {
   .settings-modal {
-    width: 95%;
-    margin: 20px;
+    width: 90%;
+    max-width: none;
+    margin: 0 auto;
   }
   
   .modal-header,

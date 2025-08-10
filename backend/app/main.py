@@ -43,13 +43,22 @@ else:
 from app.api.router_api import router
 print("[OK] router_api imported successfully")
 
-# 간단한 테스트 라우터 추가
+
+# Employee 라우터 추가
 try:
-    from app.api.router_api_simple import router as simple_router
-    print("[OK] router_api_simple imported successfully")
+    from app.api.employee_router import router as employee_router
+    print("[OK] employee_router imported successfully")
 except Exception as e:
-    print(f"[WARNING] Failed to import router_api_simple: {e}")
-    simple_router = None
+    print(f"[WARNING] Failed to import employee_router: {e}")
+    employee_router = None
+
+# Docs Agent 라우터 추가
+try:
+    from app.api.docs_agent_api import router as docs_router
+    print("[OK] docs_agent_api imported successfully")
+except Exception as e:
+    print(f"[WARNING] Failed to import docs_agent_api: {e}")
+    docs_router = None
 
 # database 폴더의 라우터들 추가
 try:
@@ -79,10 +88,6 @@ app.add_middleware(
 app.include_router(router, prefix="/api")
 print("[OK] Router registered at /api")
 
-# 간단한 테스트 라우터 등록
-if simple_router:
-    app.include_router(simple_router, prefix="/api")
-    print("[OK] Simple router registered at /api")
 
 # user와 admin 라우터 등록
 if user_router:
@@ -93,10 +98,28 @@ if admin_router:
     app.include_router(admin_router, prefix="/admin")
     print("[OK] Admin router registered at /admin")
 
+# employee 라우터 등록
+if employee_router:
+    app.include_router(employee_router)  # prefix는 라우터 내부에서 /api/employee로 설정됨
+    print("[OK] Employee router registered at /api/employee")
+
+# docs_agent 라우터 등록
+if docs_router:
+    app.include_router(docs_router, prefix="/api")
+    print("[OK] Docs agent router registered at /api/v1/docs")
+    # 디버깅: 실제 등록된 라우트 확인
+    for route in app.routes:
+        if hasattr(route, "path") and "docs" in route.path:
+            print(f"  - Registered: {route.path} {route.methods if hasattr(route, 'methods') else ''}")
+else:
+    print("[ERROR] docs_router is None - not registered!")
+
 # 헬스 체크
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
 
 # API 경로 확인용
 @app.get("/api-routes")
@@ -115,10 +138,10 @@ if __name__ == "__main__":
     import uvicorn
     print("\n" + "="*60)
     print("[FastAPI Server]")
-    print("Running at: http://localhost:8000")
-    print("API Docs: http://localhost:8000/docs")
-    print("API Routes: http://localhost:8000/api-routes")
-    print("Health Check: http://localhost:8000/health")
+    print("Running at: http://localhost:8010")
+    print("API Docs: http://localhost:8010/docs")
+    print("API Routes: http://localhost:8010/api-routes")
+    print("Health Check: http://localhost:8010/health")
     print("Stop: Ctrl+C")
     print("="*60 + "\n")
     
@@ -127,7 +150,7 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
+        port=8010,
         reload=False,  # reload 비활성화
         log_level="info"
     )

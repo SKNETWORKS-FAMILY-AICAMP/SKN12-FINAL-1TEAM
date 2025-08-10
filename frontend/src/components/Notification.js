@@ -11,7 +11,7 @@ function Notification({ isOpen, onClose, notifications = [] }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={handleOverlayClick}>
+    <div className="notification-modal-overlay" onClick={handleOverlayClick}>
       <div className="notification-modal">
         <div className="modal-header">
           <h3>알림</h3>

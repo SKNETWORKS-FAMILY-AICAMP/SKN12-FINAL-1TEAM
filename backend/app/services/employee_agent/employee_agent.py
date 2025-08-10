@@ -59,7 +59,7 @@ class EnhancedEmployeeAgent:
             
             # 쿼리 분석 결과 검증
             if not query_analysis:
-                state["error"] = "쿼리 분석에 실패했습니다. 직원명과 분석 기간을 명확히 입력해주세요."
+                state["error"] = "쿼리 분석에 실패했습니다. 예시: '최수아의 2023년 1월부터 2023년 6월까지 실적 분석해줘'"
                 return state
             
             # 필수 정보 확인
@@ -69,11 +69,11 @@ class EnhancedEmployeeAgent:
             
             # 필수 정보가 없는 경우 오류 반환
             if not employee_name:
-                state["error"] = "직원명을 찾을 수 없습니다. '최수아 실적 분석해줘'와 같이 명확한 직원명을 입력해주세요."
+                state["error"] = "직원명을 찾을 수 없습니다. 예시: '최수아의 2023년 1월부터 2023년 6월까지 실적 분석해줘'"
                 return state
             
-            if not start_period or not end_period:
-                state["error"] = "분석 기간을 찾을 수 없습니다. '2023년 12월부터 2024년 3월까지'와 같이 명확한 기간을 입력해주세요."
+            if not start_period or not end_period or start_period == "None" or end_period == "None":
+                state["error"] = "분석 기간을 찾을 수 없습니다. 예시: '최수아의 2023년 1월부터 2023년 6월까지 실적 분석해줘'"
                 return state
             
             state["query_analysis"] = query_analysis
@@ -119,8 +119,8 @@ class EnhancedEmployeeAgent:
                 state["employee_name"], start_period, end_period
             )
             
-            # 트렌드 분석 데이터 로드
-            trend_analysis = self.db_manager.analyze_performance_trend(
+            # 성장률 분석 데이터 로드
+            growth_analysis = self.db_manager.analyze_performance_trend(
                 state["employee_name"], start_period, end_period
             )
             
@@ -129,7 +129,7 @@ class EnhancedEmployeeAgent:
             
             # 추가 분석 데이터를 analysis_results에 임시 저장
             state["analysis_results"] = {
-                "trend_analysis": trend_analysis
+                "growth_analysis": growth_analysis
             }
             
             print(f"[OK] 데이터 로드 완료: 실적 {performance_summary['total_performance']:,.0f}원")
@@ -141,6 +141,7 @@ class EnhancedEmployeeAgent:
         return state
     
     def _perform_analysis_node(self, state: AnalysisState) -> AnalysisState:
+        
         """실적 분석을 수행하는 노드"""
         try:
             if state.get("error"):
@@ -160,9 +161,9 @@ class EnhancedEmployeeAgent:
             if len(monthly_data) >= 2:
                 monthly_amounts = [data["amount"] for data in monthly_data]
                 
-                # 강화된 트렌드 분석 (안정성 정보 포함)
-                enhanced_trend = self.calc_tools.calculate_growth_analysis(monthly_amounts)
-                analysis_results["enhanced_trend_analysis"] = enhanced_trend
+                # 강화된 성장률 분석 (안정성 정보 포함)
+                enhanced_growth = self.calc_tools.calculate_growth_analysis(monthly_amounts)
+                analysis_results["enhanced_growth_analysis"] = enhanced_growth
                 
                 # 계절성 분석 (4개월 이상일 때만)
                 seasonal_analysis = self.calc_tools.calculate_seasonal_analysis(monthly_data)
@@ -217,19 +218,19 @@ class EnhancedEmployeeAgent:
             achievement_score = 5
         score_components["achievement"] = achievement_score
         
-        # 2. 트렌드 점수 (30점)
-        enhanced_trend_data = analysis_results.get("enhanced_trend_analysis", {})
-        trend = enhanced_trend_data.get("trend", "안정")
-        if trend in ["강한 상승", "상승"]:
-            trend_score = 30
-        elif trend == "안정":
-            trend_score = 20
+        # 2. 성장률 점수 (30점)
+        enhanced_growth_data = analysis_results.get("enhanced_growth_analysis", {})
+        growth_trend = enhanced_growth_data.get("growth_trend", "안정")
+        if growth_trend in ["강한 성장", "성장"]:
+            growth_score = 30
+        elif growth_trend == "안정":
+            growth_score = 20
         else:
-            trend_score = 10
-        score_components["trend"] = trend_score
+            growth_score = 10
+        score_components["growth"] = growth_score
         
-        # 3. 안정성 점수 (20점) - 트렌드 분석에서 가져옴
-        stability = enhanced_trend_data.get("stability", "보통")
+        # 3. 안정성 점수 (20점) - 성장률 분석에서 가져옴
+        stability = enhanced_growth_data.get("stability", "보통")
         stability_score_map = {
             "매우 안정": 20, "안정": 16, "보통": 12, 
             "불안정": 8, "매우 불안정": 4
@@ -237,7 +238,7 @@ class EnhancedEmployeeAgent:
         stability_score = stability_score_map.get(stability, 10)
         score_components["stability"] = stability_score
         
-        # 총점 계산 (달성률 40점 + 트렌드 30점 + 안정성 20점 = 90점 만점)
+        # 총점 계산 (달성률 40점 + 성장률 30점 + 안정성 20점 = 90점 만점)
         total_score = sum(score_components.values())
         
         # 등급 결정 (90점 만점 기준으로 조정)
@@ -264,8 +265,8 @@ class EnhancedEmployeeAgent:
         for component, score in sorted_components[:2]:  # 가장 낮은 2개 영역
             if component == "achievement" and score < 30:
                 improvement_priorities.append("목표 달성률 개선")
-            elif component == "trend" and score < 25:
-                improvement_priorities.append("실적 증가 추세 확보")
+            elif component == "growth" and score < 25:
+                improvement_priorities.append("실적 성장률 개선")
             elif component == "stability" and score < 15:
                 improvement_priorities.append("실적 안정성 확보")
         
@@ -284,8 +285,8 @@ class EnhancedEmployeeAgent:
         strengths = []
         if score_components.get("achievement", 0) >= 35:
             strengths.append("목표 달성률 우수")
-        if score_components.get("trend", 0) >= 25:
-            strengths.append("성장 추세 양호")
+        if score_components.get("growth", 0) >= 25:
+            strengths.append("높은 성장률")
         if score_components.get("stability", 0) >= 16:
             strengths.append("실적 안정성 확보")
         
@@ -296,8 +297,8 @@ class EnhancedEmployeeAgent:
         weaknesses = []
         if score_components.get("achievement", 0) < 25:
             weaknesses.append("목표 달성률 부족")
-        if score_components.get("trend", 0) < 20:
-            weaknesses.append("성장 추세 부진")
+        if score_components.get("growth", 0) < 20:
+            weaknesses.append("낮은 성장률")
         if score_components.get("stability", 0) < 12:
             weaknesses.append("실적 변동성 과대")
         

@@ -1,4 +1,4 @@
-.modal-overlay {
+.notification-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -18,9 +18,12 @@
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   width: 400px;
   max-width: 90vw;
-  max-height: 80vh;
+  max-height: 70vh;
   overflow: hidden;
   animation: slideIn 0.3s ease-out;
+  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header {

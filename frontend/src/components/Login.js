@@ -85,7 +85,26 @@ const Login = ({ onLogin }) => {
 
     } catch (error) {
       console.error('로그인 오류:', error);
-      setError(error.message || '로그인에 실패했습니다. 사용자명과 비밀번호를 확인해주세요.');
+      
+      // 에러 메시지 한글화
+      let errorMessage = error.message || 'Login failed. Please check your username and password.';
+      
+      // 영어 에러 메시지를 한글로 변환
+      if (errorMessage.toLowerCase().includes('incorrect email or password')) {
+        errorMessage = '이메일 또는 비밀번호가 일치하지 않습니다.';
+      } else if (errorMessage.toLowerCase().includes('user not found')) {
+        errorMessage = '존재하지 않는 사용자입니다.';
+      } else if (errorMessage.toLowerCase().includes('invalid credentials')) {
+        errorMessage = '잘못된 인증 정보입니다.';
+      } else if (errorMessage.toLowerCase().includes('login failed')) {
+        errorMessage = '로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.';
+      } else if (errorMessage.toLowerCase().includes('unauthorized')) {
+        errorMessage = '인증되지 않은 접근입니다.';
+      } else if (errorMessage.toLowerCase().includes('server')) {
+        errorMessage = '서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

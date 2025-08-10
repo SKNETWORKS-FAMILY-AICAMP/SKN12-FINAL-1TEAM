@@ -42,73 +42,13 @@ const apiRequest = async (endpoint, options = {}) => {
     console.log('📥 응답 데이터:', data);
 
     if (!response.ok) {
-      // 오류 메시지를 문자열로 변환
-      let errorMessage = '요청에 실패했습니다.';
-      
-      if (data.detail) {
-        errorMessage = data.detail;
-      } else if (data.message) {
-        errorMessage = data.message;
-      } else if (typeof data === 'string') {
-        errorMessage = data;
-      } else if (data.error) {
-        errorMessage = data.error;
-      } else if (Array.isArray(data)) {
-        // 배열인 경우 각 요소를 문자열로 변환
-        errorMessage = data.map(item => {
-          if (typeof item === 'string') return item;
-          if (item && typeof item === 'object') {
-            return item.message || item.detail || item.error || JSON.stringify(item);
-          }
-          return String(item);
-        }).join(', ');
-      } else if (data && typeof data === 'object') {
-        // 객체인 경우 JSON.stringify 사용
-        errorMessage = JSON.stringify(data);
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(data.detail || 'Request failed');
     }
 
     return data;
   } catch (error) {
     console.error('❌ API request failed:', error);
-    
-    // 네트워크 오류인 경우 폴백 로직
-    if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      console.log('API 서버 연결 실패, 폴백 모드로 전환');
-      throw new Error('API 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
-    }
-    
-    // 이미 Error 객체인 경우 그대로 던지기
-    if (error instanceof Error) {
-      throw error;
-    }
-    
-    // 객체인 경우 문자열로 변환
-    if (typeof error === 'object' && error !== null) {
-      if (Array.isArray(error)) {
-        const errorMessage = error.map(item => {
-          if (typeof item === 'string') return item;
-          if (item && typeof item === 'object') {
-            return item.message || item.detail || item.error || JSON.stringify(item);
-          }
-          return String(item);
-        }).join(', ');
-        throw new Error(errorMessage);
-      }
-      
-      const errorMessage = error.message || error.detail || error.error || JSON.stringify(error);
-      throw new Error(errorMessage);
-    }
-    
-    // 문자열인 경우 그대로 던지기
-    if (typeof error === 'string') {
-      throw new Error(error);
-    }
-    
-    // 기타 경우
-    throw new Error('알 수 없는 오류가 발생했습니다.');
+    throw error;
   }
 };
 
@@ -181,21 +121,21 @@ export const uploadDocument = async (file, docTitle) => {
 
 // 문서 목록 조회
 export const getDocuments = async () => {
-  return await apiRequest('/api/documents/', {
+  return await apiRequest('/documents/', {
     method: 'GET',
   });
 };
 
 // 문서 상세 조회
 export const getDocumentDetail = async (docId) => {
-  return await apiRequest(`/api/documents/${docId}`, {
+  return await apiRequest(`/documents/${docId}`, {
     method: 'GET',
   });
 };
 
 // 문서 내용 조회
 export const getDocumentContent = async (docId) => {
-  return await apiRequest(`/api/documents/${docId}/content`, {
+  return await apiRequest(`/documents/${docId}/content`, {
     method: 'GET',
   });
 }; 

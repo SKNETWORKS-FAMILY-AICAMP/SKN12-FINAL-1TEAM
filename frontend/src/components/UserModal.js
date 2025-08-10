@@ -24,7 +24,7 @@ function UserModal({ isOpen, onClose, userData = {} }) {
   const user = { ...defaultUserData, ...userData };
 
   return (
-    <div className="modal-overlay" onClick={handleOverlayClick}>
+    <div className="user-modal-overlay" onClick={handleOverlayClick}>
       <div className="user-modal">
         <div className="modal-header">
           <h3>사용자 정보</h3>

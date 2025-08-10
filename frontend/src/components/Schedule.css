@@ -2,28 +2,34 @@
   padding: 30px;
   background-color: #fff;
   min-height: 100vh;
+  max-width: 1600px;
+  margin: 0 auto;
 }
 
 .schedule-header {
   margin-bottom: 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.schedule-header h1 {
-  font-size: 2rem;
+.schedule-header h2 {
+  font-size: 2.2rem;
   color: #333;
-  margin: 0 0 8px 0;
+  margin: 0;
   font-weight: 600;
 }
 
-.schedule-header p {
-  color: #666;
-  margin: 0;
-  font-size: 1rem;
+/* 오늘 날짜 정보 */
+.today-info {
+  color: #6f42c1;
+  font-weight: 500;
+  font-size: 1.1rem;
 }
 
 .schedule-controls {
   display: flex;
-  gap: 16px;
+  gap: 20px;
   margin-bottom: 30px;
   align-items: center;
   flex-wrap: wrap;
@@ -38,13 +44,14 @@
 .date-control label {
   font-weight: 500;
   color: #333;
+  font-size: 1.05rem;
 }
 
 .date-picker {
-  padding: 12px 16px;
+  padding: 12px 18px;
   border: 2px solid #e9ecef;
   border-radius: 8px;
-  font-size: 1rem;
+  font-size: 1.05rem;
   transition: border-color 0.3s ease;
 }
 
@@ -53,13 +60,30 @@
   border-color: #6f42c1;
 }
 
+/* 오늘 버튼 */
+.today-btn {
+  padding: 12px 20px;
+  background-color: #e9ecef;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.today-btn:hover {
+  background-color: #dee2e6;
+}
+
 .add-schedule-btn {
-  padding: 12px 24px;
+  padding: 12px 26px;
   background-color: #6f42c1;
   color: white;
   border: none;
   border-radius: 8px;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.3s ease;
@@ -72,30 +96,48 @@
 
 .schedule-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-  margin-bottom: 30px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-bottom: 35px;
 }
 
-.stat-card {
+.schedule-stat-card {
   background-color: #f8f9fa;
   border-radius: 12px;
-  padding: 24px;
+  padding: 35px;
   text-align: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-.stat-card h3 {
-  margin: 0 0 12px 0;
-  font-size: 0.9rem;
+.schedule-stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.schedule-stat-icon {
+  font-size: 2.2rem;
+  margin-bottom: 12px;
+}
+
+.schedule-stat-card h3 {
+  margin: 0 0 18px 0;
+  font-size: 1.05rem;
   color: #666;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.stat-value {
-  font-size: 2rem;
+.schedule-stat-value {
+  font-size: 3.2rem;
   font-weight: 700;
   color: #6f42c1;
+  line-height: 1;
 }
 
 .schedule-content {
@@ -108,78 +150,111 @@
 .schedule-list {
   background-color: #f8f9fa;
   border-radius: 12px;
-  padding: 24px;
+  padding: 35px;
+  min-height: 500px;
 }
 
 .schedule-list h3 {
-  margin: 0 0 20px 0;
-  font-size: 1.2rem;
+  margin: 0 0 25px 0;
+  font-size: 1.4rem;
   color: #333;
   font-weight: 600;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #e9ecef;
 }
 
 .no-schedule {
   text-align: center;
-  padding: 40px;
+  padding: 80px 40px;
   color: #666;
+}
+
+.no-schedule p {
+  font-size: 1.15rem;
+  margin-bottom: 25px;
+}
+
+/* 첫 일정 추가 버튼 */
+.add-first-schedule {
+  margin-top: 20px;
+  padding: 12px 26px;
+  background-color: #6f42c1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.add-first-schedule:hover {
+  background-color: #5a32a3;
 }
 
 .schedule-items {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .schedule-item {
   background-color: white;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 20px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
   gap: 20px;
-  align-items: center;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  align-items: flex-start;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.3s ease;
+  margin-bottom: 15px;
+}
+
+.schedule-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .schedule-time {
   text-align: center;
-  min-width: 80px;
+  min-width: 90px;
+  flex-shrink: 0;
 }
 
 .time {
   font-size: 1.2rem;
-  font-weight: 700;
+  font-weight: 600;
   color: #6f42c1;
   margin-bottom: 4px;
 }
 
 .duration {
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   color: #666;
 }
 
 .schedule-info {
   flex: 1;
+  min-width: 0;
 }
 
-.schedule-header {
+.schedule-item .schedule-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .schedule-header h4 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   color: #333;
   font-weight: 600;
 }
 
 .schedule-type {
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.8rem;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.88rem;
   font-weight: 500;
 }
 
@@ -187,34 +262,47 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 10px;
 }
 
 .detail-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   color: #666;
+  line-height: 1.4;
 }
 
 .detail-label {
-  font-size: 1rem;
-  width: 20px;
+  font-size: 1.15rem;
+  width: 24px;
 }
 
 .schedule-status {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  min-width: 100px;
+  gap: 10px;
+  min-width: 120px;
+  flex-shrink: 0;
 }
 
-.status-badge {
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.8rem;
+/* 상태 선택 드롭다운 */
+.status-select {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.92rem;
   font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 110px;
+  text-align: center;
+  outline: none;
+}
+
+.status-select:hover {
+  opacity: 0.85;
 }
 
 .schedule-actions {
@@ -223,22 +311,13 @@
 }
 
 .action-btn {
-  padding: 6px 12px;
+  padding: 8px 18px;
   border: none;
-  border-radius: 4px;
-  font-size: 0.8rem;
+  border-radius: 6px;
+  font-size: 0.92rem;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.3s ease;
-}
-
-.action-btn.edit {
-  background-color: #fff3e0;
-  color: #f57c00;
-}
-
-.action-btn.edit:hover {
-  background-color: #ffe0b2;
 }
 
 .action-btn.delete {
@@ -250,27 +329,237 @@
   background-color: #ffcdd2;
 }
 
-.schedule-calendar {
-  background-color: #f8f9fa;
-  border-radius: 12px;
-  padding: 24px;
-  height: fit-content;
+/* 모달 스타일 */
+.add-schedule-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
 }
 
-.schedule-calendar h3 {
-  margin: 0 0 20px 0;
-  font-size: 1.2rem;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-content {
+  background-color: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 650px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 26px;
+  border-bottom: 1px solid #e9ecef;
+  flex-shrink: 0;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.35rem;
   color: #333;
   font-weight: 600;
 }
 
-.calendar-placeholder {
-  text-align: center;
-  padding: 40px 20px;
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
   color: #666;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
 }
 
-.calendar-placeholder p {
-  margin: 0 0 8px 0;
-  font-size: 0.9rem;
-} 
+.close-btn:hover {
+  background-color: #f8f9fa;
+}
+
+.modal-body {
+  padding: 20px 26px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.form-group {
+  margin-bottom: 18px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 11px 14px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
+  font-family: inherit;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #6f42c1;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 85px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 18px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 26px;
+  border-top: 1px solid #e9ecef;
+  flex-shrink: 0;
+}
+
+.cancel-btn,
+.save-btn {
+  padding: 11px 26px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.cancel-btn {
+  background-color: #e9ecef;
+  color: #333;
+}
+
+.cancel-btn:hover {
+  background-color: #dee2e6;
+}
+
+.save-btn {
+  background-color: #6f42c1;
+  color: white;
+}
+
+.save-btn:hover {
+  background-color: #5a32a3;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 1200px) {
+  .schedule-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .schedule-page {
+    padding: 20px;
+  }
+
+  .schedule-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .schedule-stats {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .schedule-stat-card {
+    padding: 25px;
+    min-height: 150px;
+  }
+
+  .schedule-stat-value {
+    font-size: 2.5rem;
+  }
+
+  .schedule-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .date-control {
+    width: 100%;
+  }
+
+  .add-schedule-btn {
+    width: 100%;
+  }
+
+  .schedule-item {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .schedule-time {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+
+  .modal-content {
+    width: 95%;
+    margin: 20px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
