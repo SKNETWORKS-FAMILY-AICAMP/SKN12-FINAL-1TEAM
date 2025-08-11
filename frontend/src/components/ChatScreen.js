@@ -315,17 +315,16 @@ const ChatScreen = () => {
 
   // 새로운 채팅 시작
   const startNewChat = () => {
-    const chatId = Date.now().toString();
     const newSessionId = generateSessionId();
     
     // 메시지를 비워서 예시 프롬프트가 표시되도록 함
     setMessages([]);
-    setCurrentChatId(chatId);
+    setCurrentChatId(newSessionId);  // sessionId를 chatId로도 사용
     setSessionId(newSessionId);
     
     // 새 채팅을 히스토리에 추가
     const newChat = {
-      id: chatId,
+      id: newSessionId,  // sessionId를 id로 사용 (DB와 일치시키기 위해)
       sessionId: newSessionId,
       title: `채팅 ${new Date().toLocaleString()}`,
       messages: [],
@@ -393,7 +392,7 @@ const ChatScreen = () => {
         if (currentChatId === chatId) {
           if (updatedHistory.length > 0) {
             // 다른 채팅 선택
-            selectChat(updatedHistory[0].id);
+            await selectChat(updatedHistory[0].id);
           } else {
             // 채팅이 없으면 새 채팅 시작
             startNewChat();
@@ -423,11 +422,10 @@ const ChatScreen = () => {
       localStorage.removeItem('chatHistory');
       
       // 새 채팅 시작
-      const chatId = Date.now().toString();
       const newSessionId = generateSessionId();
       
       const newChat = {
-        id: chatId,
+        id: newSessionId,  // sessionId를 id로 사용
         sessionId: newSessionId,
         title: `채팅 ${new Date().toLocaleString()}`,
         messages: [],
@@ -436,11 +434,11 @@ const ChatScreen = () => {
       
       // 새 채팅을 히스토리에 추가하고 선택
       setChatHistory([newChat]);
-      setCurrentChatId(chatId);
+      setCurrentChatId(newSessionId);
       setSessionId(newSessionId);
       setMessages([]);
       
-      console.log('✅ 새 채팅 시작:', chatId);
+      console.log('✅ 새 채팅 시작:', newSessionId);
     }
   };
 
@@ -781,6 +779,30 @@ const ChatScreen = () => {
         sessionStorage.removeItem(`interrupt_type_${sessionId}`);
       }
 
+      // 첫 메시지인 경우 세션이 DB에 생성되었는지 확인
+      // (새 채팅창에서 첫 메시지를 보낸 경우)
+      if (messages.length === 1 && messages[0].type === 'user') {
+        // 현재 세션이 chatHistory에 있는지 확인
+        const sessionExists = chatHistory.some(chat => chat.sessionId === sessionId);
+        
+        if (!sessionExists) {
+          // 세션이 목록에 없으면 추가 (백엔드가 자동 생성했을 것)
+          const newChat = {
+            id: sessionId,
+            sessionId: sessionId,
+            title: userMessage.content.substring(0, 30) + '...',
+            messages: finalMessages,
+            createdAt: new Date().toISOString()
+          };
+          
+          const updatedHistory = [newChat, ...chatHistory];
+          setChatHistory(updatedHistory);
+          
+          // 제목 업데이트 시도
+          dbApi.updateSessionTitle(sessionId, newChat.title);
+        }
+      }
+
       // RouterAgent가 자동으로 처리하므로 에이전트 확인 불필요
 
     } catch (error) {
@@ -1038,33 +1060,11 @@ const ChatScreen = () => {
             <h2>AI 채팅</h2>
             
             {/* 현재 세션 에이전트 표시 */}
-            {currentSessionAgent ? (
+            {currentSessionAgent && (
               <div className="current-agent-info">
                 <div className="agent-badge">
-                  🎯 <strong>{currentSessionAgent.agent_name}</strong> (고정됨)
+                  🎯 <strong>{currentSessionAgent.agent_name}</strong> (자동 선택됨)
                 </div>
-                <button 
-                  className="reset-agent-btn"
-                  onClick={resetAgent}
-                  title="에이전트 초기화"
-                >
-                  🔄 초기화
-                </button>
-              </div>
-            ) : (
-              <div className="agent-selector">
-                <label>에이전트 선택:</label>
-                <select 
-                  value={selectedAgent} 
-                  onChange={(e) => setSelectedAgent(e.target.value)}
-                  className="agent-select"
-                >
-                  {Object.entries(agents).map(([key, agent]) => (
-                    <option key={key} value={key}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
               </div>
             )}
           </div>

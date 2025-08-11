@@ -452,20 +452,9 @@ class RouterAgent:
             
             logger.info(f"[DEBUG] Final response_text length: {len(response_text) if response_text else 0}")
             
-            if response_text:
-                try:
-                    save_result = save_message_sync(
-                        session_id=session_id,
-                        role="assistant",
-                        message=response_text
-                    )
-                    if save_result:
-                        logger.info(f"AI 응답 저장 성공: session_id={session_id}")
-                    else:
-                        logger.warning(f"AI 응답 저장 실패: session_id={session_id}")
-                except Exception as e:
-                    logger.error(f"AI 응답 저장 오류: {e}", exc_info=True)
-            else:
+            # router_api.py에서 저장하므로 여기서는 저장하지 않음 (중복 방지)
+            # employee_agent, client_agent, search_agent 등의 응답은 router_api.py에서 저장
+            if not response_text:
                 logger.warning(f"[DEBUG] No response text to save for {agent_type}")
             
             return {
