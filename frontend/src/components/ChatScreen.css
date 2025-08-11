@@ -160,10 +160,15 @@
   cursor: pointer;
   transition: all 0.3s;
   border: 1px solid transparent;
+  position: relative;
 }
 
 .chat-item:hover {
   background-color: #f8f9fa;
+}
+
+.chat-item:hover .chat-delete-btn {
+  opacity: 1 !important;
 }
 
 .chat-item.active {
@@ -315,6 +320,22 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 6px;
+}
+
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.delete-message-btn {
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.message:hover .delete-message-btn {
+  opacity: 1;
+  background-color: rgba(255, 68, 68, 0.1) !important;
 }
 
 .message-sender {

@@ -20,7 +20,7 @@ from .graph import RouterState, create_graph
 from ..tools.router_tools import create_tools_from_config
 
 # 대화 저장 시스템 import
-from ..common.conversation_storage import ConversationStorage
+from ..common.conversation_storage import ConversationStorage, save_message_sync
 
 logger = logging.getLogger(__name__)
 
@@ -325,17 +325,19 @@ class RouterAgent:
         if not session_id:
             session_id = str(uuid.uuid4())
         
-        # 사용자 메시지를 PostgreSQL에 저장 (비동기를 동기로 실행)
+        # 사용자 메시지를 PostgreSQL에 저장 (동기 함수 사용)
         try:
-            asyncio.run(self.conversation_storage.save_message(
+            result = save_message_sync(
                 session_id=session_id,
                 role="user",
                 message=user_input
-            ))
-        except RuntimeWarning:
-            pass  # RuntimeWarning 무시
+            )
+            if result:
+                logger.info(f"사용자 메시지 저장 성공: session_id={session_id}")
+            else:
+                logger.warning(f"사용자 메시지 저장 실패: session_id={session_id}")
         except Exception as e:
-            logger.warning(f"사용자 메시지 저장 실패: {e}")
+            logger.error(f"사용자 메시지 저장 오류: {e}", exc_info=True)
         
         initial_state = RouterState(
             messages=[],
@@ -402,15 +404,17 @@ class RouterAgent:
                 
                 # AI 응답 저장
                 try:
-                    asyncio.run(self.conversation_storage.save_message(
+                    result = save_message_sync(
                         session_id=session_id,
                         role="assistant",
                         message=response_text
-                    ))
-                except RuntimeWarning:
-                    pass  # RuntimeWarning 무시
+                    )
+                    if result:
+                        logger.info(f"AI 응답 저장 성공: session_id={session_id}")
+                    else:
+                        logger.warning(f"AI 응답 저장 실패: session_id={session_id}")
                 except Exception as e:
-                    logger.warning(f"AI 응답 저장 실패: {e}")
+                    logger.error(f"AI 응답 저장 오류: {e}", exc_info=True)
                 
                 return {
                     "success": True,
@@ -420,18 +424,38 @@ class RouterAgent:
                 }
             
             # AI 응답 저장 (일반 응답)
-            response_text = result.get("response", "") if result else ""
-            if response_text:
-                try:
-                    asyncio.run(self.conversation_storage.save_message(
-                        session_id=session_id,
-                        role="assistant",
-                        message=response_text
-                    ))
-                except RuntimeWarning:
-                    pass  # RuntimeWarning 무시
-                except Exception as e:
-                    logger.warning(f"AI 응답 저장 실패: {e}")
+            # 디버깅을 위한 상세 로그
+            agent_type = final_state.get("agent_type", "unknown")
+            logger.info(f"[DEBUG] Agent type: {agent_type}")
+            logger.info(f"[DEBUG] Result type: {type(result)}")
+            logger.info(f"[DEBUG] Result keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+            
+            # 각 에이전트별로 다른 필드명 처리
+            response_text = ""
+            if result:
+                # employee_agent 특별 처리
+                if agent_type == "employee_agent" and isinstance(result, dict):
+                    # result가 성공이면 report 필드 확인
+                    if result.get("success"):
+                        response_text = result.get("report", "")
+                        logger.info(f"[DEBUG] employee_agent report found: {bool(response_text)}, length: {len(response_text) if response_text else 0}")
+                
+                # 다른 에이전트들
+                if not response_text:
+                    response_text = (
+                        result.get("response", "") or 
+                        result.get("report", "") or  
+                        result.get("analysis_result", "") or  
+                        result.get("search_result", "") or  
+                        result.get("message", "")
+                    )
+            
+            logger.info(f"[DEBUG] Final response_text length: {len(response_text) if response_text else 0}")
+            
+            # router_api.py에서 저장하므로 여기서는 저장하지 않음 (중복 방지)
+            # employee_agent, client_agent, search_agent 등의 응답은 router_api.py에서 저장
+            if not response_text:
+                logger.warning(f"[DEBUG] No response text to save for {agent_type}")
             
             return {
                 "success": True,
