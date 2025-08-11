@@ -1,6 +1,20 @@
 """
 대화 저장 시스템
-PostgreSQL API (8010 포트)와 연동하여 대화 내역을 저장/조회합니다.
+Docker PostgreSQL API (8010 포트)와 연동하여 대화 내역을 저장/조회합니다.
+
+주요 기능:
+1. 메시지 저장 (save_message, save_message_sync)
+2. 대화 내역 조회 (get_conversation)
+3. 세션 정보 관리 (get_session_info, update_session_title, delete_session)
+4. 사용자별 세션 목록 조회 (get_user_sessions)
+
+사용 예시:
+    # 비동기 사용
+    storage = ConversationStorage()
+    await storage.save_message(session_id, "user", "안녕하세요")
+    
+    # 동기 사용 (router.py에서 사용)
+    save_message_sync(session_id, "user", "안녕하세요")
 """
 import httpx
 from typing import List, Dict, Optional, Any
