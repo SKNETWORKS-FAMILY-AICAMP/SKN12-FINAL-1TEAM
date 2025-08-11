@@ -21,8 +21,8 @@ MINIO_ROOT_PASSWORD=minioadmin
 MINIO_BUCKET_NAME=documents
 
 # PgAdmin Configuration
-PGADMIN_DEFAULT_EMAIL=admin@admin.com
-PGADMIN_DEFAULT_PASSWORD=admin1234
+PGADMIN_EMAIL=admin@admin.com
+PGADMIN_PASSWORD=admin1234
 
 # JWT Configuration
 JWT_SECRET_KEY=생성된 키 값
