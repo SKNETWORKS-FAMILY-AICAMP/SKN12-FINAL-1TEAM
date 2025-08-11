@@ -367,6 +367,45 @@ const ChatScreen = () => {
     }
   };
 
+  // 개별 세션 삭제
+  const deleteChat = async (chatId, e) => {
+    e.stopPropagation(); // 부모의 onClick 이벤트 방지
+    
+    if (!window.confirm('이 채팅을 삭제하시겠습니까?')) {
+      return;
+    }
+    
+    // 삭제할 채팅 찾기
+    const chatToDelete = chatHistory.find(chat => chat.id === chatId);
+    if (!chatToDelete) return;
+    
+    try {
+      // DB에서 삭제
+      const success = await dbApi.deleteSession(chatToDelete.sessionId, 1);
+      if (success) {
+        console.log(`✅ 세션 삭제 성공: ${chatToDelete.sessionId}`);
+        
+        // UI에서 제거
+        const updatedHistory = chatHistory.filter(chat => chat.id !== chatId);
+        setChatHistory(updatedHistory);
+        
+        // 삭제한 채팅이 현재 선택된 채팅이면 새 채팅 시작
+        if (currentChatId === chatId) {
+          if (updatedHistory.length > 0) {
+            // 다른 채팅 선택
+            selectChat(updatedHistory[0].id);
+          } else {
+            // 채팅이 없으면 새 채팅 시작
+            startNewChat();
+          }
+        }
+      }
+    } catch (error) {
+      console.error('세션 삭제 실패:', error);
+      alert('채팅 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
   // 채팅 내역 초기화 - DB에서도 삭제
   const clearAllChats = async () => {
     if (window.confirm('모든 채팅 내역을 삭제하시겠습니까?')) {
@@ -939,6 +978,7 @@ const ChatScreen = () => {
                   key={chat.id}
                   className={`chat-item ${currentChatId === chat.id ? 'active' : ''}`}
                   onClick={() => selectChat(chat.id)}
+                  style={{ position: 'relative' }}
                 >
                   <span className="chat-icon">💬</span>
                   <div className="chat-info">
@@ -954,6 +994,36 @@ const ChatScreen = () => {
                       {new Date(chat.createdAt).toLocaleDateString()}
                     </div>
                   </div>
+                  <button
+                    className="chat-delete-btn"
+                    onClick={(e) => deleteChat(chat.id, e)}
+                    title="채팅 삭제"
+                    style={{
+                      position: 'absolute',
+                      right: '8px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#999',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      opacity: 0,
+                      transition: 'opacity 0.2s, background 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = 'rgba(255, 68, 68, 0.1)';
+                      e.target.style.color = '#ff4444';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'transparent';
+                      e.target.style.color = '#999';
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
             </div>
@@ -1048,26 +1118,6 @@ const ChatScreen = () => {
                   </span>
                   <div className="message-actions">
                     <span className="message-time">{message.timestamp}</span>
-                    <button 
-                      className="delete-message-btn"
-                      onClick={() => handleDeleteMessage(index)}
-                      title="메시지 삭제"
-                      style={{
-                        marginLeft: '10px',
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#ff4444',
-                        cursor: 'pointer',
-                        fontSize: '16px',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        transition: 'background 0.2s'
-                      }}
-                      onMouseOver={(e) => e.target.style.background = 'rgba(255, 68, 68, 0.1)'}
-                      onMouseOut={(e) => e.target.style.background = 'transparent'}
-                    >
-                      ✕
-                    </button>
                   </div>
                 </div>
                 <div className="message-content">

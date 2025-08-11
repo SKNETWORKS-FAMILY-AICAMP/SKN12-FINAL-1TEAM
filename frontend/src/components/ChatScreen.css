@@ -160,10 +160,15 @@
   cursor: pointer;
   transition: all 0.3s;
   border: 1px solid transparent;
+  position: relative;
 }
 
 .chat-item:hover {
   background-color: #f8f9fa;
+}
+
+.chat-item:hover .chat-delete-btn {
+  opacity: 1 !important;
 }
 
 .chat-item.active {

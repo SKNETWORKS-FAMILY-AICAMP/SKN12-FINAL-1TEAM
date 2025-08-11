@@ -419,6 +419,21 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
                     "message": "사용자가 종료를 선택했습니다.",
                     "end_session": True
                 }
+                
+                # AI 응답을 저장 (종료 메시지도 저장)
+                try:
+                    save_result = save_message_sync(
+                        session_id=session_id,
+                        role="assistant",
+                        message=response.response
+                    )
+                    if save_result:
+                        logger.info(f"[RESUME] 종료 메시지 저장 성공: {session_id}")
+                    else:
+                        logger.warning(f"[RESUME] 종료 메시지 저장 실패: {session_id}")
+                except Exception as e:
+                    logger.error(f"[RESUME] 종료 메시지 저장 오류: {e}")
+                
                 # 세션 정리
                 if hasattr(router_agent, 'sessions') and session_id in router_agent.sessions:
                     del router_agent.sessions[session_id]
