@@ -169,6 +169,54 @@ const ChatScreen = () => {
     scrollToBottom();
   }, [messages]);
 
+  // 개별 메시지 삭제 함수
+  const handleDeleteMessage = async (messageIndex) => {
+    if (!sessionId) {
+      console.error('세션 ID가 없습니다.');
+      return;
+    }
+
+    const confirmDelete = window.confirm('이 메시지를 삭제하시겠습니까?');
+    if (!confirmDelete) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/v1/chat/message/${sessionId}/${messageIndex}?employee_id=1`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        }
+      );
+
+      if (response.ok) {
+        console.log(`✅ 메시지 삭제 성공: index=${messageIndex}`);
+        
+        // UI에서 메시지 제거
+        const updatedMessages = messages.filter((_, index) => index !== messageIndex);
+        setMessages(updatedMessages);
+        
+        // 채팅 히스토리 업데이트
+        const updatedHistory = chatHistory.map(chat => {
+          if (chat.sessionId === sessionId) {
+            return { ...chat, messages: updatedMessages };
+          }
+          return chat;
+        });
+        setChatHistory(updatedHistory);
+        
+      } else {
+        const error = await response.json();
+        console.error('메시지 삭제 실패:', error);
+        alert('메시지 삭제에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('메시지 삭제 중 오류:', error);
+      alert('메시지 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
   // 로컬 스토리지에서 채팅 내역 불러오기
   const loadChatHistoryFromLocal = () => {
     try {
@@ -330,9 +378,30 @@ const ChatScreen = () => {
       await Promise.all(deletePromises);
       console.log('✅ 모든 세션 DB에서 삭제 완료');
       
+      // 상태 초기화
       setChatHistory([]);
+      setMessages([]);
       localStorage.removeItem('chatHistory');
-      startNewChat();
+      
+      // 새 채팅 시작
+      const chatId = Date.now().toString();
+      const newSessionId = generateSessionId();
+      
+      const newChat = {
+        id: chatId,
+        sessionId: newSessionId,
+        title: `채팅 ${new Date().toLocaleString()}`,
+        messages: [],
+        createdAt: new Date().toISOString()
+      };
+      
+      // 새 채팅을 히스토리에 추가하고 선택
+      setChatHistory([newChat]);
+      setCurrentChatId(chatId);
+      setSessionId(newSessionId);
+      setMessages([]);
+      
+      console.log('✅ 새 채팅 시작:', chatId);
     }
   };
 
@@ -977,7 +1046,29 @@ const ChatScreen = () => {
                      message.type === 'system' ? '🤖 시스템' : 
                      `🤖 ${message.agent || 'AI'}`}
                   </span>
-                  <span className="message-time">{message.timestamp}</span>
+                  <div className="message-actions">
+                    <span className="message-time">{message.timestamp}</span>
+                    <button 
+                      className="delete-message-btn"
+                      onClick={() => handleDeleteMessage(index)}
+                      title="메시지 삭제"
+                      style={{
+                        marginLeft: '10px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ff4444',
+                        cursor: 'pointer',
+                        fontSize: '16px',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        transition: 'background 0.2s'
+                      }}
+                      onMouseOver={(e) => e.target.style.background = 'rgba(255, 68, 68, 0.1)'}
+                      onMouseOut={(e) => e.target.style.background = 'transparent'}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
                 <div className="message-content">
                   {message.type === 'agent_guide' ? (

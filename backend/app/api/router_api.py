@@ -232,6 +232,21 @@ async def chat(request: ChatRequest) -> ChatResponse:
             "timestamp": datetime.now().isoformat()
         }
         
+        # AI 응답을 채팅 히스토리에 저장 (인터럽트 메시지 포함)
+        if response.response:
+            try:
+                save_result = save_message_sync(
+                    session_id=result.get("session_id", request.session_id),
+                    role="assistant",
+                    message=response.response
+                )
+                if save_result:
+                    logger.info(f"[CHAT] AI 응답 저장 성공: {result.get('session_id', request.session_id)}")
+                else:
+                    logger.warning(f"[CHAT] AI 응답 저장 실패: {result.get('session_id', request.session_id)}")
+            except Exception as e:
+                logger.error(f"[CHAT] AI 응답 저장 오류: {e}")
+        
         logger.info(f"[CHAT] 응답 완료: success={response.success}, agent={response.target_agent}")
         return response
         
@@ -312,10 +327,40 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
                 }
             else:
                 # 정상적으로 완료
-                response.response = "처리가 완료되었습니다."
+                filled_data = result.get("filled_data") or (result_data.get("filled_data") if isinstance(result_data, dict) else None)
+                final_doc = result.get("final_doc") or (result_data.get("final_doc") if isinstance(result_data, dict) else None)
+                
+                # 메시지 구성 (하드코딩 + 동적 데이터)
+                if filled_data and final_doc:
+                    import json
+                    response.response = "📄 문서 작성이 완료되었습니다!\n\n"
+                    response.response += "=" * 50 + "\n"
+                    response.response += "✅ SUCCESS: 문서 생성 완료!\n"
+                    response.response += "=" * 50 + "\n\n"
+                    
+                    # 작성된 데이터 JSON 형식으로 표시
+                    response.response += "**작성된 내용:**\n"
+                    response.response += "```json\n"
+                    response.response += json.dumps(filled_data, indent=2, ensure_ascii=False)
+                    response.response += "\n```\n\n"
+                    
+                    # 파일 경로
+                    response.response += f"📁 **생성된 문서:** {final_doc}\n"
+                    response.response += "✅ 템플릿 양식이 그대로 유지되면서 플레이스홀더만 치환되었습니다."
+                    
+                elif filled_data:
+                    # 데이터는 있지만 파일 생성 실패
+                    response.response = "문서 분석이 완료되었지만 파일 생성에 실패했습니다.\n\n"
+                    response.response += "**분석된 내용:**\n"
+                    for key, value in filled_data.items():
+                        if value:
+                            response.response += f"• {key}: {value}\n"
+                else:
+                    response.response = "처리가 완료되었습니다."
+                
                 response.data = {
-                    "final_doc": result_data.get("final_doc") if isinstance(result_data, dict) else None,
-                    "filled_data": result.get("filled_data") or (result_data.get("filled_data") if isinstance(result_data, dict) else None)
+                    "final_doc": final_doc,
+                    "filled_data": filled_data
                 }
         
         elif result.get("interrupted"):
@@ -619,6 +664,49 @@ async def delete_session(session_id: str, employee_id: int = 1):
             raise HTTPException(
                 status_code=404,
                 detail=f"세션 {session_id}을(를) 찾을 수 없습니다."
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[DELETE_SESSION] 오류 발생: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"세션 삭제 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.delete("/chat/message/{session_id}/{message_index}")
+async def delete_message(session_id: str, message_index: int, employee_id: int = 1):
+    """
+    특정 메시지를 삭제합니다.
+    
+    Args:
+        session_id: 세션 ID
+        message_index: 메시지 인덱스 (0부터 시작)
+        employee_id: 직원 ID
+        
+    Returns:
+        Dict: 삭제 결과
+    """
+    try:
+        from app.services.common.conversation_storage import ConversationStorage
+        
+        storage = ConversationStorage()
+        success = await storage.delete_message(session_id, message_index, employee_id)
+        
+        if success:
+            logger.info(f"[DELETE_MESSAGE] 성공: session_id={session_id}, index={message_index}")
+            return {
+                "success": True,
+                "message": f"메시지가 삭제되었습니다.",
+                "session_id": session_id,
+                "deleted_index": message_index
+            }
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"메시지를 찾을 수 없습니다."
             )
         
     except HTTPException:

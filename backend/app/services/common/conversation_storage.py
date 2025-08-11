@@ -269,6 +269,75 @@ class ConversationStorage:
             logger.error(f"세션 삭제 중 오류: {e}")
             return False
     
+    async def delete_message(
+        self,
+        session_id: str,
+        message_index: int,
+        employee_id: Optional[int] = None
+    ) -> bool:
+        """
+        특정 메시지 삭제
+        PostgreSQL API가 개별 메시지 삭제를 지원하지 않으므로
+        전체 메시지를 가져와서 필터링 후 재저장하는 방식 사용
+        
+        Args:
+            session_id: 세션 ID
+            message_index: 메시지 인덱스 (0부터 시작)
+            employee_id: 직원 ID
+            
+        Returns:
+            삭제 성공 여부
+        """
+        try:
+            emp_id = employee_id or self.employee_id
+            
+            # 1. 현재 대화 내역을 가져옴
+            messages = await self.get_conversation(session_id)
+            
+            if not messages or message_index < 0 or message_index >= len(messages):
+                logger.warning(f"메시지를 찾을 수 없음: session_id={session_id}, index={message_index}")
+                return False
+            
+            # 2. 세션 정보 저장 (제목 등)
+            session_info = await self.get_session_info(session_id)
+            session_title = session_info.get('session_title', '') if session_info else ''
+            
+            # 3. 삭제할 메시지를 제외한 메시지들
+            remaining_messages = [msg for i, msg in enumerate(messages) if i != message_index]
+            
+            # 메시지가 하나도 남지 않으면 세션 전체 삭제
+            if not remaining_messages:
+                return await self.delete_session(session_id, emp_id)
+            
+            # 4. 기존 세션 삭제 (포스트맨 코드처럼 DELETE 사용)
+            delete_success = await self.delete_session(session_id, emp_id)
+            if not delete_success:
+                logger.error(f"세션 삭제 실패: session_id={session_id}")
+                return False
+            
+            # 5. 남은 메시지들을 다시 저장
+            for msg in remaining_messages:
+                save_result = await self.save_message(
+                    session_id=session_id,
+                    role=msg.get('role', 'user'),
+                    message=msg.get('message_text', msg.get('content', msg.get('message', ''))),
+                    employee_id=emp_id
+                )
+                if not save_result:
+                    logger.error(f"메시지 재저장 실패: session_id={session_id}")
+                    return False
+            
+            # 6. 세션 제목 복원
+            if session_title:
+                await self.update_session_title(session_id, session_title)
+            
+            logger.info(f"메시지 삭제 성공: session_id={session_id}, index={message_index}, 남은 메시지={len(remaining_messages)}")
+            return True
+                    
+        except Exception as e:
+            logger.error(f"메시지 삭제 중 오류: {e}")
+            return False
+    
     async def health_check(self) -> bool:
         """
         API 상태 확인
