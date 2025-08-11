@@ -355,7 +355,7 @@ const ChatScreen = () => {
           type: msg.role === 'user' ? 'user' : 'bot',
           content: msg.message_text || msg.content || msg.message,  // DB는 message_text 필드 사용
           timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString(),
-          agent: msg.agent || 'Router Agent'
+          agent: 'Narutalk'
         }));
         
         setMessages(formattedMessages);
@@ -541,7 +541,7 @@ const ChatScreen = () => {
       const data = await response.json();
       
       let botResponseContent = '';
-      let responseAgent = 'Router Agent';
+      let responseAgent = 'Narutalk';
       
       // Handle interrupt responses first (both success and failure cases)
       if (data.requires_interrupt && data.data?.thread_id) {
@@ -558,7 +558,7 @@ const ChatScreen = () => {
             type: 'interactive',
             content: data.response || '문서 타입을 선택해주세요.',
             timestamp: new Date().toLocaleTimeString(),
-            agent: data.target_agent || 'Docs Agent',
+            agent: 'Narutalk',
             waiting_for_input: true,
             input_type: 'manual_selection',
             options: data.data.options.map(opt => opt.label),
@@ -604,7 +604,7 @@ const ChatScreen = () => {
           type: 'interactive',
           content: messageContent,
           timestamp: new Date().toLocaleTimeString(),
-          agent: data.target_agent || 'Docs Agent',
+          agent: 'Narutalk',
           waiting_for_input: true,
           input_type: data.data.interrupt_type || 'verification',
           thread_id: data.data.thread_id
@@ -628,7 +628,7 @@ const ChatScreen = () => {
             type: 'agent_selection',
             content: data.message,
             timestamp: new Date().toLocaleTimeString(),
-            agent: 'Router Agent',
+            agent: 'Narutalk',
             query: currentQuery,
             available_agents: data.available_agents,
             agent_descriptions: data.agent_descriptions,
@@ -653,7 +653,7 @@ const ChatScreen = () => {
             type: 'interactive',
             content: data.response,
             timestamp: new Date().toLocaleTimeString(),
-            agent: 'Docs Agent',
+            agent: 'Narutalk',
             waiting_for_input: true,
             input_type: data.input_type,
             options: data.options || null,
@@ -674,7 +674,7 @@ const ChatScreen = () => {
         // 응답에서 실제 사용된 에이전트 정보 추출
         const usedAgent = data.agent || data.classification_result?.split(': ')[1];
         if (usedAgent) {
-          responseAgent = AGENT_DISPLAY_NAMES[usedAgent] || usedAgent;
+          responseAgent = 'Narutalk';
         }
         
         // 기본 응답 내용
@@ -874,7 +874,7 @@ const ChatScreen = () => {
             type: 'bot',
             content: data.response || data.message,
             timestamp: new Date().toLocaleTimeString(),
-            agent: data.agent
+            agent: 'Narutalk'
           };
           
           const updatedMessages = [...messages, botMessage];
@@ -1114,7 +1114,7 @@ const ChatScreen = () => {
                   <span className="message-sender">
                     {message.type === 'user' ? '👤 사용자' : 
                      message.type === 'system' ? '🤖 시스템' : 
-                     `🤖 ${message.agent || 'AI'}`}
+                     `🤖 ${message.agent?.replace(/_agent$/, '') === message.agent ? message.agent : 'Narutalk'}`}
                   </span>
                   <div className="message-actions">
                     <span className="message-time">{message.timestamp}</span>
@@ -1304,12 +1304,13 @@ const ChatScreen = () => {
             {isLoading && (
               <div className="message ai-message">
                 <div className="message-header">
-                  <span className="message-sender">🤖 {agents[selectedAgent].name}</span>
-                  <span className="message-time">처리 중...</span>
+                  <span className="message-sender">🤖 Narutalk</span>
+                  <span className="message-time">응답 생성 중...</span>
                 </div>
                 <div className="message-content">
-                  <div className="typing-indicator">
-                    처리 중<span>.</span><span>.</span><span>.</span>
+                  <div className="loading-spinner-container">
+                    <div className="spinner"></div>
+                    <span className="loading-text">응답을 생성하고 있습니다...</span>
                   </div>
                 </div>
               </div>
