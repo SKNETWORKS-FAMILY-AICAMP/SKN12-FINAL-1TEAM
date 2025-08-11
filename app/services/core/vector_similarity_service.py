@@ -207,11 +207,11 @@ class VectorSimilarityService:
             columns = self._ensure_string_list(columns)
             # 컬럼 정보를 텍스트로 변환
             columns_text = ", ".join(columns)
-            logger.info(f"🔍 벡터 검색 입력: '{columns_text}' (임계값: {similarity_threshold})")
+            logger.debug(f"🔍 벡터 검색 입력: '{columns_text}' (임계값: {similarity_threshold})")
             
             # OpenAI 임베딩 생성
             query_embedding = await self._create_embedding(columns_text)
-            logger.info(f"🔍 임베딩 생성 완료: 차원 {len(query_embedding)}")
+            logger.debug(f"🔍 임베딩 생성 완료: 차원 {len(query_embedding)}")
             
             # 벡터 유사도 검색 (임계값 이상인 모든 테이블)
             query = text("""
@@ -224,14 +224,14 @@ class VectorSimilarityService:
             
             # 벡터를 pgvector 형식의 문자열로 변환
             embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
-            logger.info(f"🔍 벡터 문자열 길이: {len(embedding_str)} chars")
+            logger.debug(f"🔍 벡터 문자열 길이: {len(embedding_str)} chars")
             
             result = await session.execute(query, {
                 'embedding': embedding_str,
                 'threshold': similarity_threshold
             })
             results = result.fetchall()
-            logger.info(f"🔍 쿼리 결과: {len(results)}개 행 반환")
+            logger.info(f"🔍 벡터 유사도 검색 완료: {len(results)}개 테이블 발견")
             
             relevant_tables = []
             for result in results:
@@ -244,7 +244,7 @@ class VectorSimilarityService:
                 priority_boost = self._get_priority_boost(result.table_name)
                 adjusted_similarity = similarity_score * priority_boost
                 
-                logger.info(f"🔍 테이블 '{result.table_name}' 유사도: {similarity_score:.3f} (가중치: {priority_boost}) → 조정된 유사도: {adjusted_similarity:.3f}")
+                logger.debug(f"🔍 테이블 '{result.table_name}' 유사도: {similarity_score:.3f} (가중치: {priority_boost}) → 조정된 유사도: {adjusted_similarity:.3f}")
                 
                 relevant_tables.append({
                     'table_name': result.table_name,
@@ -292,7 +292,7 @@ class VectorSimilarityService:
                 table_name = table_info['table_name']
                 table_columns = table_info['columns']
                 
-                logger.info(f"🔍 {table_name} LLM 분석 대상으로 추가 (유사도: {table_info['similarity']:.3f})")
+                logger.debug(f"🔍 {table_name} LLM 분석 대상으로 추가 (유사도: {table_info['similarity']:.3f})")
                 
                 # 컬럼 매핑 없이 테이블 정보만 포함 (LLM이 직접 판단)
                 table_mappings.append({
@@ -303,7 +303,13 @@ class VectorSimilarityService:
                     'sample_data': table_info.get('sample_data', [])
                 })
 
-            logger.info(f"📊 최종 테이블 매핑 순서: {table_mappings}")
+            # 로그를 더 보기 편하게 포맷팅
+            logger.info("=" * 60)
+            logger.info("📊 최종 테이블 매핑 순서")
+            logger.info("-" * 60)
+            for i, table in enumerate(table_mappings, 1):
+                logger.info(f"  [{i}] {table['table_name']:20s} (유사도: {table['similarity']:.3f})")
+            logger.info("=" * 60)
 
             return {
                 'success': True,

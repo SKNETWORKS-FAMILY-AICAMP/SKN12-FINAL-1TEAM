@@ -1,25 +1,25 @@
 """
-구체적인 테이블 처리기들
+테이블별 데이터 처리기 모듈
+각 테이블에 특화된 처리 로직을 구현
 """
 
-import logging
-import pandas as pd
 import re
+import logging
+from typing import List, Dict, Any, Optional
 from datetime import datetime
-from typing import Dict, Any, List, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.employee_info import EmployeeInfo
 from app.models.customers import Customer
 from app.models.products import Product
 from app.models.sales_records import SalesRecord
-
-from .base_table_processor import BaseTableProcessor
 from app.models.documents import Document
 from app.models.document_relations import DocumentRelation
 from app.models.interaction_logs import InteractionLog
 from app.models.assignment_map import AssignmentMap
+from app.models.employee_performance import EmployeePerformance
+from app.services.core.base_table_processor import BaseTableProcessor
 from app.services.utils.foreign_key_utils import get_customer_id, get_employee_id, get_product_id
 
 logger = logging.getLogger(__name__)
@@ -56,10 +56,10 @@ class EmployeeProcessor(BaseTableProcessor):
         if not name or not employee_number:
             raise ValueError(f"필수 필드 누락: name={name}, employee_number={employee_number}")
         
-        # EmployeeInfo 모델의 유효한 필드들
+        # EmployeeInfo 모델의 유효한 필드들 (branch_id 추가)
         valid_fields = {
-            'name', 'employee_number', 'team', 'position', 'business_unit', 
-            'branch', 'contact_number', 'base_salary', 'incentive_pay', 
+            'name', 'employee_number', 'position', 'branch_id',
+            'contact_number', 'base_salary', 'incentive_pay', 
             'avg_monthly_budget', 'latest_evaluation', 'responsibilities'
         }
         
@@ -68,22 +68,56 @@ class EmployeeProcessor(BaseTableProcessor):
             'employee_number': employee_number
         }
         
+        # branch_id 특별 처리
+        if 'branch_id' in column_mapping:
+            branch_name = row.get(column_mapping['branch_id'])
+            if branch_name and str(branch_name).strip() and str(branch_name) != 'nan':
+                branch_id = await self._get_branch_id(str(branch_name).strip())
+                if branch_id:
+                    employee_data['branch_id'] = branch_id
+        
         # 다른 필드들 매핑
         for db_field, source_column in column_mapping.items():
-            if db_field in valid_fields and source_column in row and row[source_column] is not None:
+            if db_field in valid_fields and db_field != 'branch_id' and source_column in row and row[source_column] is not None:
                 value = self.transform_field_value(db_field, row[source_column])
                 if value is not None:
                     employee_data[db_field] = value
         
         return EmployeeInfo(**employee_data)
     
-    def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
+    async def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
         """기존 직원 레코드 업데이트"""
+        # branch_id 특별 처리
+        if 'branch_id' in column_mapping:
+            branch_name = row.get(column_mapping['branch_id'])
+            if branch_name and str(branch_name).strip() and str(branch_name) != 'nan':
+                branch_id = await self._get_branch_id(str(branch_name).strip())
+                if branch_id:
+                    setattr(existing_record, 'branch_id', branch_id)
+        
+        # 다른 필드들 업데이트
         for db_field, source_column in column_mapping.items():
-            if source_column in row and row[source_column] is not None:
+            if db_field != 'branch_id' and source_column in row and row[source_column] is not None:
                 value = self.transform_field_value(db_field, row[source_column])
                 if value is not None:
                     setattr(existing_record, db_field, value)
+    
+    async def _get_branch_id(self, branch_name: str) -> Optional[int]:
+        """지점명으로 branch_id 조회"""
+        try:
+            from app.models.branches import Branch
+            result = await self.session.execute(
+                select(Branch).filter(Branch.branch_name == branch_name)
+            )
+            branch = result.scalar_one_or_none()
+            if branch:
+                return branch.branch_id
+            else:
+                logger.warning(f"지점을 찾을 수 없음: {branch_name}")
+                return None
+        except Exception as e:
+            logger.error(f"지점 ID 조회 중 오류: {e}")
+            return None
 
 class CustomerProcessor(BaseTableProcessor):
     """고객 정보 처리기"""
@@ -199,6 +233,10 @@ class ProductProcessor(BaseTableProcessor):
 class SalesRecordProcessor(BaseTableProcessor):
     """매출 기록 처리기"""
     
+    def __init__(self, session: AsyncSession):
+        super().__init__(session)
+        self.total_records_created = 0  # 전체 배치에서 생성된 총 레코드 수
+    
     def get_table_name(self) -> str:
         return "sales_records"
     
@@ -219,7 +257,7 @@ class SalesRecordProcessor(BaseTableProcessor):
         # 월별 매출 데이터 처리
         monthly_sales = self._extract_monthly_sales_data(row, column_mapping)
         if monthly_sales:
-            logger.info(f"월별 매출 데이터 발견: {len(monthly_sales)}개")
+            logger.debug(f"월별 매출 데이터 발견: {len(monthly_sales)}개")
             # 월별 매출 데이터가 있으면 개별 매출 기록으로 변환
             return await self._create_monthly_sales_records(row, column_mapping, monthly_sales)
         
@@ -260,6 +298,21 @@ class SalesRecordProcessor(BaseTableProcessor):
     def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
         """매출 기록은 업데이트하지 않음 (항상 새로 생성)"""
         pass
+    
+    async def process_batch(self, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str],
+                           document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
+        """배치 처리 (오버라이드 - 총 레코드 수 표시)"""
+        # 부모 클래스의 process_batch 호출
+        result = await super().process_batch(table_data, column_mapping, document_id, uploader_id)
+        
+        # 총 생성된 레코드 수 로그
+        if self.total_records_created > 0:
+            logger.info(f"📊 sales_records 총 결과: {len(table_data)}행에서 {self.total_records_created}건 생성")
+        
+        # 결과에 총 레코드 수 추가
+        result['total_records_created'] = self.total_records_created
+        
+        return result
     
     async def _get_or_create_customer_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> int:
         """고객 ID를 가져오기 (기존 고객만 조회, 생성하지 않음)"""
@@ -353,7 +406,7 @@ class SalesRecordProcessor(BaseTableProcessor):
                     logger.warning(f"월별 매출 데이터 파싱 실패: {source_column} = {value}, 오류: {e}")
                     continue
         
-        logger.info(f"총 {len(monthly_sales)}개의 월별 매출 데이터 추출됨")
+        logger.debug(f"총 {len(monthly_sales)}개의 월별 매출 데이터 추출됨")
         return monthly_sales
     
     async def _create_monthly_sales_records(self, row: Dict[str, Any], column_mapping: Dict[str, Any], monthly_sales: List[Dict[str, Any]]) -> List[SalesRecord]:
@@ -388,62 +441,51 @@ class SalesRecordProcessor(BaseTableProcessor):
                     
                     # 필수 필드 검증
                     if sales_data.get('sale_date') and sales_data.get('sale_amount') and sales_data.get('customer_id') and sales_data.get('employee_id'):
-                        sales_record = SalesRecord(**sales_data)
-                        sales_records.append(sales_record)
-                        # 개별 매출 기록 생성 로그 제거 - 너무 많은 로그 생성
+                        record = SalesRecord(**sales_data)
+                        sales_records.append(record)
+                        self.total_records_created += 1  # 총 레코드 수 증가
+                        
+                        # 개별 레코드 생성 로그 제거 - 반복적
                     else:
-                        logger.warning(f"필수 필드 누락으로 매출 기록 생성 실패: {sales_data}")
+                        logger.warning(f"필수 필드 누락 - 건너뜀: {sales_data}")
                         
                 except Exception as e:
-                    logger.error(f"개별 매출 기록 생성 실패: {monthly_sale}, 오류: {e}")
+                    logger.error(f"월별 매출 레코드 생성 실패: {monthly_sale}, 오류: {e}")
                     continue
             
-            logger.info(f"총 {len(sales_records)}개의 매출 기록 생성 완료")
+            if sales_records:
+                logger.debug(f"{len(sales_records)}개 월별 매출 레코드 생성")
+            
             return sales_records
             
         except Exception as e:
-            logger.error(f"월별 매출 기록 생성 중 오류: {e}")
+            logger.error(f"월별 매출 레코드 생성 중 전체 오류: {e}")
             return []
     
-    def _parse_date(self, date_str: str) -> Optional[datetime]:
-        """날짜 문자열을 datetime 객체로 변환"""
-        
-        if not date_str or date_str == 'nan':
-            return None
-        
-        # 다양한 날짜 형식 처리
-        date_patterns = [
-            r'(\d{4})-(\d{1,2})-(\d{1,2})',  # YYYY-MM-DD
-            r'(\d{4})/(\d{1,2})/(\d{1,2})',  # YYYY/MM/DD
-            r'(\d{1,2})-(\d{1,2})-(\d{4})',  # MM-DD-YYYY
-            r'(\d{1,2})/(\d{1,2})/(\d{4})',  # MM/DD/YYYY
-        ]
-        
-        for pattern in date_patterns:
-            match = re.match(pattern, date_str)
-            if match:
-                groups = match.groups()
-                if len(groups) == 3:
-                    try:
-                        if len(groups[0]) == 4:  # YYYY-MM-DD or YYYY/MM/DD
-                            return datetime(int(groups[0]), int(groups[1]), int(groups[2]))
-                        else:  # MM-DD-YYYY or MM/DD/YYYY
-                            return datetime(int(groups[2]), int(groups[0]), int(groups[1]))
-                    except ValueError:
-                        continue
-        
-        # 패턴 매칭이 안되면 기본 파싱 시도
+    def _parse_date(self, date_str: str):
+        """날짜 문자열 파싱"""
         try:
-            return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-        except ValueError:
-            try:
-                return datetime.strptime(date_str, '%Y-%m-%d')
-            except ValueError:
-                logger.warning(f"날짜 파싱 실패: {date_str}")
-                return None
+            # 다양한 날짜 형식 처리
+            for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d', '%Y%m%d']:
+                try:
+                    return datetime.strptime(date_str, fmt).date()
+                except ValueError:
+                    continue
+            
+            # 특수 형식 처리
+            if len(date_str) == 6:  # YYYYMM
+                year = int(date_str[:4])
+                month = int(date_str[4:6])
+                return datetime(year, month, 1).date()
+            
+            raise ValueError(f"날짜 형식을 인식할 수 없음: {date_str}")
+            
+        except Exception as e:
+            logger.error(f"날짜 파싱 실패: {date_str}, 오류: {e}")
+            raise
 
 class DocumentProcessor(BaseTableProcessor):
-    """문서 정보 처리 클래스"""
+    """문서 정보 처리기"""
     
     def __init__(self, session: AsyncSession):
         super().__init__(session)
@@ -456,124 +498,22 @@ class DocumentProcessor(BaseTableProcessor):
         return "개"
     
     def get_unique_fields(self) -> List[str]:
-        return ["document_title"]
-    
-    async def find_existing_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """문서명으로 기존 문서 조회"""
-        document_title = self.extract_required_field(row, column_mapping, "document_title", required=True)
-        if not document_title:
-            return None
-        
-        result = await self.session.execute(
-            select(Document).filter(Document.document_title == document_title)
-        )
-        return result.scalar_one_or_none()
-    
-    async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """새로운 문서 레코드 생성"""
-        try:
-            # 유효한 필드들 정의
-            valid_fields = [
-                'document_title', 'document_type', 'file_path', 'file_size',
-                'upload_date', 'uploader_id', 'status', 'notes'
-            ]
-            
-            # column_mapping을 사용하여 데이터 추출
-            document_data = {}
-            for field in valid_fields:
-                if field in column_mapping and column_mapping[field] in row:
-                    value = row[column_mapping[field]]
-                    if pd.notna(value) and value != '':
-                        document_data[field] = value
-            
-            # 필수 필드 검증
-            if 'document_title' not in document_data:
-                document_data['document_title'] = f"Document_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            
-            if 'document_type' not in document_data:
-                document_data['document_type'] = 'unknown'
-            
-            if 'upload_date' not in document_data:
-                document_data['upload_date'] = datetime.now()
-            
-            logger.info(f"문서 레코드 생성: {document_data}")
-            return document_data
-            
-        except Exception as e:
-            logger.error(f"문서 레코드 생성 중 오류: {e}")
-            raise
-
+        return ["document_id"]
 
 class DocumentRelationProcessor(BaseTableProcessor):
-    """문서 관계 처리 클래스"""
-    
-    def __init__(self, session: AsyncSession):
-        super().__init__(session)
-        self.table_name = "document_relations"
+    """문서 관계 정보 처리기"""
     
     def get_table_name(self) -> str:
         return "document_relations"
     
     def get_unit_name(self) -> str:
-        return "건"
+        return "개"
     
     def get_unique_fields(self) -> List[str]:
-        return ["source_document_id", "target_document_id"]
-    
-    async def find_existing_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """문서 관계 조회"""
-        source_document_id = self.extract_required_field(row, column_mapping, "source_document_id", required=True)
-        target_document_id = self.extract_required_field(row, column_mapping, "target_document_id", required=True)
-        
-        if not source_document_id or not target_document_id:
-            return None
-        
-        result = await self.session.execute(
-            select(DocumentRelation).filter(
-                DocumentRelation.source_document_id == source_document_id,
-                DocumentRelation.target_document_id == target_document_id
-            )
-        )
-        return result.scalar_one_or_none()
-    
-    async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Dict[str, Any]:
-        """새로운 문서 관계 레코드 생성"""
-        try:
-            # 유효한 필드들 정의
-            valid_fields = [
-                'source_document_id', 'target_document_id', 'relation_type',
-                'relation_description', 'created_date'
-            ]
-            
-            # column_mapping을 사용하여 데이터 추출
-            relation_data = {}
-            for field in valid_fields:
-                if field in column_mapping and column_mapping[field] in row:
-                    value = row[column_mapping[field]]
-                    if pd.notna(value) and value != '':
-                        relation_data[field] = value
-            
-            # 필수 필드 검증
-            if 'relation_type' not in relation_data:
-                relation_data['relation_type'] = 'related'
-            
-            if 'created_date' not in relation_data:
-                relation_data['created_date'] = datetime.now()
-            
-            logger.info(f"문서 관계 레코드 생성: {relation_data}")
-            return relation_data
-            
-        except Exception as e:
-            logger.error(f"문서 관계 레코드 생성 중 오류: {e}")
-            raise
-
+        return ["parent_document_id", "child_document_id"]
 
 class InteractionLogProcessor(BaseTableProcessor):
-    """상호작용 로그 처리 클래스"""
-    
-    def __init__(self, session: AsyncSession):
-        super().__init__(session)
-        self.table_name = "interaction_logs"
+    """상호작용 로그 처리기"""
     
     def get_table_name(self) -> str:
         return "interaction_logs"
@@ -585,61 +525,66 @@ class InteractionLogProcessor(BaseTableProcessor):
         return ["customer_id", "employee_id", "interaction_date"]
     
     async def find_existing_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """상호작용 로그 조회"""
-        customer_id = self.extract_required_field(row, column_mapping, "customer_id", required=True)
-        employee_id = self.extract_required_field(row, column_mapping, "employee_id", required=True)
-        interaction_date = self.extract_required_field(row, column_mapping, "interaction_date", required=True)
+        """상호작용 로그는 중복 체크 없이 항상 새로 생성"""
+        return None
+    
+    async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
+        """새 상호작용 로그 생성"""
+        # 필수 필드 추출
+        customer_id = await self._get_customer_id(row, column_mapping)
+        employee_id = await self._get_employee_id(row, column_mapping)
+        interaction_date = self._parse_date(
+            self.extract_required_field(row, column_mapping, "interaction_date", required=True)
+        )
         
         if not customer_id or not employee_id or not interaction_date:
-            return None
+            raise ValueError(f"필수 필드 누락: customer_id={customer_id}, employee_id={employee_id}, interaction_date={interaction_date}")
         
-        result = await self.session.execute(
-            select(InteractionLog).filter(
-                InteractionLog.customer_id == customer_id,
-                InteractionLog.employee_id == employee_id,
-                InteractionLog.interaction_date == interaction_date
-            )
-        )
-        return result.scalar_one_or_none()
+        log_data = {
+            'customer_id': customer_id,
+            'employee_id': employee_id,
+            'interaction_date': interaction_date
+        }
+        
+        # 선택 필드들 매핑
+        optional_fields = ['interaction_type', 'notes', 'sales_opportunity']
+        for field in optional_fields:
+            if field in column_mapping:
+                value = row.get(column_mapping[field])
+                if value:
+                    log_data[field] = self.transform_field_value(field, value)
+        
+        return InteractionLog(**log_data)
     
-    async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Dict[str, Any]:
-        """새로운 상호작용 로그 레코드 생성"""
+    async def _get_customer_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
+        """고객 ID 조회"""
+        customer_name = self.extract_required_field(row, column_mapping, "customer_name", required=False)
+        if not customer_name:
+            return None
+        return await get_customer_id(self.session, customer_name)
+    
+    async def _get_employee_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
+        """직원 ID 조회"""
+        employee_name = self.extract_required_field(row, column_mapping, "employee_name", required=False)
+        employee_number = self.extract_required_field(row, column_mapping, "employee_number", required=False)
+        if not employee_name and not employee_number:
+            return None
+        return await get_employee_id(self.session, employee_name, employee_number)
+    
+    def _parse_date(self, date_str: str):
+        """날짜 문자열 파싱"""
+        if not date_str:
+            return None
         try:
-            # 유효한 필드들 정의
-            valid_fields = [
-                'customer_id', 'employee_id', 'interaction_type', 'interaction_date',
-                'interaction_notes', 'follow_up_required', 'follow_up_date'
-            ]
-            
-            # column_mapping을 사용하여 데이터 추출
-            interaction_data = {}
-            for field in valid_fields:
-                if field in column_mapping and column_mapping[field] in row:
-                    value = row[column_mapping[field]]
-                    if pd.notna(value) and value != '':
-                        interaction_data[field] = value
-            
-            # 필수 필드 검증
-            if 'interaction_type' not in interaction_data:
-                interaction_data['interaction_type'] = 'general'
-            
-            if 'interaction_date' not in interaction_data:
-                interaction_data['interaction_date'] = datetime.now()
-            
-            logger.info(f"상호작용 로그 레코드 생성: {interaction_data}")
-            return interaction_data
-            
-        except Exception as e:
-            logger.error(f"상호작용 로그 레코드 생성 중 오류: {e}")
-            raise
-
+            return datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            try:
+                return datetime.strptime(date_str, '%Y/%m/%d').date()
+            except ValueError:
+                return None
 
 class AssignmentMapProcessor(BaseTableProcessor):
-    """담당자 배정 처리 클래스"""
-    
-    def __init__(self, session: AsyncSession):
-        super().__init__(session)
-        self.table_name = "assignment_map"
+    """담당자 배정 정보 처리기"""
     
     def get_table_name(self) -> str:
         return "assignment_map"
@@ -651,9 +596,9 @@ class AssignmentMapProcessor(BaseTableProcessor):
         return ["employee_id", "customer_id"]
     
     async def find_existing_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """담당자 배정 조회"""
-        employee_id = self.extract_required_field(row, column_mapping, "employee_id", required=True)
-        customer_id = self.extract_required_field(row, column_mapping, "customer_id", required=True)
+        """담당자 배정은 중복 체크"""
+        employee_id = await self._get_employee_id(row, column_mapping)
+        customer_id = await self._get_customer_id(row, column_mapping)
         
         if not employee_id or not customer_id:
             return None
@@ -666,32 +611,21 @@ class AssignmentMapProcessor(BaseTableProcessor):
         )
         return result.scalar_one_or_none()
     
-    async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Dict[str, Any]:
-        """새로운 담당자 배정 레코드 생성"""
+    async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
+        """새 담당자 배정 생성"""
         try:
-            # 유효한 필드들 정의
-            valid_fields = [
-                'employee_id', 'customer_id', 'assignment_date', 'assignment_type',
-                'assignment_notes', 'is_active'
-            ]
+            # 직원 ID 조회 또는 생성
+            employee_id = await self._get_employee_id(row, column_mapping)
+            # 고객 ID 조회 또는 생성  
+            customer_id = await self._get_customer_id(row, column_mapping)
             
-            # column_mapping을 사용하여 데이터 추출
-            assignment_data = {}
-            for field in valid_fields:
-                if field in column_mapping and column_mapping[field] in row:
-                    value = row[column_mapping[field]]
-                    if pd.notna(value) and value != '':
-                        assignment_data[field] = value
+            if not employee_id or not customer_id:
+                raise ValueError(f"필수 ID 누락: employee_id={employee_id}, customer_id={customer_id}")
             
-            # 필수 필드 검증
-            if 'assignment_date' not in assignment_data:
-                assignment_data['assignment_date'] = datetime.now()
-            
-            if 'assignment_type' not in assignment_data:
-                assignment_data['assignment_type'] = 'primary'
-            
-            if 'is_active' not in assignment_data:
-                assignment_data['is_active'] = True
+            assignment_data = {
+                'employee_id': employee_id,
+                'customer_id': customer_id
+            }
             
             logger.info(f"담당자 배정 레코드 생성: {assignment_data}")
             return assignment_data
@@ -700,200 +634,294 @@ class AssignmentMapProcessor(BaseTableProcessor):
             logger.error(f"담당자 배정 레코드 생성 중 오류: {e}")
             raise
 
-class BranchTargetProcessor(BaseTableProcessor):
-    """지점별 목표 및 실적 처리기"""
+class EmployeePerformanceProcessor(BaseTableProcessor):
+    """직원 실적 목표 처리기"""
     
     def get_table_name(self) -> str:
-        return "branch_targets"
+        return "employee_performance"
     
     def get_unit_name(self) -> str:
         return "건"
     
     def get_unique_fields(self) -> List[str]:
-        return ["branch_id", "employee_info_id", "target_year", "target_month"]
+        return ["employee_id", "year_month"]
     
     async def find_existing_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """지점, 직원, 년월로 기존 목표 조회"""
-        # branch_targets는 중복 체크 없이 항상 새로 생성
+        """직원 ID와 년월로 기존 목표 조회"""
+        from app.models.employee_performance import EmployeePerformance
+        
+        # 직원 ID 조회
+        employee_id = await self._get_employee_id(row, column_mapping)
+        if not employee_id:
+            return None
+        
+        # 년월 추출
+        year_month = self._extract_year_month(row, column_mapping)
+        if not year_month:
+            return None
+        
+        result = await self.session.execute(
+            select(EmployeePerformance).filter(
+                EmployeePerformance.employee_id == employee_id,
+                EmployeePerformance.year_month == year_month
+            )
+        )
+        return result.scalar_one_or_none()
+    
+    async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
+        """새 목표 레코드 생성 (월별 컬럼 처리 포함)"""
+        from app.models.employee_performance import EmployeePerformance
+        
+        # 월별 목표 데이터 추출 (YYYYMM 형식 컬럼들)
+        monthly_targets = self._extract_monthly_targets(row)
+        
+        if monthly_targets:
+            # 월별 목표가 있는 경우 개별 레코드 생성
+            records = []
+            employee_id = await self._get_employee_id(row, column_mapping)
+            
+            if not employee_id:
+                raise ValueError("직원 정보를 찾을 수 없습니다")
+            
+            for month_data in monthly_targets:
+                record = EmployeePerformance(
+                    employee_id=employee_id,
+                    year_month=month_data['year_month'],
+                    target_amount=month_data['target_amount'],
+                    notes=month_data.get('notes')
+                )
+                records.append(record)
+                logger.info(f"목표 생성: 직원 {employee_id}, {month_data['year_month']}, 목표: {month_data['target_amount']:,.0f}")
+            
+            return records if records else None
+        
+        else:
+            # 단일 목표 데이터 처리
+            employee_id = await self._get_employee_id(row, column_mapping)
+            year_month = self._extract_year_month(row, column_mapping)
+            target_amount = self._extract_target_amount(row, column_mapping)
+            
+            if not employee_id or not year_month:
+                raise ValueError(f"필수 필드 누락: employee_id={employee_id}, year_month={year_month}")
+            
+            return EmployeePerformance(
+                employee_id=employee_id,
+                year_month=year_month,
+                target_amount=target_amount,
+                notes=row.get(column_mapping.get('notes'))
+            )
+    
+    async def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
+        """기존 목표 레코드 업데이트"""
+        target_amount = self._extract_target_amount(row, column_mapping)
+        if target_amount is not None:
+            existing_record.target_amount = target_amount
+        
+        if 'notes' in column_mapping:
+            notes = row.get(column_mapping['notes'])
+            if notes:
+                existing_record.notes = notes
+    
+    async def _get_employee_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
+        """직원 ID 조회"""
+        from app.services.utils.foreign_key_utils import get_employee_id
+        
+        employee_name = None
+        employee_number = None
+        
+        # 직원명 또는 사번 추출
+        if 'employee_name' in column_mapping:
+            employee_name = str(row.get(column_mapping['employee_name'], '')).strip()
+        if 'employee_number' in column_mapping:
+            employee_number = str(row.get(column_mapping['employee_number'], '')).strip()
+        
+        # 컬럼명으로 직접 확인 (인코딩 문제 대응)
+        columns = list(row.keys())
+        
+        # 두 번째 컬럼이 담당자일 가능성 (index 1)
+        if not employee_name and len(columns) > 1:
+            # '담당자' 또는 두 번째 컬럼
+            for col in columns:
+                if '담당' in col or '직원' in col or '성명' in col:
+                    value = str(row.get(col, '')).strip()
+                    if value and value not in ['', 'nan', 'None', '계', '합계', '총계']:
+                        employee_name = value
+                        break
+            
+            # 그래도 없으면 두 번째 컬럼 시도
+            if not employee_name:
+                value = str(row.get(columns[1], '')).strip()
+                if value and value not in ['', 'nan', 'None', '계', '합계', '총계']:
+                    employee_name = value
+        
+        # 세 번째 컬럼이 사번일 가능성 (index 2)
+        if not employee_number and len(columns) > 2:
+            # '사번' 또는 세 번째 컬럼
+            for col in columns:
+                if '사번' in col or '번호' in col:
+                    value = str(row.get(col, '')).strip()
+                    if value and value not in ['', 'nan', 'None']:
+                        employee_number = value
+                        break
+            
+            # 그래도 없으면 세 번째 컬럼 시도 (MR- 패턴 확인)
+            if not employee_number:
+                value = str(row.get(columns[2], '')).strip()
+                if value and (value.startswith('MR-') or value.startswith('mr-') or 
+                             value not in ['', 'nan', 'None']):
+                    employee_number = value
+        
+        if not employee_name and not employee_number:
+            logger.debug(f"직원 정보를 찾을 수 없음: {list(row.items())[:5]}")
+            return None
+        
+        try:
+            logger.debug(f"직원 조회: 이름={employee_name}, 사번={employee_number}")
+            return await get_employee_id(self.session, employee_name, employee_number)
+        except Exception as e:
+            logger.warning(f"직원 ID 조회 실패 (이름: {employee_name}, 사번: {employee_number}): {e}")
+            return None
+    
+    def _extract_year_month(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
+        """년월 정보 추출"""
+        from datetime import datetime
+        
+        # 매핑된 year_month 필드 확인
+        if 'year_month' in column_mapping:
+            value = row.get(column_mapping['year_month'])
+            if value:
+                try:
+                    return datetime.strptime(str(value), '%Y-%m-%d').date()
+                except:
+                    try:
+                        return datetime.strptime(str(value), '%Y%m').replace(day=1).date()
+                    except:
+                        pass
+        
+        # 월별 컬럼이 있는지 확인
+        for col_name in row.keys():
+            if re.match(r'^\d{6}$', str(col_name)):  # YYYYMM 형식
+                year = int(str(col_name)[:4])
+                month = int(str(col_name)[4:6])
+                return datetime(year, month, 1).date()
+        
         return None
     
-    async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, Any]):
-        """지점별 목표 레코드 생성 (월별 데이터 처리)"""
-        logger.info(f"지점 목표 데이터 처리 시작")
-        
-        # 월별 목표/실적 데이터 추출
-        monthly_targets = self._extract_monthly_target_data(row, column_mapping)
-        if not monthly_targets:
-            logger.warning("월별 목표 데이터가 없습니다")
-            return []
-        
-        # 지점 ID 조회 또는 생성
-        branch_id = await self._get_or_create_branch_id(row, column_mapping)
-        # 직원 ID 조회 또는 생성  
-        employee_info_id = await self._get_or_create_employee_info_id(row, column_mapping)
-        
-        if not branch_id or not employee_info_id:
-            logger.error(f"지점 또는 직원 정보를 찾을 수 없음: branch_id={branch_id}, employee_info_id={employee_info_id}")
-            return []
-        
-        # 월별 목표 레코드 생성
-        from app.models.branch_targets import BranchTarget
-        target_records = []
-        
-        for monthly_data in monthly_targets:
-            try:
-                # 달성률 계산
-                achievement_rate = 0.0
-                if monthly_data['target_amount'] and monthly_data['target_amount'] > 0:
-                    achievement_rate = (monthly_data['actual_amount'] / monthly_data['target_amount']) * 100
-                
-                target_data = {
-                    'branch_id': branch_id,
-                    'employee_info_id': employee_info_id,
-                    'target_year': monthly_data['year'],
-                    'target_month': monthly_data['month'],
-                    'target_date': monthly_data['target_date'],
-                    'target_amount': monthly_data['target_amount'],
-                    'actual_amount': monthly_data['actual_amount'],
-                    'achievement_rate': achievement_rate
-                }
-                
-                target_record = BranchTarget(**target_data)
-                target_records.append(target_record)
-                logger.info(f"목표 레코드 생성: {monthly_data['year']}-{monthly_data['month']:02d} (목표: {monthly_data['target_amount']}, 실적: {monthly_data['actual_amount']})")
-                
-            except Exception as e:
-                logger.error(f"개별 목표 레코드 생성 실패: {monthly_data}, 오류: {e}")
-                continue
-        
-        return target_records if target_records else None
+    def _extract_target_amount(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> float:
+        """목표 금액 추출"""
+        if 'target_amount' in column_mapping:
+            value = row.get(column_mapping['target_amount'])
+            if value:
+                try:
+                    return float(str(value).replace(',', '').replace('₩', ''))
+                except:
+                    pass
+        return 0.0
     
-    def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """목표 기록은 업데이트하지 않음"""
-        pass
-    
-    def _extract_monthly_target_data(self, row: Dict[str, Any], column_mapping: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """월별 목표/실적 데이터 추출"""
+    def _extract_monthly_targets(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """월별 목표 데이터 추출 (YYYYMM 형식 컬럼들)"""
+        from datetime import datetime
         monthly_targets = []
         
-        for column_name, value in row.items():
-            # YYYYMM 형식의 컬럼 확인
-            if re.match(r'^\d{6}$', str(column_name)):
-                try:
-                    year = int(str(column_name)[:4])
-                    month = int(str(column_name)[4:6])
-                    
-                    # 해당 월의 목표, 실적, 달성률 컬럼 찾기
-                    target_col = f"{column_name}_목표"
-                    actual_col = f"{column_name}_실적"
-                    
-                    # 실제 데이터 구조에 맞게 수정 필요
-                    # 예: "202312" 컬럼 다음에 "목표", "실적", "달성률" 순서로 나온다면
-                    target_amount = 0.0
-                    actual_amount = 0.0
-                    
-                    # 컬럼 인덱스 기반으로 목표/실적 추출 (실제 구조에 맞게 조정 필요)
-                    columns = list(row.keys())
-                    col_idx = columns.index(column_name)
-                    
-                    # 목표 값 추출 (다음 컬럼)
-                    if col_idx + 1 < len(columns):
-                        target_val = row[columns[col_idx + 1]]
-                        if target_val and str(target_val).replace(',', '').replace('.', '').isdigit():
-                            target_amount = float(str(target_val).replace(',', ''))
-                    
-                    # 실적 값 추출 (다다음 컬럼)
-                    if col_idx + 2 < len(columns):
-                        actual_val = row[columns[col_idx + 2]]
-                        if actual_val and str(actual_val).replace(',', '').replace('.', '').isdigit():
-                            actual_amount = float(str(actual_val).replace(',', ''))
-                    
-                    if target_amount > 0 or actual_amount > 0:
-                        from datetime import datetime
-                        target_date = datetime(year, month, 1)
+        for col_name, value in row.items():
+            # YYYYMM_목표 형식 우선 처리
+            if '_목표' in str(col_name):
+                month_str = str(col_name).split('_')[0]
+                if re.match(r'^\d{6}$', month_str):
+                    try:
+                        year = int(month_str[:4])
+                        month = int(month_str[4:6])
                         
-                        monthly_targets.append({
-                            'year': year,
-                            'month': month,
-                            'target_date': target_date,
-                            'target_amount': target_amount,
-                            'actual_amount': actual_amount
-                        })
-                        
-                except Exception as e:
-                    logger.warning(f"월별 목표 데이터 파싱 실패: {column_name}, 오류: {e}")
-                    continue
+                        # 값 변환 처리
+                        if value and str(value) not in ['', 'nan', 'None']:
+                            # 문자열로 변환 후 숫자만 추출
+                            value_str = str(value).replace(',', '').replace('₩', '').replace(' ', '')
+                            if value_str.replace('.', '').replace('-', '').isdigit():
+                                target_amount = float(value_str)
+                                
+                                if target_amount > 0:
+                                    monthly_targets.append({
+                                        'year_month': datetime(year, month, 1).date(),
+                                        'target_amount': target_amount,
+                                        'notes': f"{year}년 {month}월 목표"
+                                    })
+                                    logger.debug(f"목표 추출: {month_str} = {target_amount:,.0f}")
+                    except Exception as e:
+                        logger.debug(f"목표 추출 실패: {col_name} = {value}, 오류: {e}")
+                        continue
+        
+        # 목표 컬럼이 없는 경우 로그
+        if not monthly_targets:
+            logger.debug(f"월별 목표 데이터를 찾을 수 없음. 컬럼: {list(row.keys())[:10]}")
         
         return monthly_targets
     
-    async def _get_or_create_branch_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
-        """지점 ID 조회 또는 생성"""
+    async def process_batch(self, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str],
+                           document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
+        """배치 처리 (월별 목표 데이터 특별 처리)"""
         try:
-            branch_name = None
-            if 'branch_name' in column_mapping and row.get(column_mapping['branch_name']):
-                branch_name = str(row[column_mapping['branch_name']]).strip()
-            elif '지점' in column_mapping and row.get(column_mapping['지점']):
-                branch_name = str(row[column_mapping['지점']]).strip()
+            total_created = 0
+            total_updated = 0
+            total_skipped = 0
             
-            if not branch_name or branch_name == 'nan':
-                return None
-            
-            from app.models.branches import Branch
-            result = await self.session.execute(
-                select(Branch).filter(Branch.branch_name == branch_name)
-            )
-            branch = result.scalar_one_or_none()
-            
-            if branch:
-                return branch.branch_id
-            else:
-                # 지점이 없으면 생성
-                new_branch = Branch(
-                    branch_name=branch_name,
-                    headquarters="미지정",  # 기본값
-                    department="미지정"      # 기본값
-                )
-                self.session.add(new_branch)
-                await self.session.flush()
-                return new_branch.branch_id
+            for row in table_data:
+                # 계, 합계 등 집계 행 제외
+                first_value = str(list(row.values())[0]) if row else ""
+                if first_value in ['계', '합계', '총계', '']:
+                    total_skipped += 1
+                    continue
                 
-        except Exception as e:
-            logger.error(f"지점 ID 조회 중 오류: {e}")
-            return None
-    
-    async def _get_or_create_employee_info_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
-        """직원 정보 ID 조회 또는 생성"""
-        try:
-            employee_name = None
-            if 'employee_name' in column_mapping and row.get(column_mapping['employee_name']):
-                employee_name = str(row[column_mapping['employee_name']]).strip()
-            elif '담당자' in column_mapping and row.get(column_mapping['담당자']):
-                employee_name = str(row[column_mapping['담당자']]).strip()
-            
-            if not employee_name or employee_name == 'nan':
-                return None
-            
-            from app.models.employee_info import EmployeeInfo
-            result = await self.session.execute(
-                select(EmployeeInfo).filter(EmployeeInfo.name == employee_name)
-            )
-            employee = result.scalar_one_or_none()
-            
-            if employee:
-                return employee.employee_info_id
-            else:
-                # 직원이 없으면 생성
-                new_employee = EmployeeInfo(
-                    name=employee_name,
-                    employee_number=f"AUTO_{employee_name}"  # 자동 생성 사번
-                )
-                self.session.add(new_employee)
-                await self.session.flush()
-                return new_employee.employee_info_id
+                # 월별 목표 데이터 처리
+                records = await self.create_new_record(row, column_mapping)
                 
+                if isinstance(records, list):
+                    # 여러 개의 월별 레코드
+                    for record in records:
+                        # 기존 레코드 확인
+                        existing = await self.session.execute(
+                            select(EmployeePerformance).filter(
+                                EmployeePerformance.employee_id == record.employee_id,
+                                EmployeePerformance.year_month == record.year_month
+                            )
+                        )
+                        existing_record = existing.scalar_one_or_none()
+                        
+                        if existing_record:
+                            # 업데이트
+                            existing_record.target_amount = record.target_amount
+                            if record.notes:
+                                existing_record.notes = record.notes
+                            total_updated += 1
+                        else:
+                            # 신규 생성
+                            self.session.add(record)
+                            total_created += 1
+                
+                elif records:
+                    # 단일 레코드
+                    existing = await self.find_existing_record(row, column_mapping)
+                    if existing:
+                        await self.update_existing_record(existing, row, column_mapping)
+                        total_updated += 1
+                    else:
+                        self.session.add(records)
+                        total_created += 1
+            
+            await self.session.flush()
+            
+            logger.info(f"✅ employee_performance 처리 완료: 생성 {total_created}건, 업데이트 {total_updated}건")
+            
+            return {
+                'success': True,
+                'processed_count': len(table_data),
+                'created_count': total_created,
+                'updated_count': total_updated,
+                'skipped_count': total_skipped
+            }
+            
         except Exception as e:
-            logger.error(f"직원 ID 조회 중 오류: {e}")
-            return None
+            logger.error(f"employee_performance 배치 처리 중 오류: {e}")
+            raise
 
 class BranchProcessor(BaseTableProcessor):
     """지점 정보 처리기"""
@@ -969,8 +997,8 @@ def get_table_processor(table_name: str, session: AsyncSession) -> BaseTableProc
         'document_relations': DocumentRelationProcessor,
         'interaction_logs': InteractionLogProcessor,
         'assignment_map': AssignmentMapProcessor,
-        'branches': BranchProcessor,  # 지점 처리기 추가
-        'branch_targets': BranchTargetProcessor,  # 지점 목표 처리기 추가
+        'branches': BranchProcessor,
+        'employee_performance': EmployeePerformanceProcessor,  # 직원 실적 목표 처리기 추가
     }
     
     processor_class = processors.get(table_name)

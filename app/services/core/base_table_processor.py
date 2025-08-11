@@ -3,6 +3,7 @@
 """
 
 import logging
+import asyncio
 from typing import Dict, Any, Optional, List
 from abc import ABC, abstractmethod
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -200,7 +201,11 @@ class BaseTableProcessor(ABC):
                 
                 if has_changes:
                     # 업데이트
-                    self.update_existing_record(existing_record, row, column_mapping)
+                    # update_existing_record가 async 메서드인지 확인
+                    if asyncio.iscoroutinefunction(self.update_existing_record):
+                        await self.update_existing_record(existing_record, row, column_mapping)
+                    else:
+                        self.update_existing_record(existing_record, row, column_mapping)
                     self.increment_counter("updated")
                     logger.debug(f"📝 {self.get_table_name()} 업데이트: {record_key}")
                     return "updated"
@@ -235,21 +240,46 @@ class BaseTableProcessor(ABC):
                     return "created"
                 
         except Exception as e:
-            logger.error(f"❌ {self.get_table_name()} 레코드 처리 중 오류: {e}")
+            # 에러 발생 시 상세 정보 로깅
+            table_name = self.get_table_name()
+            error_details = {
+                'table': table_name,
+                'row_data_keys': list(row.keys())[:10],  # 처음 10개 키만
+                'column_mapping': list(column_mapping.keys()),
+                'error_type': type(e).__name__,
+                'error_message': str(e)
+            }
+            logger.error(f"❌ {table_name} 레코드 처리 중 오류:")
+            logger.error(f"  - 에러 타입: {error_details['error_type']}")
+            logger.error(f"  - 에러 메시지: {error_details['error_message']}")
+            logger.error(f"  - 입력 컬럼: {error_details['row_data_keys']}")
+            logger.error(f"  - 매핑 대상: {error_details['column_mapping']}")
             return "error"
     
     async def process_batch(self, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str],
                            document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
         """배치 처리"""
         table_name = self.get_table_name()
+        total_rows = len(table_data)
         
         try:
-            logger.info(f"🔄 {table_name} 배치 처리 시작: {len(table_data)}행")
+            logger.info(f"🔄 {table_name} 배치 처리 시작: {total_rows}행")
+            
+            # 진행률 표시 설정 (100행 이상일 때만)
+            show_progress = total_rows >= 100
+            progress_interval = max(50, total_rows // 4)  # 최소 50행 또는 25% 간격
             
             for i, row in enumerate(table_data):
                 result = await self.process_single_record(row, column_mapping, document_id, uploader_id)
+                
+                # 에러 발생 시 간단한 표시 (상세 내용은 process_single_record에서 이미 로깅됨)
                 if result == "error":
-                    logger.warning(f"⚠️ {table_name} {i+1}행 처리 실패")
+                    logger.warning(f"⚠️ {table_name} {i+1}/{total_rows}행 처리 실패")
+                
+                # 진행률 표시 (100행 이상일 때만)
+                if show_progress and (i + 1) % progress_interval == 0:
+                    progress_pct = ((i + 1) / total_rows) * 100
+                    logger.debug(f"⏳ {table_name} 진행 중: [{i+1}/{total_rows}] {progress_pct:.0f}%")
             
             logger.info(f"✅ {table_name} 배치 처리 완료: {self.processed_count}행 처리됨, {self.created_count}{self.get_unit_name()} 생성, {self.updated_count}{self.get_unit_name()} 업데이트, {self.skipped_count}{self.get_unit_name()} 건너뜀")
             

@@ -16,6 +16,7 @@ from app.services.processors.document_type_updater import DocumentTypeUpdater
 from app.routers.user_router import get_current_user, get_current_admin_user
 from pydantic import BaseModel
 import logging
+import re
 
 # 파일 처리 관련 라이브러리들
 try:
@@ -60,6 +61,91 @@ class BatchUploadResult(BaseModel):
     results: List[Union[DocumentInfo, TableUploadResult]]
     errors: List[Dict[str, str]]
 
+def _is_multiheader_structure(df: pd.DataFrame) -> bool:
+    """다단계 헤더 구조인지 감지"""
+    if len(df) < 3:
+        return False
+    
+    # 첫 3개 행 확인
+    first_row = df.iloc[0] if len(df) > 0 else []
+    second_row = df.iloc[1] if len(df) > 1 else []
+    third_row = df.iloc[2] if len(df) > 2 else []
+    
+    # 패턴 확인
+    has_target_header = any('대상' in str(val) for val in first_row)
+    has_category_header = any('구분' in str(val) for val in first_row)
+    
+    # YYYYMM 패턴 확인 (첫 번째 또는 두 번째 행)
+    has_monthly = False
+    for row in [first_row, second_row]:
+        for val in row:
+            if re.match(r'^\d{6}$', str(val)):
+                has_monthly = True
+                break
+        if has_monthly:
+            break
+    
+    # 목표/실적/달성률 패턴 확인 (세 번째 행)
+    has_metrics = False
+    for val in third_row:
+        val_str = str(val).lower()
+        if any(keyword in val_str for keyword in ['목표', '실적', '달성']):
+            has_metrics = True
+            break
+    
+    # 다단계 헤더로 판단하는 조건
+    return (has_target_header or has_category_header) and has_monthly or has_metrics
+
+def _process_multiheader_excel(df_raw: pd.DataFrame) -> tuple[str, list]:
+    """다단계 헤더 Excel 데이터 처리"""
+    # 헤더 행 분석 (첫 3개 행)
+    header_rows = 3
+    if len(df_raw) < header_rows:
+        # 헤더가 충분하지 않으면 일반 처리
+        df_raw.columns = df_raw.columns.astype(str)
+        return "", df_raw.to_dict('records')
+    
+    # 컬럼명 구성
+    columns = []
+    first_row = df_raw.iloc[0]
+    second_row = df_raw.iloc[1]
+    third_row = df_raw.iloc[2]
+    
+    for i in range(len(df_raw.columns)):
+        # 각 행의 값
+        val1 = str(first_row.iloc[i]) if pd.notna(first_row.iloc[i]) else ""
+        val2 = str(second_row.iloc[i]) if pd.notna(second_row.iloc[i]) else ""
+        val3 = str(third_row.iloc[i]) if pd.notna(third_row.iloc[i]) else ""
+        
+        # 컬럼명 결정 로직
+        if val1 and val1 != 'nan':
+            # 첫 번째 행 값이 있으면 우선 사용 (대상, 구분 등)
+            columns.append(val1)
+        elif re.match(r'^\d{6}$', val2):
+            # YYYYMM 패턴이면 월_지표 형식으로
+            if val3 and val3 != 'nan':
+                columns.append(f"{val2}_{val3}")
+            else:
+                columns.append(val2)
+        elif val3 and val3 != 'nan':
+            # 세 번째 행 값 사용 (목표, 실적, 달성률)
+            columns.append(val3)
+        else:
+            # 기본값
+            columns.append(f"column_{i}")
+    
+    # 데이터 행만 추출 (헤더 행 제외)
+    df_data = df_raw.iloc[header_rows:].copy()
+    df_data.columns = columns
+    
+    # NaN 값 처리
+    df_data = df_data.fillna('')
+    
+    logger.info(f"다단계 헤더 처리 완료: 컬럼 {len(columns)}개, 데이터 {len(df_data)}행")
+    logger.info(f"컬럼명: {columns[:10]}...")  # 처음 10개만 로그
+    
+    return "", df_data.to_dict('records')
+
 def _extract_csv_data(file_bytes: bytes) -> tuple[str, list]:
     """CSV 파일에서 데이터 추출"""
     if not PANDAS_AVAILABLE:
@@ -70,13 +156,23 @@ def _extract_csv_data(file_bytes: bytes) -> tuple[str, list]:
     return "", df.to_dict('records')
 
 def _extract_excel_data(file_bytes: bytes) -> tuple[str, list]:
-    """Excel 파일에서 데이터 추출"""
+    """Excel 파일에서 데이터 추출 (다단계 헤더 지원)"""
     if not PANDAS_AVAILABLE:
         raise ImportError("pandas 라이브러리가 설치되지 않았습니다.")
-    df = pd.read_excel(io.BytesIO(file_bytes))
-    # 모든 컬럼명을 문자열로 변환
-    df.columns = df.columns.astype(str)
-    return "", df.to_dict('records')
+    
+    # 먼저 헤더 없이 읽어서 구조 파악
+    df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None)
+    
+    # 다단계 헤더 구조 감지 및 처리
+    if _is_multiheader_structure(df_raw):
+        logger.info("다단계 헤더 구조 감지 - 특별 처리 수행")
+        return _process_multiheader_excel(df_raw)
+    else:
+        # 일반적인 단일 헤더 처리
+        df = pd.read_excel(io.BytesIO(file_bytes))
+        # 모든 컬럼명을 문자열로 변환
+        df.columns = df.columns.astype(str)
+        return "", df.to_dict('records')
 
 def _extract_text_data(file_bytes: bytes) -> tuple[str, list]:
     """TXT 파일에서 텍스트 추출"""

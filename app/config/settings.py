@@ -19,10 +19,10 @@ print(f"[DEBUG] Settings가 불러오는 .env 파일 경로: {DOTENV_PATH}")
 # .env 파일이 존재하면 로드
 if os.path.exists(DOTENV_PATH):
     load_dotenv(DOTENV_PATH)
-    print(f"✅ .env 파일 로드됨: {DOTENV_PATH}")
+    print(f"[OK] .env file loaded: {DOTENV_PATH}")
 else:
-    print(f"⚠️ .env 파일이 없습니다: {DOTENV_PATH}")
-    print("환경변수를 직접 설정해야 합니다.")
+    print(f"[WARNING] .env file not found: {DOTENV_PATH}")
+    print("Environment variables must be set directly.")
 
 
 class DatabaseSettings(BaseSettings):

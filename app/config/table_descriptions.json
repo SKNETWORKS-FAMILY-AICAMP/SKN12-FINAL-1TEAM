@@ -41,10 +41,10 @@
     "required_columns": ["employee_id", "customer_id"],
     "sample_data": ["1", "1"]
   },
-  "branch_targets": {
-    "description": "지점별 목표 및 실적 테이블. 지점별, 직원별 월간 목표와 실적을 관리합니다. 목표, 실적, 달성률 데이터가 포함된 문서에서 자동으로 추출됩니다. YYYYMM 형식의 월별 컬럼(202312, 202401 등)이 있는 목표 데이터에 최적화되어 있습니다. branches, employee_info 테이블에 의존합니다. 주요 컬럼: branch_id(지점 ID), employee_info_id(직원 ID), target_year(목표 년도), target_month(목표 월), target_amount(목표 금액), actual_amount(실적 금액), achievement_rate(달성률), notes(비고). 월별 컬럼 패턴이나 목표/실적 관련 컬럼이 있으면 자동으로 인식됩니다.",
-    "columns": ["branch_id", "employee_info_id", "target_year", "target_month", "target_amount", "actual_amount", "achievement_rate", "notes"],
+  "employee_performance": {
+    "description": "직원 실적 목표 테이블. 직원별 월간 목표를 관리합니다. 목표, 계획, 예산 데이터가 포함된 문서에서 자동으로 추출됩니다. YYYYMM 형식의 월별 컬럼이나 목표 관련 키워드가 있는 데이터에 최적화되어 있습니다. employee_info 테이블에 의존합니다. 주요 컬럼: employee_id(직원 ID), year_month(목표 년월), target_amount(목표 금액), notes(비고). 월별 컬럼 패턴이나 목표/계획 관련 컬럼이 있으면 자동으로 인식됩니다.",
+    "columns": ["employee_id", "year_month", "target_amount", "notes"],
     "required_columns": [],
-    "sample_data": ["1", "1", "2024", "1", "10000000", "8500000", "85.0", "1월 실적"]
+    "sample_data": ["1", "2024-01-01", "10000000", "1월 목표"]
   }
 } 
