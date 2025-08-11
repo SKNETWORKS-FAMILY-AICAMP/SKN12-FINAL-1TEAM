@@ -140,6 +140,24 @@ const ChatScreen = () => {
       } catch {
         return false;
       }
+    },
+    
+    // 세션 제목 업데이트
+    updateSessionTitle: async (sessionId, title) => {
+      try {
+        const response = await fetch(`/api/v1/chat/session/${sessionId}/title`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title })
+        });
+        if (response.ok) {
+          console.log('✅ 세션 제목 업데이트 성공');
+          return true;
+        }
+      } catch (error) {
+        console.error('세션 제목 업데이트 실패:', error);
+      }
+      return false;
     }
   };
 
@@ -230,11 +248,14 @@ const ChatScreen = () => {
         // 가장 최근 세션 선택
         if (formattedSessions.length > 0) {
           await selectChat(formattedSessions[0].id);
+        } else {
+          // 세션이 없을 때만 새 채팅 시작
+          startNewChat();
         }
       } else {
         console.log('📭 8010에 저장된 세션 없음');
-        setChatHistory([]);
-        setMessages([]);
+        // DB에 세션이 없을 때 새 채팅 시작
+        startNewChat();
       }
       
       // localStorage 삭제 (더 이상 사용 안 함)
@@ -285,9 +306,9 @@ const ChatScreen = () => {
         // DB 메시지를 UI 형식으로 변환
         const formattedMessages = dbMessages.map(msg => ({
           type: msg.role === 'user' ? 'user' : 'bot',
-          content: msg.content || msg.message_text || msg.message,  // DB는 content 필드 사용
+          content: msg.message_text || msg.content || msg.message,  // DB는 message_text 필드 사용
           timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString(),
-          agent: 'Router Agent'
+          agent: msg.agent || 'Router Agent'
         }));
         
         setMessages(formattedMessages);
@@ -316,17 +337,23 @@ const ChatScreen = () => {
   };
 
   // 메시지 저장 (채팅 내역 업데이트)
-  const saveMessageToHistory = (newMessages) => {
+  const saveMessageToHistory = async (newMessages) => {
     if (currentChatId) {
       const updatedHistory = chatHistory.map(chat => {
         if (chat.id === currentChatId) {
+          // 첫 번째 사용자 메시지로 제목 업데이트 (두 번째 메시지가 사용자 메시지인 경우)
+          let newTitle = chat.title;
+          if (newMessages.length > 0 && newMessages[0].type === 'user' && chat.title.startsWith('채팅 ')) {
+            newTitle = newMessages[0].content.substring(0, 30) + '...';
+            // 백엔드에 제목 업데이트
+            dbApi.updateSessionTitle(sessionId || chat.sessionId, newTitle);
+          }
+          
           return {
             ...chat,
             messages: newMessages,
             sessionId: sessionId || chat.sessionId, // sessionId 유지
-            title: newMessages.length > 1 ? 
-              newMessages[1].content.substring(0, 30) + '...' : 
-              chat.title
+            title: newTitle
           };
         }
         return chat;
@@ -762,12 +789,12 @@ const ChatScreen = () => {
     }
   };
 
-  // 첫 번째 채팅이 없으면 자동으로 생성
-  useEffect(() => {
-    if (chatHistory.length === 0 && !currentChatId) {
-      startNewChat();
-    }
-  }, []);
+  // 첫 번째 채팅이 없으면 자동으로 생성 - initializeChat에서 처리하므로 제거
+  // useEffect(() => {
+  //   if (chatHistory.length === 0 && !currentChatId) {
+  //     startNewChat();
+  //   }
+  // }, []);
 
   // checkCurrentAgent 함수 제거 - RouterAgent가 자동으로 처리
 
