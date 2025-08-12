@@ -19,6 +19,7 @@ from app.models.document_relations import DocumentRelation
 from app.models.interaction_logs import InteractionLog
 from app.models.assignment_map import AssignmentMap
 from app.models.employee_performance import EmployeePerformance
+from app.models.customer_monthly_patients import CustomerMonthlyPatient
 from app.services.core.base_table_processor import BaseTableProcessor
 from app.services.utils.foreign_key_utils import get_customer_id, get_employee_id, get_product_id
 
@@ -156,7 +157,7 @@ class CustomerProcessor(BaseTableProcessor):
         
         # 다른 필드들 매핑
         valid_fields = {
-            'customer_name', 'address', 'doctor_name', 'total_patients', 
+            'customer_name', 'address', 'doctor_name', 'contact_number', 'total_patients', 
             'customer_grade', 'notes'
         }
         
@@ -1119,6 +1120,189 @@ class BranchProcessor(BaseTableProcessor):
                 if value is not None:
                     setattr(existing_record, db_field, value)
 
+class CustomerMonthlyPatientsProcessor(BaseTableProcessor):
+    """거래처별 월간 환자수 처리기"""
+    
+    def get_table_name(self) -> str:
+        return "customer_monthly_patients"
+    
+    def get_unit_name(self) -> str:
+        return "건"
+    
+    def get_unique_fields(self) -> List[str]:
+        return ["customer_id", "year_month"]
+    
+    async def find_existing_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
+        """기존 월별 환자수 레코드 조회"""
+        customer_id = await self._get_customer_id(row, column_mapping)
+        year_month = self._extract_year_month(row, column_mapping)
+        
+        if not customer_id or not year_month:
+            return None
+        
+        result = await self.session.execute(
+            select(CustomerMonthlyPatient).filter(
+                CustomerMonthlyPatient.customer_id == customer_id,
+                CustomerMonthlyPatient.year_month == year_month
+            )
+        )
+        return result.scalar_one_or_none()
+    
+    async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
+        """새 월별 환자수 레코드 생성"""
+        # 월별 환자수 데이터 추출 (YYYYMM 형식 컬럼들)
+        monthly_patients = self._extract_monthly_patients(row)
+        
+        if monthly_patients:
+            # 월별 환자수가 있는 경우 개별 레코드 생성
+            records = []
+            customer_id = await self._get_customer_id(row, column_mapping)
+            
+            if not customer_id:
+                raise ValueError("거래처 정보를 찾을 수 없습니다")
+            
+            for month_data in monthly_patients:
+                record = CustomerMonthlyPatient(
+                    customer_id=customer_id,
+                    year_month=month_data['year_month'],
+                    patient_count=month_data['patient_count']
+                )
+                records.append(record)
+                logger.info(f"환자수 생성: 거래처 {customer_id}, {month_data['year_month']}, 환자수: {month_data['patient_count']:,}")
+            
+            return records if records else None
+        
+        else:
+            # 단일 환자수 데이터 처리
+            customer_id = await self._get_customer_id(row, column_mapping)
+            year_month = self._extract_year_month(row, column_mapping)
+            patient_count = self._extract_patient_count(row, column_mapping)
+            
+            if not customer_id or not year_month:
+                raise ValueError(f"필수 필드 누락: customer_id={customer_id}, year_month={year_month}")
+            
+            return CustomerMonthlyPatient(
+                customer_id=customer_id,
+                year_month=year_month,
+                patient_count=patient_count
+            )
+    
+    async def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
+        """기존 환자수 레코드 업데이트"""
+        patient_count = self._extract_patient_count(row, column_mapping)
+        if patient_count is not None:
+            existing_record.patient_count = patient_count
+    
+    async def _get_customer_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
+        """거래처 ID 조회"""
+        from app.services.utils.foreign_key_utils import get_customer_id
+        
+        customer_name = None
+        
+        # 거래처명 추출
+        if 'customer_name' in column_mapping:
+            customer_name = str(row.get(column_mapping['customer_name'], '')).strip()
+        
+        # 컬럼명으로 직접 확인
+        if not customer_name:
+            for col in row.keys():
+                if any(keyword in str(col) for keyword in ['거래처', '고객', '병원', '약국', 'ID']):
+                    value = str(row.get(col, '')).strip()
+                    if value and value not in ['', 'nan', 'None', '계', '합계', '총계']:
+                        customer_name = value
+                        break
+        
+        if not customer_name:
+            logger.debug(f"거래처 정보를 찾을 수 없음: {list(row.items())[:5]}")
+            return None
+        
+        try:
+            logger.debug(f"거래처 조회: 이름={customer_name}")
+            return await get_customer_id(self.session, customer_name)
+        except Exception as e:
+            logger.warning(f"거래처 ID 조회 실패 (이름: {customer_name}): {e}")
+            return None
+    
+    def _extract_year_month(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[str]:
+        """년월 정보 추출 (YYYY-MM 형식으로 변환)"""
+        # 매핑된 year_month 필드 확인
+        if 'year_month' in column_mapping:
+            value = row.get(column_mapping['year_month'])
+            if value:
+                # YYYYMM을 YYYY-MM으로 변환
+                value_str = str(value).strip()
+                if re.match(r'^\d{6}$', value_str):
+                    return f"{value_str[:4]}-{value_str[4:6]}"
+                elif re.match(r'^\d{4}-\d{2}$', value_str):
+                    return value_str
+        
+        # 월별 컬럼이 있는지 확인
+        for col_name in row.keys():
+            col_str = str(col_name).strip()
+            if re.match(r'^\d{6}$', col_str):  # YYYYMM 형식
+                return f"{col_str[:4]}-{col_str[4:6]}"
+        
+        return None
+    
+    def _extract_patient_count(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> int:
+        """환자수 추출"""
+        if 'patient_count' in column_mapping:
+            value = row.get(column_mapping['patient_count'])
+            if value:
+                try:
+                    return int(float(str(value).replace(',', '').replace('명', '')))
+                except:
+                    pass
+        return 0
+    
+    def _extract_monthly_patients(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """월별 환자수 데이터 추출 (YYYYMM 형식 컬럼들)"""
+        monthly_patients = []
+        
+        for col_name, value in row.items():
+            col_str = str(col_name).strip()
+            
+            # YYYYMM_환자수 형식 처리
+            if '환자' in col_str or '방문' in col_str:
+                # 컬럼명에서 월 정보 추출
+                month_match = re.search(r'(\d{6})', col_str)
+                if month_match:
+                    month_str = month_match.group(1)
+                    year_month = f"{month_str[:4]}-{month_str[4:6]}"
+                    
+                    if value and str(value) not in ['', 'nan', 'None']:
+                        try:
+                            patient_count = int(float(str(value).replace(',', '').replace('명', '')))
+                            if patient_count > 0:
+                                monthly_patients.append({
+                                    'year_month': year_month,
+                                    'patient_count': patient_count
+                                })
+                                logger.debug(f"환자수 추출: {year_month} = {patient_count:,}명")
+                        except Exception as e:
+                            logger.debug(f"환자수 추출 실패: {col_name} = {value}, 오류: {e}")
+            
+            # YYYYMM 형식의 컬럼명 자체가 환자수를 나타내는 경우
+            elif re.match(r'^\d{6}$', col_str):
+                year_month = f"{col_str[:4]}-{col_str[4:6]}"
+                if value and str(value) not in ['', 'nan', 'None']:
+                    try:
+                        # 값이 환자수인지 확인 (매출과 구분)
+                        value_float = float(str(value).replace(',', ''))
+                        # 환자수는 보통 10000 미만
+                        if value_float < 10000:
+                            patient_count = int(value_float)
+                            if patient_count > 0:
+                                monthly_patients.append({
+                                    'year_month': year_month,
+                                    'patient_count': patient_count
+                                })
+                                logger.debug(f"환자수 추출: {year_month} = {patient_count:,}명")
+                    except Exception as e:
+                        logger.debug(f"환자수 추출 실패: {col_name} = {value}, 오류: {e}")
+        
+        return monthly_patients
+
 # 처리기 팩토리
 def get_table_processor(table_name: str, session: AsyncSession) -> BaseTableProcessor:
     """테이블 이름에 따른 적절한 처리기 반환"""
@@ -1132,7 +1316,8 @@ def get_table_processor(table_name: str, session: AsyncSession) -> BaseTableProc
         'interaction_logs': InteractionLogProcessor,
         'assignment_map': AssignmentMapProcessor,
         'branches': BranchProcessor,
-        'employee_performance': EmployeePerformanceProcessor,  # 직원 실적 목표 처리기 추가
+        'employee_performance': EmployeePerformanceProcessor,  # 직원 실적 목표 처리기
+        'customer_monthly_patients': CustomerMonthlyPatientsProcessor,  # 거래처별 월간 환자수 처리기
     }
     
     processor_class = processors.get(table_name)

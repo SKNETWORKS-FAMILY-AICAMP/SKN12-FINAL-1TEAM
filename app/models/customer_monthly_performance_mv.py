@@ -15,10 +15,15 @@ def get_customer_monthly_performance_mv_table(engine):
         metadata,
         Column("performance_id", Integer, primary_key=True),  # 성과 기록 고유 ID (기본키)
         Column("customer_id", Integer),  # 고객 ID (외래키)
+        Column("customer_name", String),  # 고객명
+        Column("customer_grade", String),  # 고객 등급
         Column("year_month", String),  # 년월 (예: 2024-01)
         Column("monthly_sales", Integer),  # 월간 매출액 (원 단위)
         Column("budget_used", Integer),  # 사용된 예산 (원 단위)
         Column("visit_count", Integer),  # 방문 횟수
+        Column("transaction_count", Integer),  # 거래 건수
+        Column("patient_count", Integer),  # 월간 환자수
+        Column("created_at", String),  # 생성 일시
         autoload_with=engine
     )
 

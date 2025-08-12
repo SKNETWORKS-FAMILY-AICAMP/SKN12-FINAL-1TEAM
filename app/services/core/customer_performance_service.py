@@ -92,7 +92,8 @@ class CustomerPerformanceService:
                     year_month,
                     monthly_sales,
                     budget_used,
-                    visit_count
+                    visit_count,
+                    patient_count
                 FROM customer_monthly_performance_mv
                 WHERE customer_id = :customer_id
                     AND year_month BETWEEN :start_month AND :end_month
@@ -125,17 +126,13 @@ class CustomerPerformanceService:
                 else:
                     month = ""
                 
-                # 환자수 계산 (visit_count 또는 customers 테이블의 total_patients 사용)
+                # 환자수는 MV에서 직접 가져옴
                 patient_count = 0
-                if hasattr(row, 'visit_count') and row.visit_count:
+                if hasattr(row, 'patient_count') and row.patient_count:
+                    patient_count = row.patient_count
+                elif hasattr(row, 'visit_count') and row.visit_count:
+                    # patient_count가 없는 경우 fallback
                     patient_count = row.visit_count * 100  # 방문당 평균 환자수를 가정
-                elif hasattr(row, 'total_patients'):
-                    patient_count = row.total_patients or 0
-                else:
-                    # customers 테이블에서 total_patients 조회
-                    customer_info = self.get_customer_info(customer_id)
-                    if customer_info and customer_info.get('total_patients'):
-                        patient_count = customer_info['total_patients']
                 
                 monthly_data.append({
                     "month": month,
@@ -308,22 +305,5 @@ class CustomerPerformanceService:
                 period2_summary.get("average_monthly_patients", 0)
             )
         }
-        
-        # 성과 평가 추가
-        sales_change_rate = comparison["sales_change"]["rate"]
-        if sales_change_rate > 10:
-            performance_evaluation = "매우 우수"
-        elif sales_change_rate > 5:
-            performance_evaluation = "우수"
-        elif sales_change_rate > 0:
-            performance_evaluation = "양호"
-        elif sales_change_rate > -5:
-            performance_evaluation = "보통"
-        elif sales_change_rate > -10:
-            performance_evaluation = "부진"
-        else:
-            performance_evaluation = "매우 부진"
-        
-        comparison["performance_evaluation"] = performance_evaluation
         
         return comparison

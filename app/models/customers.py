@@ -14,6 +14,7 @@ class Customer(Base):
     
     # 담당자 정보
     doctor_name = Column(String)  # 담당 의사명
+    contact_number = Column(String)  # 고객 연락처
     
     # 규모 정보
     total_patients = Column(Integer)  # 총 환자 수
