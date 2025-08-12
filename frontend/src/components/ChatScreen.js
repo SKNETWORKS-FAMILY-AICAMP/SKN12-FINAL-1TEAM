@@ -386,17 +386,35 @@ const ChatScreen = () => {
         
         // UI에서 제거
         const updatedHistory = chatHistory.filter(chat => chat.id !== chatId);
-        setChatHistory(updatedHistory);
         
-        // 삭제한 채팅이 현재 선택된 채팅이면 새 채팅 시작
+        // 삭제한 채팅이 현재 선택된 채팅이면 처리
         if (currentChatId === chatId) {
           if (updatedHistory.length > 0) {
             // 다른 채팅 선택
+            setChatHistory(updatedHistory);
             await selectChat(updatedHistory[0].id);
           } else {
-            // 채팅이 없으면 새 채팅 시작
-            startNewChat();
+            // 마지막 채팅을 삭제한 경우 - 새 채팅 생성
+            const newSessionId = generateSessionId();
+            const newChat = {
+              id: newSessionId,
+              sessionId: newSessionId,
+              title: `채팅 ${new Date().toLocaleString()}`,
+              messages: [],
+              createdAt: new Date().toISOString()
+            };
+            
+            // 상태 업데이트를 한 번에 처리
+            setChatHistory([newChat]);
+            setCurrentChatId(newSessionId);
+            setSessionId(newSessionId);
+            setMessages([]);
+            
+            console.log('✅ 새 채팅 생성:', newSessionId);
           }
+        } else {
+          // 다른 채팅이 선택되어 있는 경우 히스토리만 업데이트
+          setChatHistory(updatedHistory);
         }
       }
     } catch (error) {
@@ -1319,14 +1337,6 @@ const ChatScreen = () => {
           </div>
 
           <div className="message-input-container">
-            <div className="selected-agent-info">
-              <span style={{ color: agents.router.color }}>
-                ● {agents.router.name}
-              </span>
-              <span className="agent-description">
-                질문에 따라 자동으로 적절한 에이전트가 선택됩니다
-              </span>
-            </div>
             <div className="input-area">
               <textarea
                 value={inputValue}
