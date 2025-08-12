@@ -184,11 +184,25 @@ class Text2SQLTableClassifier:
                     total_updated = 0
                     total_skipped = 0
                     
+                    # products 테이블의 product_name 매핑 정보 찾기
+                    product_column = None
+                    for table_info in ordered_tables:
+                        if table_info['table_name'] == 'products' and 'product_name' in table_info.get('column_mapping', {}):
+                            product_column = table_info['column_mapping']['product_name']
+                            logger.info(f"📦 products 테이블에서 product_name 매핑 발견: {product_column}")
+                            break
+                    
                     # 의존성 순서에 맞게 테이블 처리
                     for table_info in ordered_tables:
                         table_name = table_info['table_name']
                         column_mapping = table_info['column_mapping']
                         confidence = table_info['confidence']
+                        
+                        # sales_records 처리 시 product_column 정보 추가
+                        if table_name == 'sales_records' and product_column:
+                            # 내부적으로 사용할 product_column 정보 추가 (실제 매핑이 아님)
+                            column_mapping['_product_column'] = product_column
+                            logger.info(f"🔗 sales_records에 product 정보 전달: {product_column}")
                         
                         logger.info(f"🔄 테이블 처리 시작: {table_name} (신뢰도: {confidence:.2f})")
                         

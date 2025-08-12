@@ -248,8 +248,54 @@ class SalesRecordProcessor(BaseTableProcessor):
         return ["sale_amount", "sale_date"]
     
     async def find_existing_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """매출 기록은 중복 체크 없이 항상 새로 생성"""
-        return None  # 매출 기록은 중복 체크하지 않음
+        """직원ID + 고객ID + 날짜로 기존 매출 레코드 조회"""
+        try:
+            # 날짜 추출
+            sale_date = None
+            if 'sale_date' in column_mapping:
+                source_col = column_mapping['sale_date']
+                if source_col in row and row[source_col] is not None:
+                    sale_date = str(row[source_col]).strip()
+            
+            if not sale_date:
+                # 자동 인식: 날짜 관련 컬럼 찾기
+                date_keywords = ['월', '날짜', '일자', '기간', '년월']
+                for col_name, value in row.items():
+                    if any(keyword in str(col_name) for keyword in date_keywords):
+                        if value and str(value).strip() != 'nan':
+                            sale_date = str(value).strip()
+                            break
+            
+            if not sale_date:
+                return None
+            
+            # 직원ID, 고객ID 해결
+            try:
+                employee_id = await self._get_or_create_employee_id(row, column_mapping)
+                customer_id = await self._get_or_create_customer_id(row, column_mapping)
+                parsed_date = self._parse_date(sale_date)
+                
+                if not employee_id or not customer_id or not parsed_date:
+                    return None
+                
+                # 동일한 직원+고객+날짜 조합의 기존 레코드 조회
+                result = await self.session.execute(
+                    select(SalesRecord).filter(
+                        SalesRecord.employee_id == employee_id,
+                        SalesRecord.customer_id == customer_id,
+                        SalesRecord.sale_date == parsed_date,
+                        SalesRecord.is_deleted == False
+                    )
+                )
+                return result.scalar_one_or_none()
+                
+            except Exception as e:
+                logger.debug(f"외래키 해결 실패, 새 레코드로 처리: {e}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"기존 매출 레코드 조회 중 오류: {e}")
+            return None
     
     async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, Any]):
         """새 매출 기록 생성 (외래키 해결 포함)"""
@@ -374,9 +420,53 @@ class SalesRecordProcessor(BaseTableProcessor):
         # 일반 매출 기록 생성 로그 제거 - 반복적
         return SalesRecord(**sales_data)
     
-    def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """매출 기록은 업데이트하지 않음 (항상 새로 생성)"""
-        pass
+    async def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
+        """기존 매출 레코드 업데이트 (새 값이 유효하면 덮어쓰기, 0/None이면 기존 값 유지)"""
+        try:
+            # 매출액 추출 및 업데이트
+            sale_amount = None
+            if 'sale_amount' in column_mapping:
+                source_col = column_mapping['sale_amount']
+                if source_col in row and row[source_col] is not None:
+                    sale_amount = str(row[source_col]).strip()
+            
+            if sale_amount:
+                try:
+                    sale_amount_float = float(sale_amount.replace(',', '').replace('₩', '').strip())
+                    if sale_amount_float > 0:  # 양수일 때만 업데이트
+                        existing_record.sale_amount = sale_amount_float
+                        logger.debug(f"매출액 업데이트: {existing_record.sale_amount} → {sale_amount_float}")
+                except ValueError:
+                    pass
+            
+            # 사용 예산 추출 및 업데이트
+            used_budget = None
+            if 'used_budget' in column_mapping:
+                source_col = column_mapping['used_budget']
+                if source_col in row and row[source_col] is not None:
+                    used_budget = str(row[source_col]).strip()
+            
+            if used_budget:
+                try:
+                    used_budget_float = float(used_budget.replace(',', '').replace('₩', '').strip())
+                    if used_budget_float > 0:  # 양수일 때만 업데이트
+                        existing_record.used_budget = used_budget_float
+                        logger.debug(f"사용예산 업데이트: {existing_record.used_budget} → {used_budget_float}")
+                except ValueError:
+                    pass
+            
+            # product_id 추출 및 업데이트 (기존에 없을 때만 추가)
+            if not existing_record.product_id:
+                product_id = await self._get_or_create_product_id(row, column_mapping)
+                if product_id:
+                    existing_record.product_id = product_id
+                    logger.debug(f"product_id 추가: None → {product_id}")
+            
+            # 업데이트 시각 기록
+            existing_record.updated_at = datetime.now()
+            
+        except Exception as e:
+            logger.error(f"매출 레코드 업데이트 중 오류: {e}")
     
     async def process_batch(self, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str],
                            document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
@@ -439,18 +529,28 @@ class SalesRecordProcessor(BaseTableProcessor):
             raise ValueError(f"직원 ID 조회 실패: {str(e)}")
     
     async def _get_or_create_product_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
-        """제품 ID를 가져오기 (기존 제품만 조회, 생성하지 않음)"""
+        """제품 ID를 가져오기 (products 테이블의 매핑 정보 활용)"""
         try:
-            # 제품명 추출 - 실제 DB 컬럼명 사용
             product_name = None
-            if 'product_name' in column_mapping and row.get(column_mapping['product_name']):
-                product_name = str(row[column_mapping['product_name']]).strip()
+            
+            # text2sql_classifier에서 전달받은 product_column 정보 확인
+            if '_product_column' in column_mapping:
+                product_column = column_mapping['_product_column']
+                if product_column in row and row[product_column]:
+                    product_name = str(row[product_column]).strip()
+                    logger.debug(f"products 테이블 매핑 정보로 제품명 추출: {product_column} = {product_name}")
             
             if not product_name or product_name == 'nan':
                 return None
             
-            # 공통 유틸리티 사용
-            return await get_product_id(self.session, product_name)
+            # 공통 유틸리티 사용하여 product_id 조회
+            product_id = await get_product_id(self.session, product_name)
+            if product_id:
+                logger.debug(f"제품 ID 조회 성공: {product_name} → {product_id}")
+            else:
+                logger.debug(f"제품 ID 조회 실패 (제품이 등록되지 않음): {product_name}")
+            
+            return product_id
                 
         except Exception as e:
             logger.error(f"제품 ID 조회 중 오류: {e}")

@@ -128,6 +128,8 @@ class PromptTemplates:
 ⚠️ 매우 중요:
 ❌ employee_id, customer_id, product_id는 외래키입니다 - 절대 직접 매핑 금지!
 ✅ 대신 name/employee_number (직원), customer_name (고객)을 매핑하세요!
+⚠️ 제품 정보(품목)는 products 테이블에만 product_name으로 매핑하세요!
+❌ sales_records에는 product_name을 매핑하지 마세요! (시스템이 자동으로 product_id 연결)
 """,
 
         'employee_info': """
@@ -218,6 +220,10 @@ class PromptTemplates:
 → sales_records에 반드시 포함: {{"customer_name": "거래처ID", ...}}
 → customers에도 포함: {{"customer_name": "거래처ID"}}
 
+업로드 컬럼에 "품목"이 있으면:
+→ products에만 포함: {{"product_name": "품목"}}
+→ sales_records에는 포함하지 마세요! (시스템이 자동으로 product_id 연결)
+
 sales_records 완전한 매핑 예시:
 {{
     "employee_number": "사번",    // 필수
@@ -226,6 +232,7 @@ sales_records 완전한 매핑 예시:
     "sale_amount": "매출",
     "sale_date": "월",
     "used_budget": "사용 예산"
+    // ❌ product_name은 매핑하지 마세요!
 }}
 
 ## 응답 형식:
