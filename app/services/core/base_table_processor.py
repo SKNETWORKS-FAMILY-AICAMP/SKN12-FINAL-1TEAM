@@ -218,6 +218,11 @@ class BaseTableProcessor(ABC):
                 # 3-B. 새 레코드 생성
                 new_records = await self.create_new_record(row, column_mapping)
                 
+                # None이 반환되면 건너뛰기 (예: 매출과 예산이 모두 0)
+                if new_records is None:
+                    self.increment_counter("skipped")
+                    return "skipped"
+                
                 # 월별 매출 데이터의 경우 여러 레코드가 반환될 수 있음
                 if isinstance(new_records, list):
                     for record in new_records:

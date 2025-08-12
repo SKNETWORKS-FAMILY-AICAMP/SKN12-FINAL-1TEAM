@@ -7,7 +7,15 @@ class PromptTemplates:
     """테이블별 프롬프트 템플릿"""
     
     # 기본 시스템 프롬프트
-    SYSTEM_PROMPT = "당신은 Excel 테이블 데이터를 분석하여 적절한 데이터베이스 테이블에 분류하는 전문가입니다."
+    SYSTEM_PROMPT = """당신은 Excel 테이블 데이터를 분석하여 적절한 데이터베이스 테이블에 분류하는 전문가입니다. 
+    문서의 컬럼과 샘플 데이터를 보고 데이터베이스 테이블의 컬럼에 매핑해주세요.
+    
+⚠️ 절대 규칙 - 반드시 준수:
+1. employee_id, customer_id, product_id는 외래키(Foreign Key)입니다 - 절대 매핑하지 마세요!
+2. sales_records 테이블에서:
+   - employee_id/customer_id/product_id를 직접 매핑하지 마세요
+   - 대신 name/employee_number (직원정보), customer_name (고객정보)를 매핑하세요
+3. 업로드 컬럼명을 실제 DB 컬럼명에 정확히 매핑하세요"""
     
     # 기본 헤더
     BASE_HEADER = """업로드된 Excel 파일의 컬럼들을 분석하여 어떤 데이터베이스 테이블들에 데이터를 생성할 수 있는지 판단해주세요.
@@ -17,24 +25,77 @@ class PromptTemplates:
 - 샘플 데이터: {sample_data}
 - 문서 설명: {description}
 
-## 관련성이 높은 테이블들:
+## 컬럼 의미 파악 및 매핑 가이드:
+업로드된 컬럼의 의미를 파악하여 적절한 DB 컬럼에 매핑하세요:
+
+### 직원 관련 (employee_info, sales_records)
+- 직원 번호: 사번, 직원번호, 사내번호, emp_no, 직원ID, 담당자번호 → employee_number
+- 직원 이름: 성명, 직원명, 담당자, 영업사원, 담당자명, 이름 → name
+- 직급: 직급, 직위, 계급, 포지션 → position
+- 지점: 지점명, 지사, 소속, 부서 → branch_name
+
+### 고객 관련 (customers, sales_records)
+- 고객명: 거래처ID, 거래처명, 고객명, 병원명, 약국명, 기관명, 회사명 → customer_name
+- 주소: 주소, 소재지, 위치, 거래처주소 → address
+- 의사명: 의사명, 담당의사, 원장, 대표의사 → doctor_name
+- 환자수: 총환자수, 환자수, 방문자수 → total_patients
+
+### 제품 관련 (products, sales_records)
+- 제품명: 품목, 제품명, 상품명, 약품명, 품명, 아이템 → product_name
+- 카테고리: 카테고리, 분류, 종류, 타입 → category
+- 설명: 설명, 상세, 비고, 특징 → description
+
+### 지점/조직 관련 (branches)
+- 지점명: 지점, 지점명, 지사, 영업소 → branch_name
+- 본부: 본부, 사업부, 본사, 헤드쿼터 → headquarters
+- 부서: 부서, 팀, 파트, 부문 → department
+
+### 매출/실적 관련 (sales_records)
+- 매출액: 매출, 매출액, 판매액, 금액, 실적 → sale_amount
+- 날짜: 월, 날짜, 일자, 기간, 년월 → sale_date
+- 예산: 사용예산, 사용 예산, 예산액, 지출 → used_budget
+
+### 상호작용 관련 (interaction_logs)
+- 상호작용 유형: 방문유형, 미팅타입, 활동종류 → interaction_type
+- 요약: 요약, 내용, 설명, 상세내용 → summary
+
+### 목표/성과 관련 (employee_performance)
+- 목표액: 목표, 목표액, 계획, 타겟 → target_amount
+- 년월: 년월, 기간, 대상월 → year_month
+
+⚠️ 중요: 컬럼명이 정확히 일치하지 않아도 의미가 유사하면 매핑하세요!
+⚠️ sales_records는 직원 정보와 고객 정보가 모두 필요합니다!
+
+## 관련성이 높은 테이블들과 실제 DB 컬럼:
 {related_tables}
 """
 
     # 테이블별 특수 규칙
     TABLE_RULES = {
         'sales_records': """
-### sales_records 테이블 특별 처리:
-- 월별 매출 데이터 자동 인식
-- YYYYMM 형식 컬럼의 값이 매출 데이터인 경우
-- 담당자/사번/거래처/품목 + 월별 매출 구조
-- 월별 컬럼은 sale_amount/sale_date로 매핑하지 않음 (자동 처리)
+### sales_records 테이블:
+매출 실적 기록 테이블입니다.
 
-필요한 매핑:
-- employee_name: 담당자 컬럼
-- employee_number: 사번 컬럼
-- customer_name: 거래처/ID 컬럼
-- product_name: 품목 컬럼 (선택)
+⚠️ 필수 조건 체크:
+1. 직원 정보가 있는가? (다음 중 하나라도 있으면 가능)
+   - 사번, 직원번호, 담당자번호, emp_no → employee_number로 매핑
+   - 담당자, 영업사원, 직원명, 성명 → name으로 매핑
+   ❌ employee_id로 매핑하지 마세요!
+
+2. 고객 정보가 있는가? (다음 중 하나라도 있으면 가능)
+   - 거래처ID, 거래처명, 고객명, 병원명, 약국명 → customer_name으로 매핑
+   ❌ customer_id로 매핑하지 마세요!
+
+3. 매출 관련 데이터가 있는가?
+   - 매출, 매출액, 판매액, 금액 → sale_amount
+   - 월, 날짜, 일자, 년월 → sale_date
+   - 사용예산, 예산 → used_budget
+
+위 1, 2번이 모두 충족되어야 sales_records로 분류 가능!
+
+⚠️ 매우 중요:
+❌ employee_id, customer_id, product_id는 외래키입니다 - 절대 직접 매핑 금지!
+✅ 대신 name/employee_number (직원), customer_name (고객)을 매핑하세요!
 """,
 
         'employee_info': """
@@ -44,11 +105,10 @@ class PromptTemplates:
 - 선택: position(직급), branch_id, contact_number 등
 
 매핑 규칙:
-- 담당자/직원명/성명 → name (보통 두 번째 컬럼)
-- 사번/직원번호 → employee_number (보통 세 번째 컬럼)
+- 담당자/직원명/성명 → name
+- 사번/직원번호 → employee_number
 - 대상/지점 컬럼은 branch 정보이므로 employee_info에서는 무시
 
-중요: 다단계 헤더 구조에서 처리된 컬럼명을 그대로 사용해야 함
 """,
 
         'customers': """
@@ -108,6 +168,26 @@ class PromptTemplates:
 
     # 응답 형식
     RESPONSE_FORMAT = """
+## 반드시 지켜야 할 매핑 규칙:
+
+업로드 컬럼에 "사번", "성명"이 있으면:
+→ sales_records에 반드시 포함: {{"employee_number": "사번", "name": "성명", ...}}
+→ employee_info에도 포함: {{"employee_number": "사번", "name": "성명"}}
+
+업로드 컬럼에 "거래처ID"가 있으면:
+→ sales_records에 반드시 포함: {{"customer_name": "거래처ID", ...}}
+→ customers에도 포함: {{"customer_name": "거래처ID"}}
+
+sales_records 완전한 매핑 예시:
+{{
+    "employee_number": "사번",    // 필수
+    "name": "성명",               // 필수
+    "customer_name": "거래처ID",   // 필수
+    "sale_amount": "매출",
+    "sale_date": "월",
+    "used_budget": "사용 예산"
+}}
+
 ## 응답 형식:
 {{
     "target_tables": [
@@ -115,7 +195,7 @@ class PromptTemplates:
             "table_name": "테이블명",
             "confidence": 0.9,
             "column_mapping": {{
-                "db_column": "source_column"
+                "실제_DB_컬럼명": "업로드_파일_컬럼명"
             }},
             "reasoning": "매핑 가능 근거"
         }}
@@ -125,7 +205,9 @@ class PromptTemplates:
 }}
 
 **중요**: 
+- sales_records의 경우 직원 정보(name/employee_number)와 고객 정보(customer_name)는 필수입니다
 - 필수 컬럼을 매핑할 수 없는 테이블은 포함하지 마세요
+- 실제 DB 컬럼명을 사용하세요
 - JSON 형식으로만 응답하세요
 - 주석을 포함하지 마세요
 """
@@ -138,19 +220,21 @@ class PromptTemplates:
     @classmethod
     def build_prompt(cls, columns: list, sample_data: list, description: str, 
                     related_tables: list) -> str:
-        """동적 프롬프트 생성"""
+        """동적 프롬프트 생성 - DB 컬럼명 직접 제공"""
         # 관련 테이블 정보 구성
         tables_info = []
         table_specific_rules = []
         
         for i, table_info in enumerate(related_tables, 1):
             table_name = table_info['table_name']
+            db_columns = table_info.get('columns', [])
             
-            # 테이블 정보 추가
+            # 테이블 정보 추가 (실제 DB 컬럼명 포함)
             tables_info.append(
                 f"{i}. {table_name} (유사도: {table_info['similarity']:.3f})\n"
                 f"   - 설명: {table_info['description']}\n"
-                f"   - 컬럼: {', '.join(table_info.get('columns', []))}"
+                f"   - DB 컬럼 (실제 컬럼명): {', '.join(db_columns)}\n"
+                f"   - 샘플 데이터: {table_info.get('sample_data', [])[:3]}"
             )
             
             # 해당 테이블의 특수 규칙 추가

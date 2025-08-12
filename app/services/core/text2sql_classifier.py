@@ -57,6 +57,25 @@ class Text2SQLTableClassifier:
                         logger.info(f"✅ {table_name} 검증 통과: 월별 목표 컬럼 자동 인식")
                         continue
                 
+                # sales_records 테이블 특별 처리
+                if table_name == 'sales_records':
+                    # 월별 매출 패턴 컬럼이 있는지 확인 (YYYYMM 형식)
+                    has_monthly_sales = any(re.match(r'^\d{6}$', str(col)) for col in uploaded_columns)
+                    if has_monthly_sales:
+                        # 월별 컬럼은 자동 처리되므로 매핑에서 제거
+                        cleaned_mapping = {}
+                        for key, value in mapping.items():
+                            # 콤마로 구분된 월별 컬럼이거나 YYYYMM 형식이면 제외
+                            if ',' in str(value) or re.match(r'^\d{6}$', str(value)):
+                                continue
+                            # 실제 존재하는 컬럼만 포함
+                            if str(value) in uploaded_set:
+                                cleaned_mapping[key] = value
+                        t['column_mapping'] = cleaned_mapping
+                        validated.append(t)
+                        logger.info(f"✅ {table_name} 검증 통과: 월별 매출 컬럼 자동 인식, 매핑: {cleaned_mapping}")
+                        continue
+                
                 # 매핑된 소스 컬럼이 업로드 컬럼에 실제 존재하는지 확인
                 nonexistent = [src for src in mapping.values() if str(src) not in uploaded_set]
                 if nonexistent:
@@ -336,6 +355,20 @@ class Text2SQLTableClassifier:
                         related_tables=multi_table_result['table_mappings']
                     )
                     
+                    # 프롬프트 로깅 (디버깅용)
+                    logger.info("="*80)
+                    logger.info("🔍 LLM 프롬프트 구성:")
+                    logger.info("-"*80)
+                    logger.info(f"업로드된 컬럼: {columns}")
+                    logger.info(f"샘플 데이터 (첫 2행): {sample_data[:2] if sample_data else 'None'}")
+                    logger.info("-"*80)
+                    logger.info("시스템 프롬프트:")
+                    logger.info(PromptTemplates.SYSTEM_PROMPT)
+                    logger.info("-"*80)
+                    logger.info("사용자 프롬프트 (처음 1000자):")
+                    logger.info(prompt[:1000] + "..." if len(prompt) > 1000 else prompt)
+                    logger.info("="*80)
+                    
                     # OpenAI API 호출
                     messages = [
                         {"role": "system", "content": PromptTemplates.SYSTEM_PROMPT},
@@ -348,6 +381,17 @@ class Text2SQLTableClassifier:
                         max_tokens=1500,
                         temperature=0.1
                     )
+                    
+                    # LLM 응답 로깅
+                    logger.info("="*80)
+                    logger.info("🤖 LLM 응답:")
+                    logger.info("-"*80)
+                    if result:
+                        import json
+                        logger.info(json.dumps(result, ensure_ascii=False, indent=2))
+                    else:
+                        logger.info("응답 없음 또는 파싱 실패")
+                    logger.info("="*80)
                     
                     # JSON 파싱 실패 시 명확히 실패 반환
                     if not result:

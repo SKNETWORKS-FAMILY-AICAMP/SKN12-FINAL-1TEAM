@@ -15,4 +15,5 @@ class SalesRecord(Base):
     
     # 매출 정보
     sale_amount = Column(Numeric(15, 2), nullable=False)  # 매출 금액 (소수점 2자리까지, 필수)
-    sale_date = Column(Date, nullable=False)  # 매출 발생 날짜 (필수) 
+    sale_date = Column(Date, nullable=False)  # 매출 발생 날짜 (필수)
+    used_budget = Column(Numeric(15, 2), nullable=True)  # 사용 예산 (소수점 2자리까지, NULL 가능) 

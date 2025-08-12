@@ -265,14 +265,88 @@ class SalesRecordProcessor(BaseTableProcessor):
         sale_amount = None
         sale_date = None
         
-        if 'sale_amount' in column_mapping and row.get(column_mapping['sale_amount']):
-            sale_amount = str(row[column_mapping['sale_amount']]).strip()
+        # sale_amount 추출 (매핑 또는 자동 인식)
+        if 'sale_amount' in column_mapping:
+            source_col = column_mapping['sale_amount']
+            if source_col in row and row[source_col] is not None:
+                sale_amount = str(row[source_col]).strip()
+                logger.debug(f"매출 매핑으로 추출: {source_col} = {sale_amount}")
         
-        if 'sale_date' in column_mapping and row.get(column_mapping['sale_date']):
-            sale_date = str(row[column_mapping['sale_date']]).strip()
+        if not sale_amount:
+            # 자동 인식: 매출 관련 컬럼 찾기 (사용 예산은 제외)
+            amount_keywords = ['매출', '매출액', '금액', '수량', '판매액', '판매량']
+            for col_name, value in row.items():
+                if '예산' not in str(col_name) and any(keyword in str(col_name) for keyword in amount_keywords):
+                    if value and str(value).strip() != 'nan':
+                        try:
+                            # 숫자인지 확인
+                            test_value = str(value).replace(',', '').replace('₩', '').strip()
+                            float(test_value)  # 숫자 변환 가능한지 테스트
+                            sale_amount = str(value).strip()
+                            logger.debug(f"매출 컬럼 자동 인식: {col_name} → sale_amount")
+                            break
+                        except ValueError:
+                            continue
+        
+        # sale_date 추출 (매핑 또는 자동 인식)
+        if 'sale_date' in column_mapping:
+            source_col = column_mapping['sale_date']
+            if source_col in row and row[source_col] is not None:
+                sale_date = str(row[source_col]).strip()
+                logger.debug(f"날짜 매핑으로 추출: {source_col} = {sale_date}")
+        
+        if not sale_date:
+            # 자동 인식: 날짜 관련 컬럼 찾기
+            date_keywords = ['월', '날짜', '일자', '기간', '년월']
+            for col_name, value in row.items():
+                if any(keyword in str(col_name) for keyword in date_keywords):
+                    if value and str(value).strip() != 'nan':
+                        sale_date = str(value).strip()
+                        logger.debug(f"날짜 컬럼 자동 인식: {col_name} → sale_date")
+                        break
         
         if not sale_amount or not sale_date or sale_amount == 'nan' or sale_date == 'nan':
             raise ValueError(f"필수 필드 누락: sale_amount={sale_amount}, sale_date={sale_date}")
+        
+        # used_budget 추출 (매핑 또는 자동 인식)
+        used_budget = None
+        if 'used_budget' in column_mapping:
+            source_col = column_mapping['used_budget']
+            if source_col in row and row[source_col] is not None:
+                used_budget = str(row[source_col]).strip()
+                logger.debug(f"사용예산 매핑으로 추출: {source_col} = {used_budget}")
+        
+        if not used_budget:
+            # 자동 인식: 사용 예산 관련 컬럼 찾기
+            budget_keywords = ['사용 예산', '사용예산', '예산', '사용금액']
+            for col_name, value in row.items():
+                if any(keyword in str(col_name) for keyword in budget_keywords):
+                    if value and str(value).strip() != 'nan':
+                        try:
+                            # 숫자인지 확인
+                            test_value = str(value).replace(',', '').replace('₩', '').strip()
+                            float(test_value)  # 숫자 변환 가능한지 테스트
+                            used_budget = str(value).strip()
+                            logger.debug(f"사용 예산 컬럼 자동 인식: {col_name} → used_budget")
+                            break
+                        except ValueError:
+                            continue
+        
+        # 매출액과 사용 예산 숫자로 변환
+        sale_amount_float = float(sale_amount.replace(',', '').replace('₩', '').strip())
+        used_budget_float = 0.0
+        
+        if used_budget:
+            try:
+                used_budget_float = float(used_budget.replace(',', '').replace('₩', '').strip())
+            except ValueError:
+                logger.warning(f"사용 예산 값을 숫자로 변환할 수 없음: {used_budget}")
+                used_budget_float = 0.0
+        
+        # 매출과 사용 예산이 모두 0이거나 없으면 건너뛰기 (정상 케이스)
+        if sale_amount_float <= 0 and used_budget_float <= 0:
+            # 건너뛰기 신호를 위해 None 반환
+            return None
         
         # 외래키 해결
         customer_id = await self._get_or_create_customer_id(row, column_mapping)
@@ -281,12 +355,16 @@ class SalesRecordProcessor(BaseTableProcessor):
         
         # 매출 기록 생성 (employee_id와 customer_id는 필수)
         sales_data = {
-            'sale_amount': float(sale_amount.replace(',', '').replace('₩', '').strip()),
+            'sale_amount': sale_amount_float,
             'sale_date': self._parse_date(sale_date),
             'customer_id': customer_id,  # 필수
             'employee_id': employee_id,  # 필수
             'product_id': product_id
         }
+        
+        # used_budget이 있으면 추가
+        if used_budget_float > 0:
+            sales_data['used_budget'] = used_budget_float
         
         # product_id만 None이 아닌 경우에만 포함
         if sales_data['product_id'] is None:
@@ -317,7 +395,7 @@ class SalesRecordProcessor(BaseTableProcessor):
     async def _get_or_create_customer_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> int:
         """고객 ID를 가져오기 (기존 고객만 조회, 생성하지 않음)"""
         try:
-            # 고객명 추출
+            # 고객명 추출 - 실제 DB 컬럼명 사용
             customer_name = None
             if 'customer_name' in column_mapping and row.get(column_mapping['customer_name']):
                 customer_name = str(row[column_mapping['customer_name']]).strip()
@@ -325,7 +403,7 @@ class SalesRecordProcessor(BaseTableProcessor):
             # 디버깅 로그 제거 - 너무 상세하고 반복적
             
             if not customer_name or customer_name == 'nan' or customer_name == '':
-                logger.error(f"고객명이 유효하지 않음: customer_name='{customer_name}', row={row}, column_mapping={column_mapping}")
+                logger.error(f"고객명이 유효하지 않음: customer_name='{customer_name}', column_mapping={column_mapping}")
                 raise ValueError("고객명이 필수입니다.")
             
             # 공통 유틸리티 사용
@@ -338,18 +416,19 @@ class SalesRecordProcessor(BaseTableProcessor):
     async def _get_or_create_employee_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> int:
         """직원 ID를 가져오기 (기존 직원만 조회, 생성하지 않음)"""
         try:
-            # 직원명 또는 사번 추출
+            # 직원명 또는 사번 추출 - 실제 DB 컬럼명 사용
             employee_name = None
             employee_number = None
             
-            if 'employee_name' in column_mapping and row.get(column_mapping['employee_name']):
-                employee_name = str(row[column_mapping['employee_name']]).strip()
+            # employee_info 테이블의 실제 컬럼명 사용
+            if 'name' in column_mapping and row.get(column_mapping['name']):
+                employee_name = str(row[column_mapping['name']]).strip()
             
             if 'employee_number' in column_mapping and row.get(column_mapping['employee_number']):
                 employee_number = str(row[column_mapping['employee_number']]).strip()
             
             if not employee_name and not employee_number:
-                raise ValueError("직원명 또는 사번이 필수입니다.")
+                raise ValueError("직원명(name) 또는 사번(employee_number)이 필수입니다.")
             
             # 공통 유틸리티 사용
             return await get_employee_id(self.session, employee_name, employee_number)
@@ -361,7 +440,7 @@ class SalesRecordProcessor(BaseTableProcessor):
     async def _get_or_create_product_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
         """제품 ID를 가져오기 (기존 제품만 조회, 생성하지 않음)"""
         try:
-            # 제품명 추출
+            # 제품명 추출 - 실제 DB 컬럼명 사용
             product_name = None
             if 'product_name' in column_mapping and row.get(column_mapping['product_name']):
                 product_name = str(row[column_mapping['product_name']]).strip()
@@ -427,13 +506,35 @@ class SalesRecordProcessor(BaseTableProcessor):
             
             for monthly_sale in monthly_sales:
                 try:
+                    sale_amount = monthly_sale['sale_amount']
+                    used_budget = 0.0
+                    
+                    # 월별 사용 예산 추출 (YYYYMM_예산 형식)
+                    budget_column = f"{monthly_sale['source_column']}_예산"
+                    if budget_column in row:
+                        budget_value = row[budget_column]
+                        if budget_value and str(budget_value).strip() != 'nan':
+                            try:
+                                used_budget = float(str(budget_value).replace(',', '').strip())
+                            except ValueError:
+                                used_budget = 0.0
+                    
+                    # 매출과 사용 예산이 모두 0이거나 없으면 건너뛰기
+                    if sale_amount <= 0 and used_budget <= 0:
+                        logger.debug(f"월별 데이터 - 매출과 사용 예산이 모두 0, 건너뛰기: {monthly_sale['source_column']}")
+                        continue
+                    
                     sales_data = {
-                        'sale_amount': monthly_sale['sale_amount'],
+                        'sale_amount': sale_amount,
                         'sale_date': self._parse_date(monthly_sale['sale_date']),
                         'customer_id': customer_id,  # 필수
                         'employee_id': employee_id,  # 필수
                         'product_id': product_id
                     }
+                    
+                    # used_budget이 있으면 추가
+                    if used_budget > 0:
+                        sales_data['used_budget'] = used_budget
                     
                     # product_id만 None이 아닌 경우에만 포함
                     if sales_data['product_id'] is None:
@@ -465,18 +566,51 @@ class SalesRecordProcessor(BaseTableProcessor):
     def _parse_date(self, date_str: str):
         """날짜 문자열 파싱"""
         try:
-            # 다양한 날짜 형식 처리
-            for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d', '%Y%m%d']:
+            # 특수 형식 먼저 처리 (YYYYMM은 %Y%m%d보다 먼저 체크해야 함)
+            if len(date_str) == 6 and date_str.isdigit():  # YYYYMM
+                year = int(date_str[:4])
+                month = int(date_str[4:6])
+                if 1 <= month <= 12:
+                    return datetime(year, month, 1).date()
+            
+            # 8자리 날짜 (YYYYMMDD)
+            if len(date_str) == 8 and date_str.isdigit():
+                year = int(date_str[:4])
+                month = int(date_str[4:6])
+                day = int(date_str[6:8])
+                if 1 <= month <= 12 and 1 <= day <= 31:
+                    return datetime(year, month, day).date()
+            
+            # 다양한 날짜 형식 처리 (%Y%m%d는 제외 - 위에서 처리)
+            for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d', '%Y-%m', '%Y/%m', '%Y.%m']:
                 try:
-                    return datetime.strptime(date_str, fmt).date()
+                    parsed_date = datetime.strptime(date_str, fmt)
+                    # 월까지만 있는 경우 1일로 설정
+                    if fmt in ['%Y-%m', '%Y/%m', '%Y.%m']:
+                        return datetime(parsed_date.year, parsed_date.month, 1).date()
+                    return parsed_date.date()
                 except ValueError:
                     continue
             
-            # 특수 형식 처리
-            if len(date_str) == 6:  # YYYYMM
-                year = int(date_str[:4])
-                month = int(date_str[4:6])
-                return datetime(year, month, 1).date()
+            # 기타 특수 형식 처리
+            if len(date_str) <= 2:  # 월만 있는 경우 (1, 01, 12 등)
+                try:
+                    month = int(date_str)
+                    if 1 <= month <= 12:
+                        # 현재 연도 사용
+                        current_year = datetime.now().year
+                        return datetime(current_year, month, 1).date()
+                except ValueError:
+                    pass
+            elif '월' in date_str:  # '1월', '12월' 형식
+                try:
+                    month_str = date_str.replace('월', '').strip()
+                    month = int(month_str)
+                    if 1 <= month <= 12:
+                        current_year = datetime.now().year
+                        return datetime(current_year, month, 1).date()
+                except ValueError:
+                    pass
             
             raise ValueError(f"날짜 형식을 인식할 수 없음: {date_str}")
             
