@@ -20,16 +20,16 @@ if os.path.exists('/app/.env'):
     WORKSPACE_ROOT = '/app'
     DOTENV_PATH = '/app/.env'
 
-print(f"🔍 [DEBUG] WORKSPACE_ROOT: {WORKSPACE_ROOT}")
-print(f"🔍 [DEBUG] Settings가 불러오는 .env 파일 경로: {DOTENV_PATH}")
+print(f"[DEBUG] WORKSPACE_ROOT: {WORKSPACE_ROOT}")
+print(f"[DEBUG] Settings .env file path: {DOTENV_PATH}")
 
 # .env 파일이 존재하면 로드
 if os.path.exists(DOTENV_PATH):
     load_dotenv(DOTENV_PATH)
-    print(f"✅ [OK] .env file loaded: {DOTENV_PATH}")
+    print(f"[OK] .env file loaded: {DOTENV_PATH}")
 else:
-    print(f"⚠️ [WARNING] .env file not found: {DOTENV_PATH}")
-    print("📌 Environment variables must be set directly.")
+    print(f"[WARNING] .env file not found: {DOTENV_PATH}")
+    print("Environment variables must be set directly.")
 
 
 class DatabaseSettings(BaseSettings):
@@ -138,7 +138,7 @@ class Settings:
     """전체 설정을 관리하는 메인 클래스"""
     
     def __init__(self):
-        print(f"🔍 [DEBUG] Settings가 불러오는 .env 파일 경로: {DOTENV_PATH}")
+        print(f"[DEBUG] Settings loading .env file path: {DOTENV_PATH}")
         # 각 설정 객체 초기화
         self.database = DatabaseSettings()
         self.pgadmin = PgAdminSettings()
@@ -215,8 +215,8 @@ settings = Settings()
 # 앱 시작 시 설정 검증
 try:
     settings.validate_all()
-    print("✅ [OK] All environment variables are correctly configured.")
+    print("[OK] All environment variables are correctly configured.")
 except ValueError as e:
-    print(f"❌ [ERROR] Environment variable configuration error: {e}")
-    print("📌 [INFO] Please check the .env file and set all required environment variables.")
+    print(f"[ERROR] Environment variable configuration error: {e}")
+    print("[INFO] Please check the .env file and set all required environment variables.")
     raise 

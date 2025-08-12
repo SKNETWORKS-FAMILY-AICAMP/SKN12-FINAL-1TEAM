@@ -40,31 +40,31 @@ logging.getLogger("services.opensearch_client").setLevel(logging.INFO)
 logging.getLogger("services.opensearch_service").setLevel(logging.INFO)
 
 # 로그 출력 확인
-print("🔧 로깅 설정 완료 - 모든 로그가 터미널에 출력됩니다")
+print("[INFO] Logging configuration complete - all logs will be output to terminal")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """앱 생명주기 이벤트 핸들러"""
     # 시작 시 실행
-    logger.info("🚀 FastAPI 앱 시작 중...")
+    logger.info("[INFO] FastAPI 앱 시작 중...")
     
     # Search Pipeline 초기화
-    logger.info("🔧 Search Pipeline 초기화 중...")
+    logger.info("[INFO] Search Pipeline 초기화 중...")
     pipeline_success = initialize_search_pipeline()
     if pipeline_success:
-        logger.info("✅ Search Pipeline 초기화 완료")
+        logger.info("[OK] Search Pipeline 초기화 완료")
     else:
-        logger.warning("⚠️ Search Pipeline 초기화 실패 - 기본 검색 모드로 동작")
+        logger.warning("[WARNING] Search Pipeline 초기화 실패 - 기본 검색 모드로 동작")
     
     # 벡터 데이터베이스 초기화 (수동으로 처리)
-    logger.info("🔧 벡터 데이터베이스 초기화 건너뛰기...")
-    logger.info("💡 벡터 데이터베이스 초기화는 수동으로 진행하세요:")
+    logger.info("[INFO] 벡터 데이터베이스 초기화 건너뛰기...")
+    logger.info("[INFO] 벡터 데이터베이스 초기화는 수동으로 진행하세요:")
     logger.info("   1. 데이터베이스 마이그레이션: docker exec -it fastapi-app alembic upgrade head")
     logger.info("   2. 벡터 초기화: docker exec -it fastapi-app python /app/app/scripts/init_vector_db.py")
-    logger.info("⚠️ 벡터 유사도 검색 기능이 제한적으로 동작할 수 있습니다")
+    logger.info("[WARNING] 벡터 유사도 검색 기능이 제한적으로 동작할 수 있습니다")
     
     # 모델 로딩을 비동기로 처리 (앱 시작을 차단하지 않음)
-    logger.info("🤖 AI 모델 로딩을 백그라운드에서 시작...")
+    logger.info("[INFO] AI 모델 로딩을 백그라운드에서 시작...")
     def load_models():
         try:
             from app.services.external.opensearch_client import opensearch_client
@@ -72,32 +72,32 @@ async def lifespan(app: FastAPI):
                 # 임베딩 모델 사전 로드
                 embedding_model = opensearch_client.model
                 if embedding_model:
-                    logger.info("✅ 임베딩 모델 사전 로딩 완료")
+                    logger.info("[OK] 임베딩 모델 사전 로딩 완료")
                 else:
-                    logger.warning("⚠️ 임베딩 모델 사전 로딩 실패")
+                    logger.warning("[WARNING] 임베딩 모델 사전 로딩 실패")
                 
                 # 재순위 모델 사전 로드
                 reranker_model = opensearch_client.reranker
                 if reranker_model:
-                    logger.info("✅ 재순위 모델 사전 로딩 완료")
+                    logger.info("[OK] 재순위 모델 사전 로딩 완료")
                 else:
-                    logger.warning("⚠️ 재순위 모델 사전 로딩 실패")
+                    logger.warning("[WARNING] 재순위 모델 사전 로딩 실패")
             else:
-                logger.warning("⚠️ OpenSearch 클라이언트가 초기화되지 않음")
+                logger.warning("[WARNING] OpenSearch 클라이언트가 초기화되지 않음")
         except Exception as e:
-            logger.error(f"❌ 모델 사전 로딩 중 오류: {e}")
+            logger.error(f"[ERROR] 모델 사전 로딩 중 오류: {e}")
     
     # 모델 로딩 스레드 생성 및 시작 (데몬 스레드로 설정하여 앱 종료 시 함께 종료)
     model_loading_thread = threading.Thread(target=load_models, daemon=True)
     model_loading_thread.start()
-    logger.info("✅ 모델 로딩 스레드가 백그라운드에서 시작되었습니다")
+    logger.info("[OK] 모델 로딩 스레드가 백그라운드에서 시작되었습니다")
     
-    logger.info("🎉 모든 시스템 초기화 완료")
+    logger.info("[OK] 모든 시스템 초기화 완료")
     
     yield
     
     # 종료 시 실행 (필요시)
-    logger.info("🛑 FastAPI 앱 종료 중...")
+    logger.info("[INFO] FastAPI app shutting down...")
 
 app = FastAPI(lifespan=lifespan)
 
