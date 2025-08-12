@@ -195,6 +195,7 @@ def upgrade() -> None:
         sa.Column('record_id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('sale_amount', sa.Numeric(15, 2), nullable=False),
         sa.Column('sale_date', sa.Date(), nullable=False),
+        sa.Column('used_budget', sa.Numeric(15, 2), nullable=True),
         sa.Column('employee_id', sa.Integer(), nullable=False),
         sa.Column('customer_id', sa.Integer(), nullable=False),
         sa.Column('product_id', sa.Integer(), nullable=True),

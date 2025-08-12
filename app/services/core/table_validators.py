@@ -21,13 +21,29 @@ class TableValidator:
         metrics: Dict[str, Any] = None
     ) -> Tuple[bool, str]:
         """sales_records 테이블 검증"""
-        # 매핑 키 수정
-        if 'customer_id' in mapping:
-            mapping['customer_name'] = mapping.pop('customer_id')
-        if 'employee_id' in mapping:
-            mapping['employee_number'] = mapping.pop('employee_id')
-        if 'product_id' in mapping:
-            mapping['product_name'] = mapping.pop('product_id')
+        # 직원 정보 매핑 확인 (필수) - 실제 DB 컬럼명 사용
+        # employee_info 테이블의 name 또는 employee_number 컬럼
+        has_employee_mapping = ('name' in mapping or 
+                               'employee_number' in mapping)
+        
+        # 고객 정보 매핑 확인 (필수) - 실제 DB 컬럼명 사용
+        # customers 테이블의 customer_name 컬럼
+        has_customer_mapping = ('customer_name' in mapping)
+        
+        if not has_employee_mapping:
+            # 직원 정보가 컬럼에 있는지 확인
+            employee_keywords = ['사번', '담당자', '직원', '성명', '영업사원', '영업']
+            has_employee_column = any(
+                any(keyword in str(col) for keyword in employee_keywords)
+                for col in uploaded_columns
+            )
+            if has_employee_column:
+                return False, "직원 정보 컬럼은 있지만 매핑되지 않음 (name 또는 employee_number 매핑 필요)"
+            else:
+                return False, "직원 정보가 없음 (sales_records는 직원 정보가 필수)"
+        
+        if not has_customer_mapping:
+            return False, "고객 정보 매핑이 없음 (customer_name 매핑 필요)"
         
         # 월별 컬럼 패턴 확인
         has_monthly_columns = any(re.fullmatch(r'\d{6}', str(col)) for col in uploaded_columns)
