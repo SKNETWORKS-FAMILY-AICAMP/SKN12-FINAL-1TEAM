@@ -10,11 +10,18 @@ from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 from pydantic.types import SecretStr
 
-# Docker 환경 설정
-WORKSPACE_ROOT = '/app'
-DOTENV_PATH = '/app/.env'
-print(f"[DEBUG] Docker 환경 - WORKSPACE_ROOT: {WORKSPACE_ROOT}")
-print(f"[DEBUG] Settings가 불러오는 .env 파일 경로: {DOTENV_PATH}")
+# 환경 설정
+# Windows 로컬 환경 우선 확인
+WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DOTENV_PATH = os.path.join(WORKSPACE_ROOT, '.env')
+
+# Docker 환경인 경우 재설정
+if os.path.exists('/app/.env'):
+    WORKSPACE_ROOT = '/app'
+    DOTENV_PATH = '/app/.env'
+
+print(f"[DEBUG] WORKSPACE_ROOT: {WORKSPACE_ROOT}")
+print(f"[DEBUG] Settings .env file path: {DOTENV_PATH}")
 
 # .env 파일이 존재하면 로드
 if os.path.exists(DOTENV_PATH):
@@ -131,7 +138,7 @@ class Settings:
     """전체 설정을 관리하는 메인 클래스"""
     
     def __init__(self):
-        print(f"[DEBUG] Settings가 불러오는 .env 파일 경로: {DOTENV_PATH}")
+        print(f"[DEBUG] Settings loading .env file path: {DOTENV_PATH}")
         # 각 설정 객체 초기화
         self.database = DatabaseSettings()
         self.pgadmin = PgAdminSettings()
@@ -208,8 +215,8 @@ settings = Settings()
 # 앱 시작 시 설정 검증
 try:
     settings.validate_all()
-    print("✅ 모든 환경변수가 올바르게 설정되었습니다.")
+    print("[OK] All environment variables are correctly configured.")
 except ValueError as e:
-    print(f"❌ 환경변수 설정 오류: {e}")
-    print("📝 .env 파일을 확인하고 모든 필수 환경변수를 설정하세요.")
+    print(f"[ERROR] Environment variable configuration error: {e}")
+    print("[INFO] Please check the .env file and set all required environment variables.")
     raise 
