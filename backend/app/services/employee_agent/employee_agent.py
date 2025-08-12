@@ -461,15 +461,11 @@ class EnhancedEmployeeAgent:
     async def run(self, query: str, session_id: str, messages: List[Dict] = None) -> Dict[str, Any]:
         """router_api.py에서 호출하는 표준 인터페이스 (멀티턴 대화 지원)"""
         try:
-            # 컨텍스트 유틸리티 임포트
-            from ..common.context_utils import resolve_references
-            
-            # 참조 해결 (그 사람 → 실제 이름)
-            enhanced_query = resolve_references(query, messages or [])
+            # context_utils가 없으므로 일단 쿼리를 그대로 사용
+            enhanced_query = query
             
             # 로깅
-            if enhanced_query != query:
-                print(f"[CONTEXT] 쿼리 보완: '{query}' → '{enhanced_query}'")
+            print(f"[Employee Agent] Processing query: {query[:50]}...")
             
             # EnhancedEmployeeAgent를 사용하여 쿼리 분석
             initial_state = {

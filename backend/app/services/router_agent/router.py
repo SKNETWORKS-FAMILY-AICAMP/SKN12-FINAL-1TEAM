@@ -279,11 +279,8 @@ class RouterAgent:
                     return {"success": False, "error": str(e)}
             
             elif agent_name == "employee_agent":
-                # employee_agent는 analyze_employee_performance 메서드 사용
-                if hasattr(agent, 'analyze_employee_performance'):
-                    result = agent.analyze_employee_performance(query)
-                else:
-                    result = agent.run(query)
+                # employee_agent는 async run 메서드 사용
+                result = asyncio.run(agent.run(query, session_id or "default"))
                 
                 current_state["agent_type"] = agent_name
                 return result

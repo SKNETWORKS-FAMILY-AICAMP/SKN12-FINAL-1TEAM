@@ -222,9 +222,13 @@ async def chat(request: ChatRequest) -> ChatResponse:
         else:
             # 오류 발생 또는 결과 없음
             if sub_result:
-                response.error = sub_result.get("error", "알 수 없는 오류")
+                error_msg = sub_result.get("error", "알 수 없는 오류")
+                response.error = error_msg
+                response.response = error_msg  # 프론트엔드에 에러 메시지 전달
             else:
-                response.error = result.get("error", "결과를 가져올 수 없습니다.")
+                error_msg = result.get("error", "결과를 가져올 수 없습니다.")
+                response.error = error_msg
+                response.response = error_msg  # 프론트엔드에 에러 메시지 전달
         
         # 메타데이터 추가
         response.metadata = {
