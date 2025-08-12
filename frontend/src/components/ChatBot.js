@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import './ChatBot.css';
 
-const ChatBot = () => {
+import React, { useState, useEffect, useRef } from 'react';
+import './ChatScreen.css';
+
+const ChatScreen = () => {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -38,24 +39,24 @@ const ChatBot = () => {
     'create_document_agent': '문서 생성'
   };
 
-  // 4개 에이전트 정보 - 기존 프로젝트 설정 유지 (/api/chat 사용)
+  // 4개 에이전트 정보
   const agents = {
     router: {
       name: 'Router Agent',
-      endpoint: '/api/chat',  // 기존 프로젝트 API 경로 유지
+      endpoint: '/api/v1/chat',  // 원래 API 경로
       description: '쿼리를 분석하고 적절한 에이전트로 자동 라우팅',
       color: '#3b82f6'
     },
     employee: {
       name: 'Employee Agent',
-      endpoint: '/api/select-agent',
+      endpoint: '/api/select-agent',  // 백엔드 실제 경로로 수정
       description: '직원 실적 분석 및 평가',
       color: '#10b981',
       agentType: 'employee_agent'
     },
     client: {
       name: 'Client Agent',
-      endpoint: '/api/select-agent',
+      endpoint: '/api/select-agent',  // 백엔드 실제 경로로 수정
       description: '고객/거래처 분석 및 영업 전략',
       color: '#f59e0b',
       agentType: 'client_agent'
@@ -69,10 +70,94 @@ const ChatBot = () => {
     },
     docs: {
       name: 'Docs Agent',
-      endpoint: '/api/select-agent',
+      endpoint: '/api/select-agent',  // 백엔드 실제 경로로 수정
       description: '문서 분류 및 생성',
       color: '#8b5cf6',
       agentType: 'create_document_agent'
+    }
+  };
+
+  // ===== Backend API를 통한 데이터베이스 접근 (CORS 우회) =====
+  const dbApi = {
+    // 대화 내역 조회 - backend의 /v1/chat/history/{session_id} 사용
+    getHistory: async (sessionId) => {
+      try {
+        const response = await fetch(`/api/v1/chat/history/${sessionId}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ DB에서 ${data.count || 0}개 메시지 조회`);
+          return data.messages || [];
+        }
+      } catch (error) {
+        console.error('DB 조회 실패:', error);
+      }
+      return [];
+    },
+
+    // 사용자 세션 목록 조회 - backend의 /v1/chat/sessions/user/{employee_id} 사용
+    getUserSessions: async (employeeId = 1) => {
+      try {
+        const response = await fetch(`/api/v1/chat/sessions/user/${employeeId}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ DB에서 ${data.count || 0}개 세션 조회`);
+          return data.sessions || [];
+        }
+      } catch (error) {
+        console.error('DB 세션 조회 실패:', error);
+      }
+      return [];
+    },
+
+    // 세션 삭제 - backend의 /v1/chat/session/{session_id} 사용
+    deleteSession: async (sessionId, employeeId = 1) => {
+      try {
+        const response = await fetch(
+          `/api/v1/chat/session/${sessionId}?employee_id=${employeeId}`,
+          { method: 'DELETE' }
+        );
+        if (response.ok) {
+          console.log('✅ DB 세션 삭제 성공');
+          return true;
+        }
+      } catch (error) {
+        console.error('DB 삭제 실패:', error);
+      }
+      return false;
+    },
+
+    // 헬스 체크 - backend의 /v1/health 사용
+    checkHealth: async () => {
+      try {
+        const response = await fetch('/api/v1/health');
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
+    
+    // 세션 제목 업데이트
+    updateSessionTitle: async (sessionId, title) => {
+      try {
+        const response = await fetch(`/api/v1/chat/session/${sessionId}/title`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title })
+        });
+        if (response.ok) {
+          console.log('✅ 세션 제목 업데이트 성공');
+          return true;
+        }
+      } catch (error) {
+        console.error('세션 제목 업데이트 실패:', error);
+      }
+      return false;
     }
   };
 
@@ -84,7 +169,55 @@ const ChatBot = () => {
     scrollToBottom();
   }, [messages]);
 
-  // 로컬 스토리지와 백엔드 동시 사용 (하이브리드 방식)
+  // 개별 메시지 삭제 함수
+  const handleDeleteMessage = async (messageIndex) => {
+    if (!sessionId) {
+      console.error('세션 ID가 없습니다.');
+      return;
+    }
+
+    const confirmDelete = window.confirm('이 메시지를 삭제하시겠습니까?');
+    if (!confirmDelete) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/v1/chat/message/${sessionId}/${messageIndex}?employee_id=1`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        }
+      );
+
+      if (response.ok) {
+        console.log(`✅ 메시지 삭제 성공: index=${messageIndex}`);
+        
+        // UI에서 메시지 제거
+        const updatedMessages = messages.filter((_, index) => index !== messageIndex);
+        setMessages(updatedMessages);
+        
+        // 채팅 히스토리 업데이트
+        const updatedHistory = chatHistory.map(chat => {
+          if (chat.sessionId === sessionId) {
+            return { ...chat, messages: updatedMessages };
+          }
+          return chat;
+        });
+        setChatHistory(updatedHistory);
+        
+      } else {
+        const error = await response.json();
+        console.error('메시지 삭제 실패:', error);
+        alert('메시지 삭제에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('메시지 삭제 중 오류:', error);
+      alert('메시지 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 로컬 스토리지에서 채팅 내역 불러오기
   const loadChatHistoryFromLocal = () => {
     try {
       console.log('🔄 로컬 스토리지에서 채팅 내역 불러오는 중...');
@@ -102,69 +235,79 @@ const ChatBot = () => {
     }
   };
 
-  // 백엔드에서 채팅 내역 불러오기 (기존 코드 유지)
-  const loadChatHistoryFromBackend = async () => {
-    try {
-      console.log('🔄 백엔드에서 모든 세션 불러오는 중...');
-      const response = await fetch('http://localhost:8010/api/all-sessions');
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.sessions) {
-          console.log(`✅ 백엔드에서 ${data.count}개 세션 불러옴`);
-          
-          // 세션 데이터를 채팅 히스토리 형식으로 변환
-          const chatHistoryFromDB = data.sessions.map(session => ({
-            id: session.id,
-            sessionId: session.session_id,
-            title: session.title || `채팅 ${session.created_at}`,
-            messages: session.messages || [],
-            createdAt: session.created_at,
-            messageCount: session.message_count
-          }));
-          
-          return chatHistoryFromDB;
-        }
-      }
-      return [];
-    } catch (error) {
-      console.error('❌ 백엔드 세션 불러오기 실패:', error);
-      return [];
-    }
-  };
-
-  // 초기 안내 메시지
+  // 초기화 - 8010 포트에서 세션 불러오기
   useEffect(() => {
     const initializeChat = async () => {
-      // 로컬 스토리지에서 먼저 불러오고, 없으면 백엔드 시도
-      let history = loadChatHistoryFromLocal();
+      console.log('🚀 8010 포트에서 세션 로드 중...');
       
-      if (history.length === 0) {
-        // 로컬에 없으면 백엔드에서 시도
-        history = await loadChatHistoryFromBackend();
-        if (history.length > 0) {
-          setChatHistory(history);
-          localStorage.setItem('chatHistory', JSON.stringify(history));
+      // 에이전트 선택 메시지 (H2H와 동일한 형태) - 사용하지 않음
+      const agentSelectionMessage = {
+        type: 'agent_selection',
+        content: `안녕하세요! 무엇을 도와드릴까요?
+
+💼 직원 실적 분석
+   예: "최시우 직원의 실적 조회해줘"
+
+🏥 거래처 분석  
+   예: "미라클의원의 거래처 분석해줘"
+
+🔍 정보 검색
+   예: "출장비 정산 규정 찾아줘"
+
+📄 문서 생성 및 규정 위반여부 검토
+   예: "영업방문 결과보고서 작성해줘"
+
+위 예시처럼 자유롭게 질문하시면 됩니다.`,
+        timestamp: new Date().toLocaleTimeString(),
+        agent: 'System',
+        query: '',  // 초기 선택이므로 query 없음
+        available_agents: ['employee_agent', 'client_agent', 'search_agent', 'create_document_agent'],
+        agent_descriptions: {
+          "employee_agent": "사내 직원에 대한 정보 제공을 담당합니다. 예: 개인 실적 조회, 인사 이력, 직책, 소속 부서, 조직도 확인, 성과 평가 등 직원 관련 질의 응답을 처리합니다.",
+          "client_agent": "고객 및 거래처에 대한 정보를 제공합니다. 반드시 병원, 제약영업과 관련이 있는 질문에만 답변합니다.예: 특정 고객의 매출 추이, 거래 이력, 등급 분류, 잠재 고객 분석, 영업 성과 분석 등 외부 고객 관련 질문에 대응합니다.",
+          "search_agent": "내부 데이터베이스에서 정보 검색을 수행합니다. 예: 문서 검색, 사내 규정, 업무 매뉴얼, 제품 정보, 교육 자료 등 특정 정보를 정제된 DB 또는 벡터DB 기반으로 검색합니다.",
+          "create_document_agent": "문서 자동 생성 및 규정 검토를 담당합니다. 예: 보고서 초안 자동 생성, 전표/계획서 생성, 컴플라이언스 위반 여부 판단, 서식 분석 및 문서 오류 검토 등의 기능을 수행합니다."
+        },
+        agent_display_names: {
+          "employee_agent": "직원 실적 분석",
+          "client_agent": "고객/거래처 분석",
+          "search_agent": "정보 검색",
+          "create_document_agent": "문서 생성"
         }
-      }
+      };
       
-      // 세션이 있으면 첫 번째 세션 선택, 없으면 새 채팅 시작
-      if (history.length > 0) {
-        console.log(`📚 ${history.length}개의 세션 발견`);
+      // 8010 포트에서 세션 목록 조회
+      const dbSessions = await dbApi.getUserSessions(1);
+      
+      if (dbSessions && dbSessions.length > 0) {
+        console.log(`✅ 8010에서 ${dbSessions.length}개 세션 발견`);
+        
+        // DB 세션을 UI 형식으로 변환
+        const formattedSessions = dbSessions.map(session => ({
+          id: session.session_id,
+          sessionId: session.session_id,
+          title: session.session_title || `채팅 ${new Date(session.created_at).toLocaleString()}`,
+          messages: [], // 선택 시 로드
+          createdAt: session.created_at
+        }));
+        
+        setChatHistory(formattedSessions);
+        
         // 가장 최근 세션 선택
-        const mostRecentSession = history[0];
-        if (mostRecentSession.sessionId) {
-          await selectChat(mostRecentSession.id);
+        if (formattedSessions.length > 0) {
+          await selectChat(formattedSessions[0].id);
         } else {
-          // 메시지를 비워두어 예시 프롬프트가 표시되도록 함
-          setMessages([]);
+          // 세션이 없을 때만 새 채팅 시작
+          startNewChat();
         }
       } else {
-        console.log('📝 세션이 없음, 새 채팅 시작');
-        // 메시지를 비워두어 예시 프롬프트가 표시되도록 함
-        setMessages([]);
+        console.log('📭 8010에 저장된 세션 없음');
+        // DB에 세션이 없을 때 새 채팅 시작
         startNewChat();
       }
+      
+      // localStorage 삭제 (더 이상 사용 안 함)
+      localStorage.removeItem('chatHistory');
     };
     
     initializeChat();
@@ -172,17 +315,16 @@ const ChatBot = () => {
 
   // 새로운 채팅 시작
   const startNewChat = () => {
-    const chatId = Date.now().toString();
     const newSessionId = generateSessionId();
     
     // 메시지를 비워서 예시 프롬프트가 표시되도록 함
     setMessages([]);
-    setCurrentChatId(chatId);
+    setCurrentChatId(newSessionId);  // sessionId를 chatId로도 사용
     setSessionId(newSessionId);
     
     // 새 채팅을 히스토리에 추가
     const newChat = {
-      id: chatId,
+      id: newSessionId,  // sessionId를 id로 사용 (DB와 일치시키기 위해)
       sessionId: newSessionId,
       title: `채팅 ${new Date().toLocaleString()}`,
       messages: [],
@@ -191,64 +333,151 @@ const ChatBot = () => {
     
     const updatedHistory = [newChat, ...chatHistory];
     setChatHistory(updatedHistory);
-    localStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
+    // localStorage 사용 안 함 - 8010만 사용
   };
 
-  // 채팅 내역 선택
+  // 채팅 내역 선택 - 8010에서 대화 내역 로드
   const selectChat = async (chatId) => {
     const selectedChat = chatHistory.find(chat => chat.id === chatId);
     if (selectedChat) {
       setCurrentChatId(chatId);
       setSessionId(selectedChat.sessionId);
       
-      // 메시지가 이미 로드되어 있으면 바로 사용
-      if (selectedChat.messages && selectedChat.messages.length > 0) {
-        setMessages(selectedChat.messages);
+      // 8010 포트에서 대화 내역 조회
+      console.log(`🔍 8010에서 대화 조회: ${selectedChat.sessionId}`);
+      const dbMessages = await dbApi.getHistory(selectedChat.sessionId);
+      
+      if (dbMessages && dbMessages.length > 0) {
+        console.log(`✅ 8010에서 ${dbMessages.length}개 메시지 로드`);
+        
+        // DB 메시지를 UI 형식으로 변환
+        const formattedMessages = dbMessages.map(msg => ({
+          type: msg.role === 'user' ? 'user' : 'bot',
+          content: msg.message_text || msg.content || msg.message,  // DB는 message_text 필드 사용
+          timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString(),
+          agent: 'Narutalk'
+        }));
+        
+        setMessages(formattedMessages);
       } else {
-        // 백엔드에서 메시지 불러오기 시도
-        try {
-          if (selectedChat.sessionId) {
-            const response = await fetch(`http://localhost:8010/api/session/${selectedChat.sessionId}/messages`);
-            if (response.ok) {
-              const data = await response.json();
-              if (data.success && data.messages) {
-                setMessages(data.messages);
-                return;
-              }
-            }
-          }
-          
-          // 백엔드 실패시 로컬 데이터 사용
-          setMessages(selectedChat.messages || []);
-        } catch (error) {
-          console.error('메시지 불러오기 오류:', error);
-          setMessages(selectedChat.messages || []);
-        }
+        console.log('📭 해당 세션에 메시지 없음');
+        setMessages([]);
       }
     }
   };
 
-  // 채팅 내역 초기화
-  const clearAllChats = () => {
+  // 개별 세션 삭제
+  const deleteChat = async (chatId, e) => {
+    e.stopPropagation(); // 부모의 onClick 이벤트 방지
+    
+    if (!window.confirm('이 채팅을 삭제하시겠습니까?')) {
+      return;
+    }
+    
+    // 삭제할 채팅 찾기
+    const chatToDelete = chatHistory.find(chat => chat.id === chatId);
+    if (!chatToDelete) return;
+    
+    try {
+      // DB에서 삭제
+      const success = await dbApi.deleteSession(chatToDelete.sessionId, 1);
+      if (success) {
+        console.log(`✅ 세션 삭제 성공: ${chatToDelete.sessionId}`);
+        
+        // UI에서 제거
+        const updatedHistory = chatHistory.filter(chat => chat.id !== chatId);
+        
+        // 삭제한 채팅이 현재 선택된 채팅이면 처리
+        if (currentChatId === chatId) {
+          if (updatedHistory.length > 0) {
+            // 다른 채팅 선택
+            setChatHistory(updatedHistory);
+            await selectChat(updatedHistory[0].id);
+          } else {
+            // 마지막 채팅을 삭제한 경우 - 새 채팅 생성
+            const newSessionId = generateSessionId();
+            const newChat = {
+              id: newSessionId,
+              sessionId: newSessionId,
+              title: `채팅 ${new Date().toLocaleString()}`,
+              messages: [],
+              createdAt: new Date().toISOString()
+            };
+            
+            // 상태 업데이트를 한 번에 처리
+            setChatHistory([newChat]);
+            setCurrentChatId(newSessionId);
+            setSessionId(newSessionId);
+            setMessages([]);
+            
+            console.log('✅ 새 채팅 생성:', newSessionId);
+          }
+        } else {
+          // 다른 채팅이 선택되어 있는 경우 히스토리만 업데이트
+          setChatHistory(updatedHistory);
+        }
+      }
+    } catch (error) {
+      console.error('세션 삭제 실패:', error);
+      alert('채팅 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 채팅 내역 초기화 - DB에서도 삭제
+  const clearAllChats = async () => {
     if (window.confirm('모든 채팅 내역을 삭제하시겠습니까?')) {
+      // 모든 세션을 DB에서 삭제
+      const deletePromises = chatHistory.map(chat => 
+        dbApi.deleteSession(chat.sessionId, 1)
+      );
+      
+      await Promise.all(deletePromises);
+      console.log('✅ 모든 세션 DB에서 삭제 완료');
+      
+      // 상태 초기화
       setChatHistory([]);
+      setMessages([]);
       localStorage.removeItem('chatHistory');
-      startNewChat();
+      
+      // 새 채팅 시작
+      const newSessionId = generateSessionId();
+      
+      const newChat = {
+        id: newSessionId,  // sessionId를 id로 사용
+        sessionId: newSessionId,
+        title: `채팅 ${new Date().toLocaleString()}`,
+        messages: [],
+        createdAt: new Date().toISOString()
+      };
+      
+      // 새 채팅을 히스토리에 추가하고 선택
+      setChatHistory([newChat]);
+      setCurrentChatId(newSessionId);
+      setSessionId(newSessionId);
+      setMessages([]);
+      
+      console.log('✅ 새 채팅 시작:', newSessionId);
     }
   };
 
   // 메시지 저장 (채팅 내역 업데이트)
-  const saveMessageToHistory = (newMessages) => {
+  const saveMessageToHistory = async (newMessages) => {
     if (currentChatId) {
       const updatedHistory = chatHistory.map(chat => {
         if (chat.id === currentChatId) {
+          // 첫 번째 사용자 메시지로 제목 업데이트 (두 번째 메시지가 사용자 메시지인 경우)
+          let newTitle = chat.title;
+          if (newMessages.length > 0 && newMessages[0].type === 'user' && chat.title.startsWith('채팅 ')) {
+            newTitle = newMessages[0].content.substring(0, 30) + '...';
+            // 백엔드에 제목 업데이트
+            dbApi.updateSessionTitle(sessionId || chat.sessionId, newTitle);
+          }
+          
           return {
             ...chat,
             messages: newMessages,
             sessionId: sessionId || chat.sessionId, // sessionId 유지
-            title: newMessages.length > 1 ? 
-              newMessages[1].content.substring(0, 30) + '...' : 
-              chat.title
+            title: newTitle
           };
         }
         return chat;
@@ -286,12 +515,13 @@ const ChatBot = () => {
       
       if (activeThreadId) {
         // Resume API call for interactive responses
+        // Determine reply_type based on the current interactive state
         const interruptType = sessionStorage.getItem(`interrupt_type_${sessionId}`);
         let replyType = 'user_reply';
         if (interruptType === 'verification') {
           replyType = 'verification_reply';
         } else if (interruptType === 'manual_doc_selection') {
-          replyType = 'verification_reply';
+          replyType = 'verification_reply';  // manual_doc_selection도 verification_reply로 처리
         }
         
         requestBody = {
@@ -299,8 +529,7 @@ const ChatBot = () => {
           reply_type: replyType
         };
         
-        // 기존 프로젝트 URL 사용 (8010 포트)
-        response = await fetch(`http://localhost:8010/api/resume/${sessionId}`, {
+        response = await fetch(`http://localhost:8000/api/v1/resume/${sessionId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -308,13 +537,13 @@ const ChatBot = () => {
           body: JSON.stringify(requestBody)
         });
       } else {
-        // Normal chat API call - 기존 프로젝트 설정 사용
+        // Normal chat API call
         requestBody = { 
           message: currentQuery,
           session_id: sessionId
         };
 
-        response = await fetch('http://localhost:8010/api/chat', {
+        response = await fetch('http://localhost:8000/api/v1/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -330,9 +559,9 @@ const ChatBot = () => {
       const data = await response.json();
       
       let botResponseContent = '';
-      let responseAgent = 'Router Agent';
+      let responseAgent = 'Narutalk';
       
-      // Handle interrupt responses first
+      // Handle interrupt responses first (both success and failure cases)
       if (data.requires_interrupt && data.data?.thread_id) {
         // Store thread_id and interrupt_type for subsequent resume calls
         sessionStorage.setItem(`thread_${sessionId}`, data.data.thread_id);
@@ -340,13 +569,14 @@ const ChatBot = () => {
         
         // Check if this is a manual document type selection
         if (data.data.prompt_type === 'manual_doc_selection' && data.data.options) {
+          // Update interrupt type for manual selection
           sessionStorage.setItem(`interrupt_type_${sessionId}`, 'manual_doc_selection');
           
           const interactiveMessage = {
             type: 'interactive',
             content: data.response || '문서 타입을 선택해주세요.',
             timestamp: new Date().toLocaleTimeString(),
-            agent: data.target_agent || 'Docs Agent',
+            agent: 'Narutalk',
             waiting_for_input: true,
             input_type: 'manual_selection',
             options: data.data.options.map(opt => opt.label),
@@ -357,6 +587,7 @@ const ChatBot = () => {
           setMessages(messagesWithInteractive);
           saveMessageToHistory(messagesWithInteractive);
           
+          // 입력 대기 상태로 설정
           setIsWaitingForDocsInput(true);
           setDocsInputType('manual_selection');
           setIsLoading(false);
@@ -364,12 +595,26 @@ const ChatBot = () => {
         }
         
         // Regular interrupt handling
+        // 디버깅을 위한 콘솔 로그
+        console.log('Interrupt data received:', {
+          response: data.response,
+          interrupt_type: data.data?.interrupt_type,
+          state_info: data.data?.state_info,
+          template_content: data.data?.state_info?.template_content,
+          template_content_in_data: data.data?.template_content,
+          full_data: data
+        });
+        
+        // data_input 타입일 때 template_content 사용
         let messageContent = data.response || '추가 정보가 필요합니다.';
         if (data.data.interrupt_type === 'data_input') {
+          // template_content가 여러 위치에 있을 수 있으므로 확인
           if (data.data.state_info?.template_content) {
             messageContent = data.data.state_info.template_content;
+            console.log('Using template_content from state_info:', messageContent);
           } else if (data.data.template_content) {
             messageContent = data.data.template_content;
+            console.log('Using template_content from data:', messageContent);
           }
         }
         
@@ -377,7 +622,7 @@ const ChatBot = () => {
           type: 'interactive',
           content: messageContent,
           timestamp: new Date().toLocaleTimeString(),
-          agent: data.target_agent || 'Docs Agent',
+          agent: 'Narutalk',
           waiting_for_input: true,
           input_type: data.data.interrupt_type || 'verification',
           thread_id: data.data.thread_id
@@ -387,6 +632,7 @@ const ChatBot = () => {
         setMessages(messagesWithInteractive);
         saveMessageToHistory(messagesWithInteractive);
         
+        // 입력 대기 상태로 설정
         setIsWaitingForDocsInput(true);
         setDocsInputType(data.data.interrupt_type || 'verification');
         setIsLoading(false);
@@ -400,7 +646,7 @@ const ChatBot = () => {
             type: 'agent_selection',
             content: data.message,
             timestamp: new Date().toLocaleTimeString(),
-            agent: 'Router Agent',
+            agent: 'Narutalk',
             query: currentQuery,
             available_agents: data.available_agents,
             agent_descriptions: data.agent_descriptions,
@@ -419,13 +665,13 @@ const ChatBot = () => {
           sessionStorage.removeItem(`interrupt_type_${sessionId}`);
         }
         
-        // Docs Agent의 대화형 응답 처리
+        // Docs Agent의 대화형 응답 처리 (legacy compatibility)
         if (data.agent === 'docs_agent' && data.waiting_for_input) {
           const interactiveMessage = {
             type: 'interactive',
             content: data.response,
             timestamp: new Date().toLocaleTimeString(),
-            agent: 'Docs Agent',
+            agent: 'Narutalk',
             waiting_for_input: true,
             input_type: data.input_type,
             options: data.options || null,
@@ -436,6 +682,7 @@ const ChatBot = () => {
           setMessages(messagesWithInteractive);
           saveMessageToHistory(messagesWithInteractive);
           
+          // 입력 대기 상태로 설정
           setIsWaitingForDocsInput(true);
           setDocsInputType(data.input_type);
           setIsLoading(false);
@@ -445,7 +692,7 @@ const ChatBot = () => {
         // 응답에서 실제 사용된 에이전트 정보 추출
         const usedAgent = data.agent || data.classification_result?.split(': ')[1];
         if (usedAgent) {
-          responseAgent = AGENT_DISPLAY_NAMES[usedAgent] || usedAgent;
+          responseAgent = 'Narutalk';
         }
         
         // 기본 응답 내용
@@ -468,8 +715,10 @@ const ChatBot = () => {
         
         // Handle completed data from resume endpoint
         if (data.data?.violation_blocked) {
+          // 규정 위반으로 파일 생성이 차단된 경우
           botResponseContent += '\n\n⚠️ 분석은 완료되었지만 규정 위반으로 파일 생성이 차단되었습니다.';
           
+          // 위반 상세 정보가 있으면 추가
           if (data.data?.violation_details && data.data.violation_details.length > 0) {
             botResponseContent += '\n\n📋 위반 내용:';
             data.data.violation_details.forEach((violation, index) => {
@@ -477,6 +726,7 @@ const ChatBot = () => {
             });
           }
           
+          // 분석된 데이터 표시
           if (data.data?.filled_data) {
             botResponseContent += '\n\n📝 분석된 데이터:';
             Object.entries(data.data.filled_data).forEach(([key, value]) => {
@@ -492,17 +742,21 @@ const ChatBot = () => {
           }
         }
       } else {
-        // 오류 메시지 처리
+        // 오류 메시지 처리 - response, error, message 순서로 확인
         const errorMsg = data.response || data.error || data.message || '알 수 없는 오류가 발생했습니다.';
         
+        // 사용자가 종료를 선택한 경우
         if (data.data?.error_type === 'user_terminated') {
           botResponseContent = '👋 문서 작성이 종료되었습니다. 새로운 작업을 시작해주세요.';
+          // 세션 정리
           sessionStorage.removeItem(`thread_${sessionId}`);
           sessionStorage.removeItem(`interrupt_type_${sessionId}`);
         }
+        // 규정 위반 관련 추가 정보가 있으면 포함
         else if (data.data?.error_type === 'policy_violation') {
           botResponseContent = `❌ ${errorMsg}`;
           
+          // 위반 상세 정보가 있으면 추가
           if (data.data?.violation_details && data.data.violation_details.length > 0) {
             botResponseContent += '\n\n📋 위반 내용:';
             data.data.violation_details.forEach((violation, index) => {
@@ -512,6 +766,7 @@ const ChatBot = () => {
             botResponseContent += `\n\n📋 위반 내용:\n${data.data.violation}`;
           }
           
+          // 입력한 데이터가 있으면 표시
           if (data.data?.filled_data) {
             botResponseContent += '\n\n📝 입력한 데이터:';
             Object.entries(data.data.filled_data).forEach(([key, value]) => {
@@ -536,17 +791,43 @@ const ChatBot = () => {
       setMessages(finalMessages);
       saveMessageToHistory(finalMessages);
 
-      // 성공적으로 완료된 경우 thread_id 정리
+      // 성공적으로 완료된 경우 thread_id 정리 (규정 위반 여부와 관계없이)
       if (data.success && !data.requires_interrupt) {
         sessionStorage.removeItem(`thread_${sessionId}`);
         sessionStorage.removeItem(`interrupt_type_${sessionId}`);
       }
 
+      // 첫 메시지인 경우 세션이 DB에 생성되었는지 확인
+      // (새 채팅창에서 첫 메시지를 보낸 경우)
+      if (messages.length === 1 && messages[0].type === 'user') {
+        // 현재 세션이 chatHistory에 있는지 확인
+        const sessionExists = chatHistory.some(chat => chat.sessionId === sessionId);
+        
+        if (!sessionExists) {
+          // 세션이 목록에 없으면 추가 (백엔드가 자동 생성했을 것)
+          const newChat = {
+            id: sessionId,
+            sessionId: sessionId,
+            title: userMessage.content.substring(0, 30) + '...',
+            messages: finalMessages,
+            createdAt: new Date().toISOString()
+          };
+          
+          const updatedHistory = [newChat, ...chatHistory];
+          setChatHistory(updatedHistory);
+          
+          // 제목 업데이트 시도
+          dbApi.updateSessionTitle(sessionId, newChat.title);
+        }
+      }
+
+      // RouterAgent가 자동으로 처리하므로 에이전트 확인 불필요
+
     } catch (error) {
       console.error('API 요청 오류:', error);
       const errorMessage = {
         type: 'bot',
-        content: `❌ 연결 오류: ${error.message}\n\n백엔드 서버가 실행 중인지 확인해주세요. (http://localhost:8010)`,
+        content: `❌ 연결 오류: ${error.message}\n\n백엔드 서버가 실행 중인지 확인해주세요. (http://localhost:8000)`,
         timestamp: new Date().toLocaleTimeString(),
         agent: 'System'
       };
@@ -555,6 +836,7 @@ const ChatBot = () => {
       saveMessageToHistory(finalMessages);
     } finally {
       setIsLoading(false);
+      // Clear any pending interactive states on error
       setIsWaitingForDocsInput(false);
       setDocsInputType(null);
     }
@@ -565,10 +847,10 @@ const ChatBot = () => {
     setIsLoading(true);
 
     try {
-      // 초기 화면에서 선택하는 경우
-      const endpoint = query === '' ? '/api/initial-agent-select' : '/api/select-agent';
+      // 초기 화면에서 선택하는 경우 (query가 비어있음)
+      const endpoint = query === '' ? '/api/v1/initial-agent-select' : '/api/v1/select-agent';
       
-      const response = await fetch(`http://localhost:8010${endpoint}`, {
+      const response = await fetch(`http://localhost:8000${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -601,18 +883,23 @@ const ChatBot = () => {
           const updatedMessages = [...messages, guideMessage];
           setMessages(updatedMessages);
           saveMessageToHistory(updatedMessages);
+          
+          // 선택된 에이전트는 표시용으로만 사용하고 고정하지 않음
+          // 모든 메시지는 Router를 통해 동적으로 라우팅됨
         } else {
           // 실제 에이전트 응답
           const botMessage = {
             type: 'bot',
             content: data.response || data.message,
             timestamp: new Date().toLocaleTimeString(),
-            agent: data.agent
+            agent: 'Narutalk'
           };
           
           const updatedMessages = [...messages, botMessage];
           setMessages(updatedMessages);
           saveMessageToHistory(updatedMessages);
+          
+          // RouterAgent가 자동으로 처리
         }
       } else {
         const errorMessage = {
@@ -650,12 +937,16 @@ const ChatBot = () => {
     }
   };
 
-  // 첫 번째 채팅이 없으면 자동으로 생성
-  useEffect(() => {
-    if (chatHistory.length === 0 && !currentChatId) {
-      startNewChat();
-    }
-  }, []);
+  // 첫 번째 채팅이 없으면 자동으로 생성 - initializeChat에서 처리하므로 제거
+  // useEffect(() => {
+  //   if (chatHistory.length === 0 && !currentChatId) {
+  //     startNewChat();
+  //   }
+  // }, []);
+
+  // checkCurrentAgent 함수 제거 - RouterAgent가 자동으로 처리
+
+  // useEffect 제거 - checkCurrentAgent 호출 불필요
 
   // 에이전트 초기화
   const resetAgent = async () => {
@@ -666,7 +957,7 @@ const ChatBot = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:8010/api/reset-agent', {
+      const response = await fetch('http://localhost:8000/api/v1/reset-agent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -727,6 +1018,7 @@ const ChatBot = () => {
                   key={chat.id}
                   className={`chat-item ${currentChatId === chat.id ? 'active' : ''}`}
                   onClick={() => selectChat(chat.id)}
+                  style={{ position: 'relative' }}
                 >
                   <span className="chat-icon">💬</span>
                   <div className="chat-info">
@@ -742,6 +1034,36 @@ const ChatBot = () => {
                       {new Date(chat.createdAt).toLocaleDateString()}
                     </div>
                   </div>
+                  <button
+                    className="chat-delete-btn"
+                    onClick={(e) => deleteChat(chat.id, e)}
+                    title="채팅 삭제"
+                    style={{
+                      position: 'absolute',
+                      right: '8px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#999',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      opacity: 0,
+                      transition: 'opacity 0.2s, background 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = 'rgba(255, 68, 68, 0.1)';
+                      e.target.style.color = '#ff4444';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'transparent';
+                      e.target.style.color = '#999';
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
             </div>
@@ -756,33 +1078,11 @@ const ChatBot = () => {
             <h2>AI 채팅</h2>
             
             {/* 현재 세션 에이전트 표시 */}
-            {currentSessionAgent ? (
+            {currentSessionAgent && (
               <div className="current-agent-info">
                 <div className="agent-badge">
-                  🎯 <strong>{currentSessionAgent.agent_name}</strong> (고정됨)
+                  🎯 <strong>{currentSessionAgent.agent_name}</strong> (자동 선택됨)
                 </div>
-                <button 
-                  className="reset-agent-btn"
-                  onClick={resetAgent}
-                  title="에이전트 초기화"
-                >
-                  🔄 초기화
-                </button>
-              </div>
-            ) : (
-              <div className="agent-selector">
-                <label>에이전트 선택:</label>
-                <select 
-                  value={selectedAgent} 
-                  onChange={(e) => setSelectedAgent(e.target.value)}
-                  className="agent-select"
-                >
-                  {Object.entries(agents).map(([key, agent]) => (
-                    <option key={key} value={key}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
               </div>
             )}
           </div>
@@ -832,9 +1132,11 @@ const ChatBot = () => {
                   <span className="message-sender">
                     {message.type === 'user' ? '👤 사용자' : 
                      message.type === 'system' ? '🤖 시스템' : 
-                     `🤖 ${message.agent || 'AI'}`}
+                     `🤖 ${message.agent?.replace(/_agent$/, '') === message.agent ? message.agent : 'Narutalk'}`}
                   </span>
-                  <span className="message-time">{message.timestamp}</span>
+                  <div className="message-actions">
+                    <span className="message-time">{message.timestamp}</span>
+                  </div>
                 </div>
                 <div className="message-content">
                   {message.type === 'agent_guide' ? (
@@ -1020,12 +1322,13 @@ const ChatBot = () => {
             {isLoading && (
               <div className="message ai-message">
                 <div className="message-header">
-                  <span className="message-sender">🤖 {agents[selectedAgent].name}</span>
-                  <span className="message-time">처리 중...</span>
+                  <span className="message-sender">🤖 Narutalk</span>
+                  <span className="message-time">응답 생성 중...</span>
                 </div>
                 <div className="message-content">
-                  <div className="typing-indicator">
-                    처리 중<span>.</span><span>.</span><span>.</span>
+                  <div className="loading-spinner-container">
+                    <div className="spinner"></div>
+                    <span className="loading-text">응답을 생성하고 있습니다...</span>
                   </div>
                 </div>
               </div>
@@ -1034,14 +1337,6 @@ const ChatBot = () => {
           </div>
 
           <div className="message-input-container">
-            <div className="selected-agent-info">
-              <span style={{ color: agents.router.color }}>
-                ● {agents.router.name}
-              </span>
-              <span className="agent-description">
-                질문에 따라 자동으로 적절한 에이전트가 선택됩니다
-              </span>
-            </div>
             <div className="input-area">
               <textarea
                 value={inputValue}
@@ -1072,4 +1367,4 @@ const ChatBot = () => {
   );
 };
 
-export default ChatBot;
+export default ChatScreen;
