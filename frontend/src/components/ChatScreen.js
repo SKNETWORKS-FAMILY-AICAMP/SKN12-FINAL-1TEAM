@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import './ChatBot.css';
+import './ChatScreen.css';
 
-const ChatBot = () => {
+const ChatScreen = () => {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -1367,4 +1367,4 @@ const ChatBot = () => {
   );
 };
 
-export default ChatBot;
+export default ChatScreen;

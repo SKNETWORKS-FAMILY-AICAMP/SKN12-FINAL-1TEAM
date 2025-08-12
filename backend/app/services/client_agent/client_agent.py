@@ -63,7 +63,7 @@ class ClientAgent:
                 raise KeyError("엑셀에 '월' 컬럼이 없습니다.")
 
             df["월"] = pd.to_datetime(df["월"].astype(str), format="%Y%m", errors="coerce")
-            self.df['월_int'] = self.df['월'].dt.strftime('%Y%m').astype(int)
+            df['월_int'] = df['월'].dt.strftime('%Y%m').astype(int)
 
             if "거래처ID" not in df.columns:
                 raise KeyError("엑셀에 '거래처ID' 컬럼이 없습니다.")
