@@ -1,7 +1,7 @@
 """
 직원 실적 데이터 API Router
 """
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
@@ -15,6 +15,33 @@ from app.services.core.employee_performance_service import employee_performance_
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/employee", tags=["Employee Performance Data"])
+
+# Request/Response Models for Agent
+class AnalyzeRequest(BaseModel):
+    query: Optional[str] = None       # 자연어 쿼리
+    start_date: Optional[str] = None  # YYYY-MM-DD format
+    end_date: Optional[str] = None    # YYYY-MM-DD format
+    start_period: Optional[str] = None  # YYYYMM format
+    end_period: Optional[str] = None    # YYYYMM format
+    employee_name: Optional[str] = None  # 관리자용
+
+class PerformanceRequest(BaseModel):
+    start_date: Optional[str] = None  # YYYY-MM-DD format
+    end_date: Optional[str] = None    # YYYY-MM-DD format
+    start_period: Optional[str] = None  # YYYYMM format
+    end_period: Optional[str] = None    # YYYYMM format
+    employee_name: Optional[str] = None  # 관리자용
+    employee_id: Optional[int] = None   # 직원 ID
+
+class PerformanceResponse(BaseModel):
+    summary: Dict[str, Any]
+    monthly_data: List[Dict[str, Any]]
+    product_data: List[Dict[str, Any]]
+    client_data: List[Dict[str, Any]]
+
+class TargetResponse(BaseModel):
+    target_data: List[Dict[str, Any]]
+    summary: Dict[str, Any]
 
 # JWT 설정
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")

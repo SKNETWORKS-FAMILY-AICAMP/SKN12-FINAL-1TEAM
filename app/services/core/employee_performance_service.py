@@ -239,7 +239,7 @@ class EmployeePerformanceService:
                         p.product_id,
                         p.product_name,
                         SUM(sr.sale_amount) as total_amount,
-                        COUNT(sr.sale_id) as sales_count
+                        COUNT(*) as sales_count
                     FROM sales_records sr
                     INNER JOIN products p ON sr.product_id = p.product_id
                     WHERE sr.employee_id = :employee_id
@@ -309,7 +309,7 @@ class EmployeePerformanceService:
                         c.customer_name,
                         c.customer_grade,
                         SUM(sr.sale_amount) as total_amount,
-                        COUNT(sr.sale_id) as sales_count
+                        COUNT(*) as sales_count
                     FROM sales_records sr
                     INNER JOIN customers c ON sr.customer_id = c.customer_id
                     WHERE sr.employee_id = :employee_id
