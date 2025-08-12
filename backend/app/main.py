@@ -41,7 +41,9 @@ else:
 
 # 이제 상대 경로 import 대신 app.으로 시작하는 import 사용
 from app.api.router_api import router
+from app.services.client_agent.client_analysis_api import router as client_router
 print("[OK] router_api imported successfully")
+print("[OK] client_analysis_api imported successfully")
 
 app = FastAPI(title="Multi-Agent Router API")
 
@@ -56,7 +58,9 @@ app.add_middleware(
 
 # 라우터 등록 - /api prefix로 통일
 app.include_router(router, prefix="/api")
+app.include_router(client_router)  # client_router는 이미 /api/client-analysis prefix 포함
 print("[OK] Router registered at /api")
+print("[OK] Client Analysis Router registered at /api/client-analysis")
 
 # 헬스 체크
 @app.get("/health")
