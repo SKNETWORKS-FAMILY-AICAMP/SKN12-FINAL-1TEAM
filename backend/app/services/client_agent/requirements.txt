@@ -4,3 +4,5 @@ typing-extensions>=4.5.0
 pandas
 openpyxl
 httpx
+python-docx>=0.8.11
+jinja2>=3.1.0

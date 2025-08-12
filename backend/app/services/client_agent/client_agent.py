@@ -4,95 +4,686 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, TypedDict
-
+from datetime import datetime
+from typing_extensions import Annotated
 import pandas as pd
+import httpx
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from langgraph.graph import StateGraph
+
+from docx import Document
+from docx.shared import Pt
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+from jinja2 import Template
+
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def OW(_, b):  # OverWrite
+    return b
+
+# 3) ReportState에만 적용
 class ReportState(TypedDict):
     company_name: str
     start_month: Optional[int]
     end_month: Optional[int]
-    # 결과물
-    final_report: Optional[str]
-    grade_result: Optional[Dict[str, Any]]
-    grade_report: Optional[str]
-    same_grade_report: Optional[str]
-    growth_report: Optional[str]
-    strategy_report: Optional[str]
-    # 데이터
-    target_df_markdown: Optional[str]      # LLM 프롬프트용
-    target_df_summary: Optional[Dict[str, Any]]  # 요약 지표 캐시
+
+    final_report: Annotated[Optional[str], OW]
+    grade_result: Annotated[Optional[Dict[str, Any]], OW]
+    grade_report: Annotated[Optional[str], OW]
+    same_grade_report: Annotated[Optional[str], OW]
+    growth_report: Annotated[Optional[str], OW]
+    strategy_report: Annotated[Optional[str], OW]
+
+    target_df_markdown: Annotated[Optional[str], OW]
+    target_df_summary: Annotated[Optional[Dict[str, Any]], OW]
+
+
+def _to_builtin(o):
+        """numpy, pandas 타입을 파이썬 내장형으로 변환"""
+        import numpy as np
+        if isinstance(o, dict):
+            return {k: _to_builtin(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [_to_builtin(v) for v in o]
+        if isinstance(o, (np.integer,)):
+            return int(o)
+        if isinstance(o, (np.floating,)):
+            return float(o)
+        try:
+            return o.item()  # pandas/numpy scalar
+        except Exception:
+            return o
 
 # Agent
 # -------------------------------
 class ClientAgent:
-    def __init__(self):
-        self.data_path = Path(__file__).parent / "좋은제약_거래처정보.xlsx"
-        self.df: pd.DataFrame = pd.DataFrame()
-        self._load_data()
+    #def __init__(self, data_filename: str = "좋은제약_거래처정보.xlsx"):
+        #self.data_path = Path(__file__).with_name(data_filename)
+        #self.df: pd.DataFrame = pd.DataFrame()
+        #self._load_data()
 
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
-        self.client = AsyncOpenAI(api_key=api_key)
+        #api_key = os.getenv("OPENAI_API_KEY")
+        #if not api_key:
+            #raise ValueError("OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
+        #self.client = AsyncOpenAI(api_key=api_key)
 
         # 임계값
 
-        self.revenue_threshold = {"A": 3000000, "B": 2000000, "C": 1000000, "D": 500000, "E": 100000}
-        self.profit_threshold  = {"A": 10, "B": 15, "C": 20, "D": 25, "E": 30}  # 낮을수록 좋음(reverse=True)
-        self.patience_threshold = {"A": 2200, "B": 1800, "C": 1400, "D": 1000, "E": 500}
-        self.interaction_threshold = {"A": 60, "B": 45, "C": 30, "D": 15, "E": 0}
+        #self.revenue_threshold = {"A": 3000000, "B": 2000000, "C": 1000000, "D": 500000, "E": 100000}
+        #self.profit_threshold  = {"A": 10, "B": 15, "C": 20, "D": 25, "E": 30}  # 낮을수록 좋음(reverse=True)
+        #self.patience_threshold = {"A": 2200, "B": 1800, "C": 1400, "D": 1000, "E": 500}
+        #self.interaction_threshold = {"A": 60, "B": 45, "C": 30, "D": 15, "E": 0}
 
-    # 데이터 로드
+        # API 설정 (존재하면 API 사용, 없으면 엑셀 사용)
+        #self.api_base_url: Optional[str] = os.getenv("API_BASE_URL")
+        #self.api_jwt_token: Optional[str] = os.getenv("API_JWT_TOKEN")
 
-    def _load_data(self):
-        try:
-            if not self.data_path.exists():
-                raise FileNotFoundError(f"엑셀 파일을 찾을 수 없습니다: {self.data_path}")
 
-            df = pd.read_excel(self.data_path)
+    
+    #def _load_data(self):
+        #try:
+            #if not self.data_path.exists():
+                #raise FileNotFoundError(f"엑셀 파일을 찾을 수 없습니다: {self.data_path}")
 
-            if "월" not in df.columns:
-                raise KeyError("엑셀에 '월' 컬럼이 없습니다.")
+            # ✅ 같은 폴더의 엑셀 로드 (컬럼 이름/공백 정리 포함)
+            #df = pd.read_excel(self.data_path, engine="openpyxl")
 
-            df["월"] = pd.to_datetime(df["월"].astype(str), format="%Y%m", errors="coerce")
-            self.df['월_int'] = self.df['월'].dt.strftime('%Y%m').astype(int)
+            # 컬럼명 공백 제거 및 양끝 공백 트림
+            #df.columns = [str(c).strip() for c in df.columns]
 
-            if "거래처ID" not in df.columns:
-                raise KeyError("엑셀에 '거래처ID' 컬럼이 없습니다.")
+            #if "월" not in df.columns:
+                #raise KeyError("엑셀에 '월' 컬럼이 없습니다.")
 
-            self.df = df
-            logger.info(f"[OK] 데이터 로드: {len(self.df)}건")
-        except Exception as e:
-            logger.error(f"[ERROR] 데이터 로드 실패: {e}")
-            self.df = pd.DataFrame()
+            # YYYYMM → datetime → YYYYMM int
+            #df["월"] = pd.to_datetime(df["월"].astype(str), format="%Y%m", errors="coerce")
+            #df["월_int"] = df["월"].dt.strftime("%Y%m").astype(int)
 
-    # Text2SQL 더미 구현 (✅ 1단계)
-    # 실제 연결 지점: 이 함수 내부를 RDB + Text2SQL로 교체하면 됨.
-    # ---------------------------
+            #if "거래처ID" not in df.columns:
+                #raise KeyError("엑셀에 '거래처ID' 컬럼이 없습니다.")
+
+            #self.df = df
+            #logger.info(f"[OK] 데이터 로드: {len(self.df)}건 (경로: {self.data_path})")
+        #except Exception as e:
+            #logger.error(f"[ERROR] 데이터 로드 실패: {e}")
+            #self.df = pd.DataFrame()
+            #return
+        
     def text2sql_fetch(self, company_name: str,
                        start_month: Optional[int],
                        end_month: Optional[int]) -> pd.DataFrame:
-        """
-        실제로는 NL→SQL 변환 후 DB에서 조회.
-        지금은 self.df에서 안전하게 필터링하는 더미를 제공.
-        """
+        # API 우선 사용
+        if self._is_api_configured():
+            try:
+                sm = f"{start_month}" if start_month is not None else None
+                em = f"{end_month}" if end_month is not None else None
+                if not sm or not em:
+                    return pd.DataFrame()
+                perf = self._fetch_customer_performance(company_name, sm, em)
+                df = self._monthly_data_to_dataframe(perf, fallback_customer_id=company_name)
+                return df
+            except Exception as api_err:
+                logger.error(f"[ERROR] API 조회 실패, 엑셀로 폴백: {api_err}")
+                # 계속해서 엑셀 폴백 수행
+
+        # 엑셀 폴백
         base = self.df
         if base.empty:
             return pd.DataFrame()
-
         df = base[base["거래처ID"] == company_name].copy()
         if start_month and end_month:
             df = df[(df["월_int"] >= start_month) & (df["월_int"] <= end_month)]
-
         return df.sort_values("월_int")
+
+    # ---------------------------
+    # API 연동 유틸
+    # ---------------------------
+    def _is_api_configured(self) -> bool:
+        return bool(self.api_base_url and self.api_jwt_token)
+
+    def _api_headers(self) -> Dict[str, str]:
+        return {"Authorization": self.api_jwt_token} if self.api_jwt_token else {}
+
+    def _fetch_customer_performance(self, customer_id: str, start_month: str, end_month: str) -> Dict[str, Any]:
+        """단일 거래처의 기간 성과 조회. 사양: GET /customer/{id}/performance"""
+        if not self.api_base_url:
+            raise RuntimeError("API_BASE_URL 미설정")
+        url = f"{self.api_base_url.rstrip('/')}/customer/{customer_id}/performance"
+        params = {"start_month": start_month, "end_month": end_month}
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.get(url, params=params, headers=self._api_headers())
+            resp.raise_for_status()
+            return resp.json()
+
+    def _monthly_data_to_dataframe(self, perf: Dict[str, Any], fallback_customer_id: Optional[str] = None) -> pd.DataFrame:
+        """API 응답을 내부 계산용 DataFrame으로 변환하여 반환"""
+        monthly = perf.get("monthly_data") or perf.get("data") or []
+        df = pd.DataFrame(monthly)
+        if df.empty:
+            return df
+
+        # 컬럼명 매핑: API '사용예산' → 내부 '사용 예산'
+        rename_map = {
+            "사용예산": "사용 예산",
+            "환자수": "총환자수",
+        }
+        df = df.rename(columns=rename_map)
+
+        # 필수 컬럼 보강
+        for col in ["매출", "사용 예산", "총환자수"]:
+            if col not in df.columns:
+                df[col] = 0
+
+        # 월 파싱 및 정렬
+        month_col = None
+        if "월" in df.columns:
+            month_col = "월"
+        elif "month" in df.columns:
+            month_col = "month"
+
+        if month_col:
+            df["월"] = pd.to_datetime(df[month_col].astype(str), format="%Y%m", errors="coerce")
+            df["월_int"] = df["월"].dt.strftime("%Y%m").astype("Int64")
+        else:
+            # 월 정보가 없으면 정렬 불가. 그대로 반환
+            df["월_int"] = pd.Series([None] * len(df), dtype="Int64")
+
+        # 거래처ID 부여
+        if "거래처ID" not in df.columns:
+            cid = perf.get("customer_id") or fallback_customer_id
+            if cid is not None:
+                df["거래처ID"] = cid
+
+        # 정렬 및 정리
+        if "월_int" in df.columns:
+            df = df.dropna(subset=["월"]) if "월" in df.columns else df
+            df = df.sort_values("월_int")
+        return df
+
+
+    # 문서 생성 유틸리티
+    # -------------------------------
+    def _create_element(self, name):
+        """Word 문서에 커스텀 요소를 추가하기 위한 헬퍼 함수"""
+        return OxmlElement(name)
+
+    def _add_element_after(self, paragraph, element):
+        """문단 다음에 요소를 추가하는 헬퍼 함수"""
+        p = paragraph._p
+        p.addnext(element)
+    
+    def _apply_run_font(self, run, size_pt=11, bold=False, italic=False, family='맑은 고딕'):
+        run.font.name = family
+        run.font.size = Pt(size_pt)
+        run.font.bold = bold
+        run.font.italic = italic
+
+        r = run._element          
+        rPr = r.rPr
+        if rPr is None:
+            rPr = OxmlElement('w:rPr')
+            r.append(rPr)
+
+        rFonts = rPr.rFonts
+        if rFonts is None:
+            rFonts = OxmlElement('w:rFonts')
+            rPr.append(rFonts)
+
+        rFonts.set(qn('w:eastAsia'), family)
+        rFonts.set(qn('w:ascii'), family)
+        rFonts.set(qn('w:cs'), family)
+
+    def _add_page_break(self, document):
+        """페이지 나누기 추가"""
+        document.add_page_break()
+
+    def _add_heading_with_style(self, document, text, level=1):
+        """스타일이 적용된 제목 추가"""
+        heading = document.add_heading(text, level=level)
+        for run in heading.runs:
+            self._apply_run_font(
+                run,
+                size_pt=(16 if level == 1 else 14 if level == 2 else 12),
+                bold=True,
+                italic=False,
+                family='맑은 고딕',
+            )
+        return heading
+
+    def _add_paragraph_with_style(self, document, text, bold=False, italic=False):
+        """스타일이 적용된 문단 추가"""
+        paragraph = document.add_paragraph(text)
+        for run in paragraph.runs:
+            self._apply_run_font(
+                run,
+                size_pt=11,
+                bold=bold,
+                italic=italic,
+                family='맑은 고딕',
+            )
+        return paragraph
+
+    def _set_default_style_korean(self, document, family='맑은 고딕'):
+        """문서 기본 스타일에 한글 폰트(East Asia)를 지정"""
+        try:
+            normal_style = document.styles['Normal']
+            normal_style.font.name = family
+            normal_style.font.size = Pt(11)
+
+            rPr = normal_style.element.rPr
+            if rPr is None:
+                rPr = OxmlElement('w:rPr')
+                normal_style.element.append(rPr)
+
+            rFonts = rPr.rFonts
+            if rFonts is None:
+                rFonts = OxmlElement('w:rFonts')
+                rPr.append(rFonts)
+
+            rFonts.set(qn('w:eastAsia'), family)
+            rFonts.set(qn('w:ascii'), family)
+            rFonts.set(qn('w:cs'), family)
+        except Exception:
+            pass
+
+    def _add_table_with_data(self, document, data, headers=None):
+        """
+        headers: ["열1","열2",...]
+        data   : [["a","b",...], ["c","d",...]]
+        """
+        if headers:
+            cols = len(headers)
+            rows = 1 + (len(data) if data else 0)
+            table = document.add_table(rows=rows, cols=cols)
+            table.style = 'Table Grid'
+            # 헤더
+            for j, h in enumerate(headers):
+                cell = table.rows[0].cells[j]
+                cell.text = ''
+                run = cell.paragraphs[0].add_run(str(h))
+                self._apply_run_font(run, size_pt=11, bold=True)
+        # 데이터
+            if data:
+                for i, row_data in enumerate(data, start=1):
+                    for j, cell_data in enumerate(row_data):
+                        cell = table.rows[i].cells[j]
+                        cell.text = ''
+                        run = cell.paragraphs[0].add_run(str(cell_data))
+                        self._apply_run_font(run, size_pt=11)
+        else:
+            if not data:
+                return None
+            cols = len(data[0])
+            table = document.add_table(rows=len(data), cols=cols)
+            table.style = 'Table Grid'
+            for i, row_data in enumerate(data):
+                for j, cell_data in enumerate(row_data):
+                    cell = table.rows[i].cells[j]
+                    cell.text = ''
+                    run = cell.paragraphs[0].add_run(str(cell_data))
+                    self._apply_run_font(run, size_pt=11)
+        return table
+
+
+    def generate_word_document(self, report_state: ReportState, output_path: Optional[str] = None) -> str:
+        """레포트 결과를 Word 문서로 생성"""
+        try:
+            # 문서 생성 및 기본 스타일 한글 폰트 지정
+            doc = Document()
+            self._set_default_style_korean(doc, family='맑은 고딕')
+            
+            # 제목 페이지
+            title = doc.add_heading('거래처 분석 보고서', 0)
+            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # 부제목
+            subtitle = doc.add_paragraph(f"거래처명: {report_state['company_name']}")
+            subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # 생성 날짜
+            date_para = doc.add_paragraph(f"생성일: {datetime.now().strftime('%Y년 %m월 %d일')}")
+            date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            self._add_page_break(doc)
+            
+            # 목차
+            self._add_heading_with_style(doc, "목차", 1)
+            toc_items = [
+                "1. 등급 분석 결과",
+                "2. 동일 등급 비교 분석", 
+                "3. 성장성 분석",
+                "4. 영업 전략 제안",
+                "5. 종합 분석"
+            ]
+            for item in toc_items:
+                self._add_paragraph_with_style(doc, item)
+            
+            self._add_page_break(doc)
+            
+            # 1. 등급 분석 결과
+            self._add_heading_with_style(doc, "1. 등급 분석 결과", 1)
+            
+            if report_state.get('grade_result'):
+                grade_result = report_state['grade_result']
+                
+                # 등급 요약 테이블
+                grade_summary = [
+                    ["구분", "등급", "점수"],
+                    ["매출 등급", grade_result.get('매출등급', 'N/A'), 
+                     self.map_grade_to_score(grade_result.get('매출등급', 'E'))],
+                    ["수익률 등급", grade_result.get('수익률등급', 'N/A'),
+                     self.map_grade_to_score(grade_result.get('수익률등급', 'E'))],
+                    ["환자수 등급", grade_result.get('환자수등급', 'N/A'),
+                     self.map_grade_to_score(grade_result.get('환자수등급', 'E'))],
+                    ["관계도 등급", grade_result.get('관계도등급', 'N/A'),
+                     self.map_grade_to_score(grade_result.get('관계도등급', 'E'))],
+                    ["최종 등급", grade_result.get('최종등급', 'N/A'), ""]
+                ]
+                self._add_table_with_data(doc, grade_summary, ["구분", "등급", "점수"])
+                
+                # 지표 요약
+                if '지표요약' in grade_result:
+                    self._add_heading_with_style(doc, "주요 지표", 2)
+                    indicators = grade_result['지표요약']
+                    indicator_data = [
+                        ["지표", "값"],
+                        ["평균 매출", f"{indicators.get('평균매출', 0):,.0f}원"],
+                        ["총 매출", f"{indicators.get('총매출', 0):,.0f}원"],
+                        ["총 예산", f"{indicators.get('총예산', 0):,.0f}원"],
+                        ["수익률", f"{indicators.get('수익률(%)', 0):.2f}%"],
+                        ["평균 환자수", f"{indicators.get('평균환자수', 0):,.0f}명"],
+                        ["관계도", f"{indicators.get('관계도(%)', 0):.2f}%"]
+                    ]
+                    self._add_table_with_data(doc, indicator_data, ["지표", "값"])
+            
+            # 등급 분석 리포트
+            if report_state.get('grade_report'):
+                self._add_heading_with_style(doc, "등급 분석 상세", 2)
+                self._add_paragraph_with_style(doc, report_state['grade_report'])
+            
+            self._add_page_break(doc)
+            
+            # 2. 동일 등급 비교 분석
+            self._add_heading_with_style(doc, "2. 동일 등급 비교 분석", 1)
+            if report_state.get('same_grade_report'):
+                self._add_paragraph_with_style(doc, report_state['same_grade_report'])
+            
+            self._add_page_break(doc)
+            
+            # 3. 성장성 분석
+            self._add_heading_with_style(doc, "3. 성장성 분석", 1)
+            if report_state.get('growth_report'):
+                self._add_paragraph_with_style(doc, report_state['growth_report'])
+            
+            self._add_page_break(doc)
+            
+            # 4. 영업 전략 제안
+            self._add_heading_with_style(doc, "4. 영업 전략 제안", 1)
+            if report_state.get('strategy_report'):
+                self._add_paragraph_with_style(doc, report_state['strategy_report'])
+            
+            self._add_page_break(doc)
+            
+            # 5. 종합 분석
+            self._add_heading_with_style(doc, "5. 종합 분석", 1)
+            if report_state.get('final_report'):
+                self._add_paragraph_with_style(doc, report_state['final_report'])
+            
+            # 파일 저장
+            if output_path is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_path = f"거래처분석보고서_{report_state['company_name']}_{timestamp}.docx"
+            
+            doc.save(output_path)
+            logger.info(f"[OK] Word 문서 생성 완료: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"[ERROR] Word 문서 생성 실패: {e}")
+            return ""
+
+    def generate_html_document(self, report_state: ReportState, output_path: Optional[str] = None) -> str:
+        """레포트 결과를 HTML 문서로 생성 (키/널 안전, Jinja2 사용)"""
+        try:
+        # 등급 점수 계산(grade_result 없어도 안전)
+            gr = report_state.get('grade_result') or {}
+            grade_scores = {'매출': 0, '수익률': 0, '환자수': 0, '관계도': 0}
+            if gr:
+                grade_scores = {
+                    '매출':  self.map_grade_to_score(gr.get('매출등급', 'E')),
+                    '수익률': self.map_grade_to_score(gr.get('수익률등급', 'E')),
+                    '환자수': self.map_grade_to_score(gr.get('환자수등급', 'E')),
+                    '관계도': self.map_grade_to_score(gr.get('관계도등급', 'E')),
+                }
+
+        # HTML 템플릿 (괄호 포함 키는 대괄호 인덱싱 + .get 사용)
+            html_template = """
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>거래처 분석 보고서 - {{ company_name }}</title>
+<style>
+body { font-family: 'Malgun Gothic','맑은 고딕',sans-serif; line-height:1.6; margin:0; padding:20px; background:#f5f5f5; }
+.container { max-width:1200px; margin:0 auto; background:#fff; padding:40px; box-shadow:0 0 10px rgba(0,0,0,.1); border-radius:8px; }
+.header { text-align:center; border-bottom:3px solid #2c3e50; padding-bottom:20px; margin-bottom:30px; }
+.header h1 { color:#2c3e50; margin:0; font-size:2.2em; }
+.header .subtitle { color:#7f8c8d; font-size:1.1em; margin:10px 0; }
+.header .date { color:#95a5a6; font-size:.95em; }
+.toc { background:#ecf0f1; padding:20px; border-radius:5px; margin:20px 0; }
+.toc h2 { color:#2c3e50; margin:0 0 10px; }
+.toc ul { list-style:none; padding-left:0; margin:0; }
+.toc li { padding:6px 0; border-bottom:1px solid #bdc3c7; }
+.toc li:last-child { border-bottom:none; }
+.section { margin:30px 0; page-break-inside:avoid; }
+.section h1 { color:#2c3e50; border-left:5px solid #3498db; padding-left:15px; margin-bottom:16px; }
+.section h2 { color:#34495e; margin:22px 0 12px; }
+table { width:100%; border-collapse:collapse; margin:16px 0; background:#fff; }
+th, td { border:1px solid #ddd; padding:10px 12px; text-align:left; }
+th { background:#3498db; color:#fff; font-weight:bold; }
+tr:nth-child(even) { background:#f7f9fb; }
+.grade-a { background:#d5f4e6; }
+.grade-b { background:#d4edda; }
+.grade-c { background:#fff3cd; }
+.grade-d { background:#f8d7da; }
+.grade-e { background:#f5c6cb; }
+.content { background:#f8f9fa; padding:16px; border-radius:5px; border-left:4px solid #3498db; margin:12px 0; white-space:normal; }
+.footer { text-align:center; margin-top:40px; padding-top:18px; border-top:1px solid #ecf0f1; color:#7f8c8d; font-size:.95em; }
+@media print { body { background:#fff; } .container { box-shadow:none; } .section { page-break-inside:avoid; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>거래처 분석 보고서</h1>
+    <div class="subtitle">거래처명: {{ company_name }}</div>
+    <div class="date">생성일: {{ generation_date }}</div>
+  </div>
+
+  <div class="toc">
+    <h2>목차</h2>
+    <ul>
+      <li>1. 등급 분석 결과</li>
+      <li>2. 동일 등급 비교 분석</li>
+      <li>3. 성장성 분석</li>
+      <li>4. 영업 전략 제안</li>
+      <li>5. 종합 분석</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h1>1. 등급 분석 결과</h1>
+    {% if grade_result %}
+      <h2>등급 요약</h2>
+      <table>
+        <thead>
+          <tr><th>구분</th><th>등급</th><th>점수</th></tr>
+        </thead>
+        <tbody>
+          <tr class="grade-{{ (grade_result.get('매출등급','E')|lower) }}">
+            <td>매출 등급</td>
+            <td>{{ grade_result.get('매출등급','N/A') }}</td>
+            <td>{{ grade_scores.매출 }}</td>
+          </tr>
+          <tr class="grade-{{ (grade_result.get('수익률등급','E')|lower) }}">
+            <td>수익률 등급</td>
+            <td>{{ grade_result.get('수익률등급','N/A') }}</td>
+            <td>{{ grade_scores.수익률 }}</td>
+          </tr>
+          <tr class="grade-{{ (grade_result.get('환자수등급','E')|lower) }}">
+            <td>환자수 등급</td>
+            <td>{{ grade_result.get('환자수등급','N/A') }}</td>
+            <td>{{ grade_scores.환자수 }}</td>
+          </tr>
+          <tr class="grade-{{ (grade_result.get('관계도등급','E')|lower) }}">
+            <td>관계도 등급</td>
+            <td>{{ grade_result.get('관계도등급','N/A') }}</td>
+            <td>{{ grade_scores.관계도 }}</td>
+          </tr>
+          <tr class="grade-{{ (grade_result.get('최종등급','E')|lower) }}">
+            <td><strong>최종 등급</strong></td>
+            <td><strong>{{ grade_result.get('최종등급','N/A') }}</strong></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+
+      {% if grade_result.get('지표요약') %}
+      <h2>주요 지표</h2>
+      <table>
+        <thead><tr><th>지표</th><th>값</th></tr></thead>
+        <tbody>
+          <tr><td>평균 매출</td>
+              <td>{{ "{:,.0f}".format(grade_result['지표요약'].get('평균매출', 0)) }}원</td></tr>
+          <tr><td>총 매출</td>
+              <td>{{ "{:,.0f}".format(grade_result['지표요약'].get('총매출', 0)) }}원</td></tr>
+          <tr><td>총 예산</td>
+              <td>{{ "{:,.0f}".format(grade_result['지표요약'].get('총예산', 0)) }}원</td></tr>
+          <tr><td>수익률</td>
+              <td>{{ "{:.2f}".format(grade_result['지표요약'].get('수익률(%)', 0)) }}%</td></tr>
+          <tr><td>평균 환자수</td>
+              <td>{{ "{:,.0f}".format(grade_result['지표요약'].get('평균환자수', 0)) }}명</td></tr>
+          <tr><td>관계도</td>
+              <td>{{ "{:.2f}".format(grade_result['지표요약'].get('관계도(%)', 0)) }}%</td></tr>
+        </tbody>
+      </table>
+      {% endif %}
+    {% endif %}
+
+    {% if grade_report %}
+      <h2>등급 분석 상세</h2>
+      <div class="content">{{ grade_report | replace('\n','<br>') | safe }}</div>
+    {% endif %}
+  </div>
+
+  <div class="section">
+    <h1>2. 동일 등급 비교 분석</h1>
+    {% if same_grade_report %}
+      <div class="content">{{ same_grade_report | replace('\n','<br>') | safe }}</div>
+    {% endif %}
+  </div>
+
+  <div class="section">
+    <h1>3. 성장성 분석</h1>
+    {% if growth_report %}
+      <div class="content">{{ growth_report | replace('\n','<br>') | safe }}</div>
+    {% endif %}
+  </div>
+
+  <div class="section">
+    <h1>4. 영업 전략 제안</h1>
+    {% if strategy_report %}
+      <div class="content">{{ strategy_report | replace('\n','<br>') | safe }}</div>
+    {% endif %}
+  </div>
+
+  <div class="section">
+    <h1>5. 종합 분석</h1>
+    {% if final_report %}
+      <div class="content">{{ final_report | replace('\n','<br>') | safe }}</div>
+    {% endif %}
+  </div>
+
+  <div class="footer">
+    <p>본 보고서는 AI 분석 시스템을 통해 자동 생성되었습니다.</p>
+    <p>© 2024 제약사 영업 분석 시스템</p>
+  </div>
+</div>
+</body>
+</html>
+        """
+
+        # 템플릿 렌더링
+            template = Template(html_template)
+            html_content = template.render(
+                company_name=report_state['company_name'],
+                generation_date=datetime.now().strftime('%Y년 %m월 %d일'),
+                grade_result=gr if gr else None,
+                grade_scores=grade_scores,
+                grade_report=report_state.get('grade_report'),
+                same_grade_report=report_state.get('same_grade_report'),
+                growth_report=report_state.get('growth_report'),
+                strategy_report=report_state.get('strategy_report'),
+                final_report=report_state.get('final_report')
+        )
+
+        # 파일 저장
+            if output_path is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_path = f"거래처분석보고서_{report_state['company_name']}_{timestamp}.html"
+
+            with open(output_path, 'w', encoding='utf-8-sig') as f:
+                f.write(html_content)
+
+            logger.info(f"[OK] HTML 문서 생성 완료: {output_path}")
+            return output_path
+
+        except Exception as e:
+            logger.error(f"[ERROR] HTML 문서 생성 실패: {e}")
+            return ""
+
+
+    def generate_documents(self, report_state: ReportState, output_dir: Optional[str] = None) -> Dict[str, str]:
+        """레포트 결과를 Word와 HTML 문서로 모두 생성"""
+        try:
+            if output_dir is None:
+                output_dir = Path.cwd()
+            else:
+                output_dir = Path(output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            company_name = report_state['company_name']
+            
+            # Word 문서 생성
+            word_filename = f"거래처분석보고서_{company_name}_{timestamp}.docx"
+            word_path = output_dir / word_filename
+            word_result = self.generate_word_document(report_state, str(word_path))
+            
+            # HTML 문서 생성
+            html_filename = f"거래처분석보고서_{company_name}_{timestamp}.html"
+            html_path = output_dir / html_filename
+            html_result = self.generate_html_document(report_state, str(html_path))
+            
+            return {
+                "word": word_result,
+                "html": html_result,
+                "output_dir": str(output_dir)
+            }
+            
+        except Exception as e:
+            logger.error(f"[ERROR] 문서 생성 실패: {e}")
+            return {"word": "", "html": "", "output_dir": ""}
+
 
     # ---------------------------
     # 등급 계산 유틸
@@ -143,22 +734,22 @@ class ClientAgent:
         avg_score = sum(scores.values()) / len(scores)
         final_grade = self.map_score_to_grade(round(avg_score))
 
-        return {
-            "거래처명": company_name,
-            "매출등급": revenue_grade,
-            "수익률등급": profit_grade,
-            "환자수등급": patients_grade,
-            "관계도등급": interaction_grade,
-            "최종등급": final_grade,
-            "지표요약": {
-                "평균매출": avg_revenue,
-                "총매출": total_revenue,
-                "총예산": total_budget,
-                "수익률(%)": profit_rate,
-                "평균환자수": avg_patients,
-                "관계도(%)": interaction_rate,
-            }
-        }
+        return _to_builtin({
+        "거래처명": company_name,
+        "매출등급": revenue_grade,
+        "수익률등급": profit_grade,
+        "환자수등급": patients_grade,
+        "관계도등급": interaction_grade,
+        "최종등급": final_grade,
+        "지표요약": {
+        "평균매출": avg_revenue,
+        "총매출": total_revenue,
+        "총예산": total_budget,
+        "수익률(%)": profit_rate,
+        "평균환자수": avg_patients,
+        "관계도(%)": interaction_rate,
+    }
+})
 
     # ---------------------------
     # LLM 공통 호출
@@ -475,11 +1066,16 @@ def build_full_graph(agent: ClientAgent):
         s, e = state["start_month"], state["end_month"]
 
         target_df = agent.text2sql_fetch(company, s, e)
-        target_df_md = target_df[["월_int", "매출", "사용 예산", "총환자수", "월방문횟수"] \
-                         if set(["월_int","매출","사용 예산","총환자수","월방문횟수"]).issubset(target_df.columns) \
-                         else target_df.columns].to_markdown(index=False) if not target_df.empty else "데이터 없음"
+        target_df_md = (
+            target_df[
+                ["월_int", "매출", "사용 예산", "총환자수", "월방문횟수"]
+                if set(["월_int","매출","사용 예산","총환자수","월방문횟수"]).issubset(target_df.columns)
+                else target_df.columns
+            ].to_markdown(index=False)
+            if not target_df.empty else "데이터 없음"
+        )
 
-
+        state["target_df_markdown"] = target_df_md   
         return state
 
     # ✅ 2번: 등급 계산+분석 (합치기)
@@ -564,7 +1160,9 @@ def build_full_graph(agent: ClientAgent):
 async def run_full_pipeline(agent: ClientAgent,
                             company_name: str,
                             start_month: Optional[int] = None,
-                            end_month: Optional[int] = None) -> ReportState:
+                            end_month: Optional[int] = None,
+                            generate_docs: bool = True,
+                            output_dir: Optional[str] = None) -> Dict[str, Any]:
     initial: ReportState = {
         "company_name": company_name,
         "start_month": start_month,
@@ -579,4 +1177,43 @@ async def run_full_pipeline(agent: ClientAgent,
         "target_df_summary": None,
     }
     graph = build_full_graph(agent)
-    return await graph.ainvoke(initial)
+    result_state = await graph.ainvoke(initial)
+    
+    # 문서 생성
+    doc_results = {}
+    if generate_docs:
+        doc_results = agent.generate_documents(result_state, output_dir)
+    
+    return {
+        "report_state": result_state,
+        "documents": doc_results
+    }
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    # 분석할 거래처 ID와 기간 지정
+    COMPANY_NAME = "미라클신경과의원(강서구 화곡동)"
+    START_MONTH = 202401            # YYYYMM 형식, 없으면 None
+    END_MONTH = 202403              # YYYYMM 형식, 없으면 None
+
+    # 에이전트 생성
+    agent = ClientAgent()
+
+    # 파이프라인 실행
+    result = asyncio.run(
+        run_full_pipeline(
+            agent,
+            company_name=COMPANY_NAME,
+            start_month=START_MONTH,
+            end_month=END_MONTH,
+            generate_docs=True,     # Word, HTML 보고서 생성 여부
+            output_dir="./output"   # 결과 저장 폴더
+        )
+    )
+
+    # 결과 출력
+    print("\n=== 분석 결과 요약 ===")
+    print(result["report_state"]["final_report"])
+    print("\n문서 저장 위치:", result["documents"])
