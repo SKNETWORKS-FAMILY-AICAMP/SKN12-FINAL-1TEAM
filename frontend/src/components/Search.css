@@ -1,0 +1,354 @@
+.search-page {
+  padding: 5px; /* 패딩을 최소화 */
+  background-color: #fff;
+  min-height: 100vh;
+  width: 100%; /* 너비를 100%로 설정 */
+  max-width: 100vw; /* 최대 너비를 화면 전체로 설정 */
+  margin: 0; /* 마진 제거 */
+  overflow-x: hidden; /* 가로 스크롤 방지 */
+}
+
+.search-header {
+  margin-bottom: 15px; /* 마진 줄임 */
+  padding: 0 10px; /* 좌우 패딩만 추가 */
+}
+
+.search-header h1 {
+  font-size: 2rem;
+  color: #333;
+  margin: 0;
+  font-weight: 600;
+}
+
+.document-search-container {
+  max-width: 100%; /* 최대 너비를 100%로 변경하여 화면에 꽉 차게 */
+  width: 100%; /* 너비를 100%로 설정 */
+  margin: 0; /* 마진 제거 */
+  padding: 0 10px; /* 좌우 패딩만 추가 */
+}
+
+.search-form {
+  margin-bottom: 15px; /* 마진 줄임 */
+}
+
+.search-input-group {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 15px; /* 마진 줄임 */
+}
+
+.search-input-wrapper {
+  position: relative;
+  flex: 1;
+}
+
+.search-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  font-size: 16px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 12px 16px 12px 45px;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
+  background-color: #f8f9fa;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #6f42c1;
+  background-color: #fff;
+}
+
+.search-button {
+  padding: 12px 24px;
+  background-color: #6f42c1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  white-space: nowrap;
+}
+
+.search-button:hover {
+  background-color: #5a32a3;
+}
+
+.search-filters {
+  margin-bottom: 15px; /* 마진 줄임 */
+  display: flex;
+  gap: 10px;
+}
+
+.filter-button {
+  padding: 8px 16px;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.filter-button:hover {
+  background-color: #e9ecef;
+}
+
+.filter-button.active {
+  background-color: #6f42c1;
+  color: white;
+  border-color: #6f42c1;
+}
+
+.search-results {
+  background-color: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: 100%; /* 너비를 100%로 설정 */
+  margin: 0; /* 마진 제거 */
+  padding: 0; /* 패딩 제거 */
+  max-width: 100%; /* 최대 너비 제한 제거 */
+}
+
+.results-table {
+  overflow-x: auto;
+  width: 100%; /* 테이블 너비를 100%로 설정 */
+  margin: 0; /* 마진 제거 */
+  padding: 0; /* 패딩 제거 */
+  max-width: 100%; /* 최대 너비 제한 제거 */
+}
+
+.results-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #fff;
+  table-layout: fixed; /* 테이블 레이아웃을 fixed로 변경 */
+  margin: 0; /* 마진 제거 */
+  padding: 0; /* 패딩 제거 */
+  min-width: 100%; /* 최소 너비를 100%로 설정 */
+}
+
+.results-table th {
+  background-color: #f8f9fa;
+  padding: 16px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #e9ecef;
+  font-size: 0.9rem;
+  white-space: nowrap; /* 텍스트 줄바꿈 방지 */
+}
+
+.results-table th:nth-child(1) { width: 40%; } /* 문서명 */
+.results-table th:nth-child(2) { width: 20%; } /* 내/외부 구분 */
+.results-table th:nth-child(3) { width: 25%; } /* 작성자 */
+.results-table th:nth-child(4) { width: 15%; } /* 작성일 */
+
+.results-table td {
+  padding: 16px 12px;
+  border-bottom: 1px solid #f1f3f4;
+  color: #333;
+  font-size: 0.9rem;
+  word-wrap: break-word; /* 긴 텍스트 줄바꿈 */
+  overflow: hidden;
+  text-overflow: ellipsis; /* 긴 텍스트 말줄임표 */
+}
+
+.results-table tr:hover {
+  background-color: #f8f9fa;
+}
+
+.classification-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-align: center;
+  min-width: 50px;
+}
+
+.classification-tag.internal {
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.classification-tag.external {
+  background-color: #f3e5f5;
+  color: #7b1fa2;
+}
+
+/* 로딩 및 오류 메시지 */
+.loading-message {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-style: italic;
+}
+
+.error-message {
+  text-align: center;
+  padding: 15px;
+  margin: 10px 0;
+  background-color: #e8f5e8;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.no-results {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  font-style: italic;
+  background-color: #f5f5f5;
+}
+
+/* 클릭 가능한 문서 행 */
+.document-row:hover {
+  background-color: #e3f2fd !important;
+  transition: background-color 0.2s ease;
+}
+
+/* 모달 스타일 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.modal-header h2 {
+  margin: 0;
+  color: #333;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #666;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.modal-close:hover {
+  background-color: #f8f9fa;
+  color: #333;
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.document-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f3f4;
+}
+
+.detail-item:last-child {
+  border-bottom: none;
+}
+
+.detail-item label {
+  font-weight: 600;
+  color: #333;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.detail-item span {
+  color: #666;
+  word-break: break-all;
+}
+
+/* 문서 내용 표시 */
+.document-content {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.document-content label {
+  margin-bottom: 8px;
+}
+
+.content-display {
+  width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.content-display pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: #333;
+}
+
+.error-text {
+  color: #dc3545 !important;
+  font-weight: 500;
+} 

@@ -1,0 +1,452 @@
+{
+	"info": {
+		"_postman_id": "customer-performance-api",
+		"name": "Customer Performance API",
+		"description": "거래처별 월간 성과 정보 조회 API 컬렉션",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.environment.set(\"access_token\", jsonData.access_token);",
+									"    pm.environment.set(\"refresh_token\", jsonData.refresh_token);",
+									"    console.log(\"Token saved successfully\");",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/x-www-form-urlencoded"
+							}
+						],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "username",
+									"value": "admin",
+									"type": "text"
+								},
+								{
+									"key": "password",
+									"value": "admin123",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/user/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"user",
+								"login"
+							]
+						},
+						"description": "로그인하여 액세스 토큰 획득"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Customer Performance",
+			"item": [
+				{
+					"name": "특정 거래처 기간별 성과 조회",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/customer/1/performance?start_month=202401&end_month=202412",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"customer",
+								"1",
+								"performance"
+							],
+							"query": [
+								{
+									"key": "start_month",
+									"value": "202401",
+									"description": "시작 월 (YYYYMM 형식)"
+								},
+								{
+									"key": "end_month",
+									"value": "202412",
+									"description": "종료 월 (YYYYMM 형식)"
+								}
+							]
+						},
+						"description": "특정 거래처(customer_id=1)의 2024년 1월~12월 성과 데이터 조회"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/customer/1/performance?start_month=202401&end_month=202412",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"customer",
+										"1",
+										"performance"
+									],
+									"query": [
+										{
+											"key": "start_month",
+											"value": "202401"
+										},
+										{
+											"key": "end_month",
+											"value": "202412"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"customer_id\": 1,\n    \"customer_name\": \"서울병원\",\n    \"customer_grade\": \"A\",\n    \"period\": {\n        \"start\": \"202401\",\n        \"end\": \"202412\"\n    },\n    \"monthly_data\": [\n        {\n            \"month\": \"202401\",\n            \"매출\": 2500000,\n            \"사용예산\": 400000,\n            \"총환자수\": 2400\n        },\n        {\n            \"month\": \"202402\",\n            \"매출\": 2800000,\n            \"사용예산\": 450000,\n            \"총환자수\": 2600\n        }\n    ],\n    \"summary\": {\n        \"total_sales\": 30000000,\n        \"total_budget\": 4800000,\n        \"total_patients\": 28800,\n        \"average_monthly_sales\": 2500000,\n        \"average_monthly_budget\": 400000,\n        \"average_monthly_patients\": 2400,\n        \"month_count\": 12\n    }\n}"
+						}
+					]
+				},
+				{
+					"name": "여러 거래처 성과 동시 조회",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/customers/performance?customer_ids=1,2,3&start_month=202401&end_month=202406",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"customers",
+								"performance"
+							],
+							"query": [
+								{
+									"key": "customer_ids",
+									"value": "1,2,3",
+									"description": "거래처 ID 목록 (쉼표 구분)"
+								},
+								{
+									"key": "start_month",
+									"value": "202401",
+									"description": "시작 월 (YYYYMM 형식)"
+								},
+								{
+									"key": "end_month",
+									"value": "202406",
+									"description": "종료 월 (YYYYMM 형식)"
+								}
+							]
+						},
+						"description": "여러 거래처(ID: 1,2,3)의 2024년 1월~6월 성과 데이터 동시 조회"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/customers/performance?customer_ids=1,2,3&start_month=202401&end_month=202406",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"customers",
+										"performance"
+									],
+									"query": [
+										{
+											"key": "customer_ids",
+											"value": "1,2,3"
+										},
+										{
+											"key": "start_month",
+											"value": "202401"
+										},
+										{
+											"key": "end_month",
+											"value": "202406"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "[\n    {\n        \"customer_id\": 1,\n        \"customer_name\": \"서울병원\",\n        \"customer_grade\": \"A\",\n        \"period\": {\n            \"start\": \"202401\",\n            \"end\": \"202406\"\n        },\n        \"monthly_data\": [...],\n        \"summary\": {...}\n    },\n    {\n        \"customer_id\": 2,\n        \"customer_name\": \"부산의료원\",\n        \"customer_grade\": \"B\",\n        \"period\": {\n            \"start\": \"202401\",\n            \"end\": \"202406\"\n        },\n        \"monthly_data\": [...],\n        \"summary\": {...}\n    }\n]"
+						}
+					]
+				},
+				{
+					"name": "거래처 기간별 성과 비교",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/customer/1/performance/comparison?period1_start=202301&period1_end=202306&period2_start=202401&period2_end=202406",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"customer",
+								"1",
+								"performance",
+								"comparison"
+							],
+							"query": [
+								{
+									"key": "period1_start",
+									"value": "202301",
+									"description": "첫 번째 기간 시작 월"
+								},
+								{
+									"key": "period1_end",
+									"value": "202306",
+									"description": "첫 번째 기간 종료 월"
+								},
+								{
+									"key": "period2_start",
+									"value": "202401",
+									"description": "두 번째 기간 시작 월"
+								},
+								{
+									"key": "period2_end",
+									"value": "202406",
+									"description": "두 번째 기간 종료 월"
+								}
+							]
+						},
+						"description": "특정 거래처의 2023년 상반기와 2024년 상반기 성과 비교"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/customer/1/performance/comparison?period1_start=202301&period1_end=202306&period2_start=202401&period2_end=202406",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"customer",
+										"1",
+										"performance",
+										"comparison"
+									],
+									"query": [
+										{
+											"key": "period1_start",
+											"value": "202301"
+										},
+										{
+											"key": "period1_end",
+											"value": "202306"
+										},
+										{
+											"key": "period2_start",
+											"value": "202401"
+										},
+										{
+											"key": "period2_end",
+											"value": "202406"
+										}
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"customer_id\": 1,\n    \"customer_name\": \"서울병원\",\n    \"period1\": {\n        \"range\": \"202301~202306\",\n        \"summary\": {\n            \"total_sales\": 15000000,\n            \"total_budget\": 2400000,\n            \"total_patients\": 14400,\n            \"average_monthly_sales\": 2500000,\n            \"average_monthly_budget\": 400000,\n            \"average_monthly_patients\": 2400\n        }\n    },\n    \"period2\": {\n        \"range\": \"202401~202406\",\n        \"summary\": {\n            \"total_sales\": 16500000,\n            \"total_budget\": 2640000,\n            \"total_patients\": 15600,\n            \"average_monthly_sales\": 2750000,\n            \"average_monthly_budget\": 440000,\n            \"average_monthly_patients\": 2600\n        }\n    },\n    \"comparison\": {\n        \"sales_change\": {\n            \"amount\": 1500000,\n            \"rate\": 10.0\n        },\n        \"budget_change\": {\n            \"amount\": 240000,\n            \"rate\": 10.0\n        },\n        \"patients_change\": {\n            \"amount\": 1200,\n            \"rate\": 8.33\n        },\n        \"performance_evaluation\": \"우수\"\n    }\n}"
+						}
+					]
+				},
+				{
+					"name": "잘못된 날짜 형식 테스트",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/customer/1/performance?start_month=2024-01&end_month=2024-12",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"customer",
+								"1",
+								"performance"
+							],
+							"query": [
+								{
+									"key": "start_month",
+									"value": "2024-01",
+									"description": "잘못된 형식 (YYYY-MM)"
+								},
+								{
+									"key": "end_month",
+									"value": "2024-12",
+									"description": "잘못된 형식 (YYYY-MM)"
+								}
+							]
+						},
+						"description": "날짜 형식 검증 테스트 (400 에러 예상)"
+					},
+					"response": []
+				},
+				{
+					"name": "존재하지 않는 거래처 테스트",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/customer/99999/performance?start_month=202401&end_month=202412",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"customer",
+								"99999",
+								"performance"
+							],
+							"query": [
+								{
+									"key": "start_month",
+									"value": "202401"
+								},
+								{
+									"key": "end_month",
+									"value": "202412"
+								}
+							]
+						},
+						"description": "존재하지 않는 거래처 ID 테스트 (404 에러 예상)"
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "access_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "refresh_token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

@@ -1,163 +1,121 @@
-# LangGraph 기반 라우터 시스템
+## 제약영업사원 업무효율을 위한 문서검색 및 업무자동화 AI partner - llm기반 QA 챗봇 - Phase 1
+### "LLM을 활용한 사내 문서 검색 및 업무지원형 디지털 비서 시스템"
+##### 내 생각을 이해하고, 내 일을 함께하는 디지털 분신- 나루톡 <br/>
+##### 모든 문서와 대화를 하나로 연결하는 스마트 허브 챗봇 - 나투록 <br/>
+###### 나루톡 ( 모든 기능의 허브라는 뜻의 순우리말 '나룻터' 와 대화를 주고받는 talk의 합성어로,사용자의 모든 생각과 행동을 연결해주는 디지털 분신 챗봇 )
 
-NaruTalk AI 챗봇을 위한 LangGraph StateGraph 기반 라우터 시스템입니다.
+---
 
-## 🎯 주요 기능
+</div>
 
-- **GPT-4o 기반 에이전트 분류**: 사용자 질문을 4개의 전문 에이전트로 자동 분류
-- **LangGraph StateGraph**: 상태 기반 흐름 제어 및 조건부 분기
-- **재시도 로직**: 최대 3회까지 자동 재시도
-- **수동 선택 모드**: 분류 실패 시 H2H(Human-to-Human) 모드로 전환
-- **더미 에이전트**: 각 에이전트별 더미 실행 및 테스트
 
-## 🤖 지원 에이전트
+## 👥 팀 소개
 
-1. **employee_agent**: 직원 실적 분석, 인사 정보, 조직도 관련 업무
-2. **client_agent**: 거래처 분석, 고객 데이터 분석, 매출 분석
-3. **db_agent**: 데이터베이스 검색, 문서 검색, 정보 조회
-4. **docs_agent**: 문서 자동생성, 규정 위반 여부 분석, 컴플라이언스 검토
+<table>
+<tr>
+<td align="center">
+ <img src="./team/1.png" width="120px"><br/>
+ <b>김도윤</b><br/><span style="font-size:14px;"> P M </sub>
+</td>
+<td align="center">
+ <img src="./team/2.png" width="120px"><br/>
+ <b>손현성</b><br/><span style="font-size:14px;">백앤드/인프라 </sub>
+</td>
+<td align="center">
+ <img src="./team/3.png" width="120px"><br/>
+ <b>이용규</b><br/><span style="font-size:14px;">QC </sub>
+</td>
+<td align="center">
+ <img src="./team/6.png" width="120px"><br/>
+ <b>최문영</b><br/><span style="font-size:14px;">프론트 </sub>
+</td>
+<td align="center">
+ <img src="./team/5.png" width="120px"><br/>
+ <b>허한결</b><br/><span style="font-size:14px;">데이터베이스구축 </sub>
+</td>
+</tr>
+</table>
+  </p>
+</div>
+<h1>📚 STACKS</h1>
 
-## 📁 파일 구조
+<!-- Backend & Language -->
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 
+<!-- Database & Search -->
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white)
+![OpenSearch](https://img.shields.io/badge/OpenSearch-005EB8?style=for-the-badge&logo=opensearch&logoColor=white)
+
+<!-- AI & LLM -->
+![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white)
+![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-000000?style=for-the-badge&logo=langgraph&logoColor=white)
+![HuggingFace](https://img.shields.io/badge/🤗_Hugging_Face-FFD21E?style=for-the-badge&logoColor=black)
+![KURE](https://img.shields.io/badge/KURE--v1-FF6B6B?style=for-the-badge&logo=huggingface&logoColor=white)
+![BGE Reranker](https://img.shields.io/badge/BGE_Reranker--v2--m3-4ECDC4?style=for-the-badge&logo=huggingface&logoColor=white)
+
+<!-- DevOps & Deploy -->
+![AWS](https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&logo=amazon-aws&logoColor=white)
+![RunPod](https://img.shields.io/badge/RunPod-FFAFCC?style=for-the-badge&logo=runpod&logoColor=black)
+
+<!-- Crawling & OAuth -->
+![Selenium](https://img.shields.io/badge/Selenium-43B02A?style=for-the-badge&logo=selenium&logoColor=white)
+
+<!-- Collaboration -->
+![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)
+![Git](https://img.shields.io/badge/Git-F05032?style=for-the-badge&logo=git&logoColor=white)
+
+</div>
+
+
+
+## 지원 에이전트<br/>
+<br/>
+1. employee_agent: 직원 실적 분석, 인사 정보, 조직도 관련 업무<br/>
+2. client_agent: 거래처 분석, 고객 데이터 분석, 매출 분석<br/>
+3. db_agent: 데이터베이스 검색, 문서 검색, 정보 조회<br/>
+4. docs_agent: 문서 자동생성, 규정 위반 여부 분석, 컴플라이언스 검토<br/>
+<br/><br/>
+</div>
+</table>
+에이전트 흐름도<br/>        
+<img src="./team/11.png" style="width:100%; max-width:1000px;">
+<img src="./team/12.png" style="width:100%; max-width:1000px;">
+<img src="./team/13.png" style="width:100%; max-width:1000px;">
+<img src="./team/14.png" style="width:100%; max-width:1000px;">
+<img src="./team/15.png" style="width:100%; max-width:1000px;">
+<img src="./team/16.png" style="width:100%; max-width:1000px;">
+
+## 📂 **프로젝트 구조**<br/>
 ```
-backend/app/services/router_agent/
-├── __init__.py              # 모듈 초기화
-├── router_agent.py          # 기본 라우터 에이전트
-├── state_graph_router.py    # StateGraph 기반 라우터
-└── README.md               # 이 파일
-```
+backend/
+└── app/
+    ├── main.py # FastAPI 실행
+    │
+    ├── api/ # API 관리
+    │   ├── router_api.py
+    │   ├── client_api.py
+    │   ├── docs_api.py
+    │   ├── employee_api.py
+    │   └── search_api.py
+    │ 
+    ├── services/ # agent 관리
+    │   ├── router_agent/
+    │   │   ├── router_agent.py
+    │   │   ├── state_graph_router.py
+    │   │   └── memory_store_sqlite.py # 대화 저장/조회 기능
+    │   │
+    │   ├── client_agent/
+    │   ├── employee_agent/
+    │   ├── docs_agent/
+    │   └── search_agent/
 
-## 🚀 사용법
+database/
+└── history/
+    └── memory.sqlite
 
-### 1. 기본 라우터 사용
-
-```python
-from backend.app.services.router_agent import RouterAgent
-
-router = RouterAgent()
-result = router.process_query("김철수 직원의 이번 달 실적을 분석해주세요")
-print(result)
-```
-
-### 2. StateGraph 라우터 사용
-
-```python
-from backend.app.services.router_agent import StateGraphRouter
-
-state_router = StateGraphRouter()
-result = state_router.process_query("ABC 거래처의 매출 현황을 알려주세요")
-print(result)
-```
-
-## 🔄 StateGraph 흐름
-
-```
-┌─────────┐
-│  START  │ → 초기화 및 사용자 질문 출력
-└────┬────┘
-     │
-     ▼
-┌─────────┐
-│CLASSIFY │ → GPT-4o를 사용한 에이전트 분류
-└────┬────┘
-     │
-     ▼
-┌─────────┐    ┌─────────┐    ┌─────────┐
-│  ROUTE  │◄───┤DECISION │───►│  RETRY  │
-└────┬────┘    └─────────┘    └────┬────┘
-     │                             │
-     ▼                             ▼
-┌─────────┐                   ┌─────────┐
-│EXECUTE  │                   │CLASSIFY │
-└────┬────┘                   └─────────┘
-     │
-     ▼
-┌─────────┐
-│FINALIZE │ → 결과 정리 및 완료
-└────┬────┘
-     │
-     ▼
-┌─────────┐
-│   END   │
-└─────────┘
-```
-
-## 📋 출력 형식
-
-시스템은 다음 3단계 형식으로 출력됩니다:
-
-1. **Step 1**: 사용자 질문 출력
-2. **Step 2**: LLM 분류 결과 출력
-3. **Step 3**: 분기된 에이전트 이름 출력
-
-## 🧪 테스트
-
-```bash
-# 테스트 스크립트 실행
-python test_router_system.py
-```
-
-## ⚙️ 설정
-
-### 환경 변수
-
-```bash
-export OPENAI_API_KEY=your_api_key_here
-```
-
-### 설정 옵션
-
-- `max_retry_attempts`: 최대 재시도 횟수 (기본값: 3)
-- `openai_model`: 사용할 OpenAI 모델 (기본값: "gpt-4o")
-- `temperature`: GPT-4o 온도 설정 (기본값: 0.3)
-
-## 📊 상태 관리
-
-### RouterState 클래스
-
-```python
-@dataclass
-class RouterState:
-    query: str = ""                    # 사용자 질문
-    selected_agent: Optional[str] = None  # 선택된 에이전트
-    routing_attempts: int = 0          # 시도 횟수
-    final_response: str = ""           # 최종 응답
-    classification_result: str = ""    # 분류 결과
-    error_message: str = ""            # 오류 메시지
+frontend/
+└── react
 ```
 
-### GraphState 클래스
-
-```python
-class GraphState(TypedDict):
-    query: str
-    selected_agent: Optional[str]
-    routing_attempts: int
-    final_response: str
-    classification_result: str
-    error_message: str
-    next_action: str
-    is_completed: bool
-```
-
-## 🔧 확장 가능성
-
-새로운 에이전트를 추가하려면:
-
-1. `available_agents` 리스트에 추가
-2. `agent_descriptions`에 설명 추가
-3. `execute_dummy_agent` 메서드에 더미 동작 추가
-
-## 📈 성능 최적화
-
-- GPT-4o 모델 사용으로 빠른 분류 성능
-- 재시도 로직으로 안정성 향상
-- StateGraph를 통한 효율적인 상태 관리
-- 로깅 시스템으로 디버깅 지원
-
-## 🛠️ 개발 참고사항
-
-- Python 3.11.9 호환
-- LangGraph 0.5+ 지원
-- OpenAI API 1.86.0+ 필요
-- 비동기 처리 지원 가능 (향후 업데이트) 

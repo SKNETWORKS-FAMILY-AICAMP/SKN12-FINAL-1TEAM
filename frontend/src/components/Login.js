@@ -1,0 +1,186 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { loginUser, verifyToken } from '../services/api';
+import './Login.css';
+
+const Login = ({ onLogin }) => {
+  const navigate = useNavigate();
+  const [loginData, setLoginData] = useState({
+    email: '',
+    password: ''
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setLoginData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    // 입력 시 에러 메시지 초기화
+    if (error) setError('');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!loginData.email || !loginData.password) {
+      setError('이메일과 비밀번호를 입력해주세요.');
+      return;
+    }
+
+    // 이메일 형식 검증
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(loginData.email)) {
+      setError('올바른 이메일 형식을 입력해주세요.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      console.log('로그인 시도:', { username: loginData.email, password: loginData.password });
+      
+      const response = await loginUser({
+        username: loginData.email,
+        password: loginData.password
+      });
+
+      console.log('로그인 응답:', response);
+
+      // 로그인 성공 - 토큰 저장
+      const { access_token, token_type } = response;
+      localStorage.setItem('narutalk_token', access_token);
+      localStorage.setItem('narutalk_token_type', token_type);
+
+      // 토큰으로 실제 사용자 정보 가져오기
+      const userInfo = await verifyToken();
+      console.log('사용자 정보:', userInfo);
+
+      // 백엔드에서 받은 사용자 정보 사용
+      const userData = {
+        email: userInfo.email,
+        name: userInfo.name,
+        role: userInfo.role,
+        username: userInfo.username,
+        company: '좋은제약',
+        department: userInfo.role === 'admin' ? '시스템 관리부' : '영업부',
+        position: userInfo.role === 'admin' ? '시스템 관리자' : '영업사원',
+        phone: '010-1234-5678'
+      };
+
+      // 로컬 스토리지에 사용자 정보 저장
+      localStorage.setItem('narutalk_user', JSON.stringify(userData));
+      localStorage.setItem('narutalk_isLoggedIn', 'true');
+
+      // 부모 컴포넌트에 로그인 상태 전달
+      if (onLogin) {
+        onLogin(userData);
+      }
+
+      // 대시보드로 이동
+      navigate('/');
+
+    } catch (error) {
+      console.error('로그인 오류:', error);
+      
+      // 에러 메시지 한글화
+      let errorMessage = error.message || 'Login failed. Please check your username and password.';
+      
+      // 영어 에러 메시지를 한글로 변환
+      if (errorMessage.toLowerCase().includes('incorrect email or password')) {
+        errorMessage = '이메일 또는 비밀번호가 일치하지 않습니다.';
+      } else if (errorMessage.toLowerCase().includes('user not found')) {
+        errorMessage = '존재하지 않는 사용자입니다.';
+      } else if (errorMessage.toLowerCase().includes('invalid credentials')) {
+        errorMessage = '잘못된 인증 정보입니다.';
+      } else if (errorMessage.toLowerCase().includes('login failed')) {
+        errorMessage = '로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.';
+      } else if (errorMessage.toLowerCase().includes('unauthorized')) {
+        errorMessage = '인증되지 않은 접근입니다.';
+      } else if (errorMessage.toLowerCase().includes('server')) {
+        errorMessage = '서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-page">
+      <div className="login-background">
+        <div className="background-pattern"></div>
+      </div>
+      
+      <div className="login-container">
+        <div className="login-card">
+          <div className="login-header">
+            <div className="company-logo">
+              <span className="logo-icon">💊</span>
+              <h1 className="company-name">좋은제약</h1>
+            </div>
+            <h2 className="app-name">Narutalk</h2>
+            <p className="app-description">제약영업사원을 위한 AI 업무 파트너</p>
+          </div>
+
+          <form className="login-form" onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="email">이메일</label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value={loginData.email}
+                onChange={handleInputChange}
+                placeholder="이메일을 입력하세요"
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="password">비밀번호</label>
+              <input
+                type="password"
+                id="password"
+                name="password"
+                value={loginData.password}
+                onChange={handleInputChange}
+                placeholder="비밀번호를 입력하세요"
+                disabled={isLoading}
+              />
+            </div>
+
+            {error && (
+              <div className="error-message">
+                <span className="error-icon">⚠️</span>
+                {error}
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              className={`login-button ${isLoading ? 'loading' : ''}`}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <span className="loading-spinner"></span>
+                  로그인 중...
+                </>
+              ) : (
+                '로그인'
+              )}
+            </button>
+
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Login; 

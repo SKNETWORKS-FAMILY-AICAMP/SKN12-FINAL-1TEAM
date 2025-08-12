@@ -1,6 +1,6 @@
-# Router Agent module initialization
+"""
+라우터 에이전트 패키지
+"""
+from .router import RouterAgent
 
-from .router_agent import RouterAgent
-from .state_graph_router import StateGraphRouter
-
-__all__ = ['RouterAgent', 'StateGraphRouter'] 
+__all__ = ["RouterAgent"] 
