@@ -9,7 +9,7 @@ pip install --upgrade pip
 echo "📦 기본 라이브러리 설치 중..."
 pip install -r /app/requirements/requirements-base.txt --progress-bar on
 echo "📦 ML 라이브러리 설치 확인 중..."
-pip install -r /app/requirements-ml.txt --progress-bar on
+pip install -r /app/requirements/requirements-ml.txt --progress-bar on
 echo "✅ 모든 라이브러리 설치 완료"
 
 # PostgreSQL 연결 대기
