@@ -24,3 +24,8 @@ langchain-core
 pandas
 openpyxl
 xlrd
+PyJWT
+langgraph
+langchain
+langchain-community
+numpy

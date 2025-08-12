@@ -40,6 +40,7 @@ services:
       # 개발 중에는 로컬 파일을 마운트 (빌드 없이 즉시 반영)
       - ../app:/app/app
       - ../migrations:/app/migrations
+      - ../requirements:/app/requirements
       - ./.env:/app/.env
       # 캐시 볼륨 (로컬 마운트 이후에 마운트)
       - model_cache:/root/.cache/huggingface

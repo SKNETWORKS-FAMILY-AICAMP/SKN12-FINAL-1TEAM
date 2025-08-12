@@ -11,6 +11,7 @@ from app.routers.hybrid_search_router import router as hybrid_search_router
 from app.routers.chat_history_router import router as chat_history_router
 from app.routers.dashboard_router import router as dashboard_router
 from app.routers.approval_router import router as approval_router
+from app.routers.employee_performance_router import router as employee_performance_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.external.opensearch_service import initialize_search_pipeline
@@ -116,6 +117,7 @@ app.include_router(hybrid_search_router, prefix="", tags=["Hybrid Search"])
 app.include_router(chat_history_router, prefix="", tags=["Chat History"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
 app.include_router(approval_router, prefix="/approval", tags=["Approval"])
+app.include_router(employee_performance_router, prefix="", tags=["Employee Performance"])
 
 @app.get("/")
 def root():
