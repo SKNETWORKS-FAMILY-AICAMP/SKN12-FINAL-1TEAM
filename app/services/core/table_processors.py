@@ -5,10 +5,12 @@
 
 import re
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.models.employee_info import EmployeeInfo
 from app.models.customers import Customer
@@ -441,11 +443,27 @@ class SalesRecordProcessor(BaseTableProcessor):
             logger.info(f"📊 sales_records 총 결과: {len(table_data)}행에서 {self.total_records_created}건 생성, {self.total_records_updated}건 업데이트")
             
             # MV 자동 갱신 (sales_records 처리 완료 후)
+            # 새로운 독립적인 세션으로 MV 갱신
+            async def refresh_mv_with_new_session():
+                try:
+                    from app.services.utils.db import create_db_session
+                    with create_db_session() as new_session:
+                        logger.info("🔄 sales_records 처리 완료, MV 자동 갱신 시작...")
+                        await mv_refresh_service.refresh_mvs_for_table(new_session, 'sales_records')
+                except Exception as e:
+                    logger.error(f"❌ MV 자동 갱신 실패: {e}")
+            
             try:
-                logger.info("🔄 sales_records 처리 완료, MV 자동 갱신 시작...")
-                mv_refresh_service.refresh_mvs_for_table(self.session, 'sales_records')
+                # 현재 실행 중인 event loop를 사용
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # 백그라운드에서 MV 갱신 실행
+                    task = loop.create_task(refresh_mv_with_new_session())
+                else:
+                    # loop가 실행 중이지 않으면 asyncio.run 사용
+                    asyncio.run(refresh_mv_with_new_session())
             except Exception as e:
-                logger.error(f"❌ MV 자동 갱신 실패: {e}")
+                logger.error(f"❌ MV 갱신 스케줄링 실패: {e}")
                 # MV 갱신 실패해도 데이터 처리는 성공으로 처리
         
         # 결과에 총 레코드 수 추가
@@ -1259,11 +1277,28 @@ class CustomerMonthlyStatusProcessor(BaseTableProcessor):
         
         # 데이터 처리 성공 시 MV 자동 갱신
         if result.get('created_count', 0) > 0 or result.get('updated_count', 0) > 0:
+            # MV 자동 갱신 (customer_monthly_status 처리 완료 후)
+            # 새로운 독립적인 세션으로 MV 갱신
+            async def refresh_mv_with_new_session():
+                try:
+                    from app.services.utils.db import create_db_session
+                    with create_db_session() as new_session:
+                        logger.info("🔄 customer_monthly_status 처리 완료, MV 자동 갱신 시작...")
+                        await mv_refresh_service.refresh_mvs_for_table(new_session, 'customer_monthly_status')
+                except Exception as e:
+                    logger.error(f"❌ MV 자동 갱신 실패: {e}")
+            
             try:
-                logger.info("🔄 customer_monthly_status 처리 완료, MV 자동 갱신 시작...")
-                mv_refresh_service.refresh_mvs_for_table(self.session, 'customer_monthly_status')
+                # 현재 실행 중인 event loop를 사용
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # 백그라운드에서 MV 갱신 실행
+                    task = loop.create_task(refresh_mv_with_new_session())
+                else:
+                    # loop가 실행 중이지 않으면 asyncio.run 사용
+                    asyncio.run(refresh_mv_with_new_session())
             except Exception as e:
-                logger.error(f"❌ MV 자동 갱신 실패: {e}")
+                logger.error(f"❌ MV 갱신 스케줄링 실패: {e}")
                 # MV 갱신 실패해도 데이터 처리는 성공으로 처리
         
         return result

@@ -330,13 +330,17 @@ class Text2SQLTableClassifier:
                         
                         # MV 자동 갱신 (데이터 처리 성공 시)
                         if created_count > 0 or updated_count > 0:
-                            try:
-                                async with self._get_db_session() as session:
-                                    logger.info(f"🔄 {target_table} 테이블 처리 완료, MV 자동 갱신 시작...")
-                                    mv_refresh_service.refresh_mvs_for_table(session, target_table)
-                            except Exception as e:
-                                logger.error(f"❌ MV 자동 갱신 실패: {e}")
-                                # MV 갱신 실패해도 데이터 처리는 성공으로 처리
+                            # 백그라운드에서 MV 갱신 실행 (새로운 세션 사용)
+                            async def refresh_mv_background():
+                                try:
+                                    async with self._get_db_session() as new_session:
+                                        logger.info(f"🔄 {target_table} 테이블 처리 완료, MV 자동 갱신 시작...")
+                                        await mv_refresh_service.refresh_mvs_for_table(new_session, target_table)
+                                except Exception as e:
+                                    logger.error(f"❌ MV 자동 갱신 실패: {e}")
+                            
+                            # 백그라운드 태스크로 실행
+                            asyncio.create_task(refresh_mv_background())
                         
                         if processed_count > 0:
                             message = f"Text2SQL 분류 완료: {target_table} 테이블에 {processed_count}건 저장 (문서 ID: {document_id})"
