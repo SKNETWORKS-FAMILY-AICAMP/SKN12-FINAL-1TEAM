@@ -18,6 +18,7 @@ class Document(Base):
     doc_type = Column(String)  # 문서 유형 (예: 규정, 매뉴얼, 보고서, 계약서)
     file_path = Column(String, nullable=False)  # 파일 저장 경로 (필수)
     version = Column(String)  # 문서 버전 (예: 1.0, 2.1)
+    summary = Column(String)  # 문서 내용 요약 (AI 생성)
     
     # 처리 상태 정보
     processing_status = Column(String, default='pending')  # 처리 상태 (pending, processing, processed, failed)

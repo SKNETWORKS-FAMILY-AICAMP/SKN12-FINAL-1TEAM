@@ -117,6 +117,7 @@ def upgrade() -> None:
         sa.Column('doc_type', sa.String(), nullable=True),
         sa.Column('file_path', sa.String(), nullable=False),
         sa.Column('version', sa.String(), nullable=True),
+        sa.Column('summary', sa.Text(), nullable=True),
         sa.Column('processing_status', sa.String(), nullable=True),
         sa.Column('processed_at', sa.DateTime(), nullable=True),
         sa.Column('processing_metadata', postgresql.JSONB(astext_type=sa.Text()), nullable=True),

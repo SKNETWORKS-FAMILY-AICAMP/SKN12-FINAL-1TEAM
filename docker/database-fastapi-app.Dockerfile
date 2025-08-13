@@ -12,9 +12,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 기본 Python 의존성만 설치 (ML 라이브러리는 런타임에)
-COPY requirements/requirements-base.txt .
-RUN pip install --upgrade pip && \
-    pip install -r requirements-base.txt
+# COPY requirements/ ./requirements/
+# RUN pip install --upgrade pip 
+# && \
+#     pip install -r requirements/requirements-base.txt
 
 # 실행 스테이지
 FROM python:3.11.7-slim
@@ -32,11 +33,9 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# ML 라이브러리 requirements 복사
-COPY requirements/requirements-ml.txt .
-
 # 애플리케이션 코드 복사 (올바른 Python 패키지 구조로)
 COPY app/ ./app/
+COPY requirements/ ./requirements/
 COPY migrations/ ./migrations/
 COPY migrations/alembic.ini .
 

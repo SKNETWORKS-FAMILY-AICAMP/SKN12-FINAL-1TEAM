@@ -52,5 +52,11 @@
     "columns": ["customer_id", "year_month", "patient_count", "used_budget"],
     "required_columns": ["customer_id", "year_month"],
     "sample_data": ["1", "2024-01", "1500", "3000000"]
+  },
+  "documents": {
+    "description": "문서 메타데이터 관리 테이블. 업로드된 모든 문서의 정보와 처리 상태를 관리합니다. 규정, 법률, 보고서 등 다양한 문서 타입을 저장하며, AI가 생성한 문서 요약을 포함합니다. employees 테이블과 연결되어 업로더 정보를 참조합니다. 주요 컬럼: doc_id(문서 ID, 자동증가), uploader_id(업로더 직원 ID), doc_title(문서 제목), doc_type(문서 유형), file_path(S3 파일 경로), version(문서 버전), summary(AI 생성 요약), processing_status(처리 상태), processing_metadata(처리 메타데이터 JSON), created_at(생성일시). 필수 컬럼: uploader_id, doc_title, file_path.",
+    "columns": ["doc_id", "uploader_id", "doc_title", "doc_type", "file_path", "version", "summary", "processing_status", "processing_metadata", "created_at"],
+    "required_columns": ["uploader_id", "doc_title", "file_path"],
+    "sample_data": ["1", "1", "2024년 영업 규정", "regulation", "s3://documents/2024_sales_regulation.pdf", "1.0", "2024년 영업부문 내부 규정 문서입니다. 영업 활동 가이드라인, 고객 관리 프로세스, 실적 평가 기준 등을 포함합니다.", "processed", "{\"chunks\": 15, \"indexed\": true}", "2024-01-15 09:30:00"]
   }
 } 

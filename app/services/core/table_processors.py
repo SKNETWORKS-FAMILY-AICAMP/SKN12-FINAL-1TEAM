@@ -22,6 +22,7 @@ from app.models.employee_performance import EmployeePerformance
 from app.models.customer_monthly_status import CustomerMonthlyStatus
 from app.services.core.base_table_processor import BaseTableProcessor
 from app.services.utils.foreign_key_utils import get_customer_id, get_employee_id, get_product_id
+from app.services.core.mv_refresh_service import mv_refresh_service
 
 logger = logging.getLogger(__name__)
 
@@ -438,6 +439,14 @@ class SalesRecordProcessor(BaseTableProcessor):
         # 총 생성/업데이트된 레코드 수 로그
         if self.total_records_created > 0 or self.total_records_updated > 0:
             logger.info(f"📊 sales_records 총 결과: {len(table_data)}행에서 {self.total_records_created}건 생성, {self.total_records_updated}건 업데이트")
+            
+            # MV 자동 갱신 (sales_records 처리 완료 후)
+            try:
+                logger.info("🔄 sales_records 처리 완료, MV 자동 갱신 시작...")
+                mv_refresh_service.refresh_mvs_for_table(self.session, 'sales_records')
+            except Exception as e:
+                logger.error(f"❌ MV 자동 갱신 실패: {e}")
+                # MV 갱신 실패해도 데이터 처리는 성공으로 처리
         
         # 결과에 총 레코드 수 추가
         result['total_records_created'] = self.total_records_created
@@ -1241,6 +1250,23 @@ class CustomerMonthlyStatusProcessor(BaseTableProcessor):
     
     def get_unique_fields(self) -> List[str]:
         return ["customer_id", "year_month"]
+    
+    async def process_batch(self, table_data: List[Dict[str, Any]], column_mapping: Dict[str, str],
+                           document_id: Optional[int] = None, uploader_id: Optional[int] = None) -> Dict[str, Any]:
+        """배치 처리 (오버라이드 - MV 자동 갱신 추가)"""
+        # 부모 클래스의 process_batch 호출
+        result = await super().process_batch(table_data, column_mapping, document_id, uploader_id)
+        
+        # 데이터 처리 성공 시 MV 자동 갱신
+        if result.get('created_count', 0) > 0 or result.get('updated_count', 0) > 0:
+            try:
+                logger.info("🔄 customer_monthly_status 처리 완료, MV 자동 갱신 시작...")
+                mv_refresh_service.refresh_mvs_for_table(self.session, 'customer_monthly_status')
+            except Exception as e:
+                logger.error(f"❌ MV 자동 갱신 실패: {e}")
+                # MV 갱신 실패해도 데이터 처리는 성공으로 처리
+        
+        return result
     
     async def find_existing_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
         """기존 월별 상태 레코드 조회"""

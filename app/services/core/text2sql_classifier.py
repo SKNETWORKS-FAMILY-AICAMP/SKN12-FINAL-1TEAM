@@ -21,6 +21,7 @@ from app.services.core.vector_similarity_service import vector_similarity_servic
 from app.services.core.table_processors import get_table_processor
 from app.services.core.table_validators import TableValidator
 from app.services.core.prompt_templates import PromptTemplates
+from app.services.core.mv_refresh_service import mv_refresh_service
 
 
 # 모델 import는 프로세서 클래스에서 처리됨
@@ -326,6 +327,16 @@ class Text2SQLTableClassifier:
                         
                         # 통합 요약 로그 출력
                         self._log_consolidated_summary(single_result, document_id)
+                        
+                        # MV 자동 갱신 (데이터 처리 성공 시)
+                        if created_count > 0 or updated_count > 0:
+                            try:
+                                async with self._get_db_session() as session:
+                                    logger.info(f"🔄 {target_table} 테이블 처리 완료, MV 자동 갱신 시작...")
+                                    mv_refresh_service.refresh_mvs_for_table(session, target_table)
+                            except Exception as e:
+                                logger.error(f"❌ MV 자동 갱신 실패: {e}")
+                                # MV 갱신 실패해도 데이터 처리는 성공으로 처리
                         
                         if processed_count > 0:
                             message = f"Text2SQL 분류 완료: {target_table} 테이블에 {processed_count}건 저장 (문서 ID: {document_id})"
