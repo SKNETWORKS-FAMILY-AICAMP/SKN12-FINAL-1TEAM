@@ -188,7 +188,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
                     response.response = "추가 정보가 필요합니다."
                     response.data["interrupt_type"] = "unknown"
                 
-        elif sub_result and sub_result.get("success"):
+        elif sub_result and (sub_result.get("success") or sub_result.get("report_state")):
             # 성공적인 결과
             agent_type = result.get("agent_type")
             
@@ -209,8 +209,32 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 }
             elif agent_type == "client_agent":
                 # client_agent 결과 처리
-                response.response = sub_result.get("response", "") or sub_result.get("report", "") or sub_result.get("analysis_result", "") or sub_result.get("result", "") or str(sub_result)
-                response.data = sub_result if isinstance(sub_result, dict) else {"result": sub_result}
+                if isinstance(sub_result, dict):
+                    # report_state에서 데이터 추출
+                    report_state = sub_result.get("report_state", {})
+                    documents = sub_result.get("documents", {})
+                    
+                    # 응답 텍스트 선택 (final_report 우선)
+                    final_report = report_state.get("final_report", "")
+                    analysis_response = sub_result.get("response", "")
+                    analysis_result = sub_result.get("analysis_result", "")
+                    
+                    response_text = final_report or analysis_response or analysis_result or "거래처 분석이 완료되었습니다."
+                    response.response = response_text
+                    
+                    # 데이터 구조화
+                    response.data = {
+                        "company_name": report_state.get("company_name"),
+                        "start_month": report_state.get("start_month"),
+                        "end_month": report_state.get("end_month"),
+                        "final_report": final_report,
+                        "grade_result": report_state.get("grade_result"),
+                        "documents": documents,
+                        "analysis_complete": True
+                    }
+                else:
+                    response.response = str(sub_result)
+                    response.data = {"result": sub_result}
             elif agent_type == "search_agent":
                 # search_agent 결과 처리
                 response.response = sub_result.get("search_result", "") or sub_result.get("result", "") or str(sub_result)
@@ -485,6 +509,28 @@ async def list_agents():
                     "목표 대비 달성률 계산",
                     "성과 트렌드 분석",
                     "종합 평가 보고서 생성"
+                ]
+            },
+            {
+                "name": "client_agent",
+                "description": "거래처 분석 에이전트 - 고객 및 거래처 정보 분석, 매출 추이 분석",
+                "features": [
+                    "병원명, 월별 실적 활동 정보 조회",
+                    "매출 추이 분석",
+                    "기준점 대비 수치 비교 분석",
+                    "고객 등급 분류",
+                    "병원 전체매출과 자사 매출 비교"
+                ]
+            },
+            {
+                "name": "search_agent",
+                "description": "정보 검색 에이전트 - 내부 데이터베이스 검색, 규정 및 매뉴얼 조회",
+                "features": [
+                    "문서 검색",
+                    "사내 규정 및 정책 조회",
+                    "업무 매뉴얼 검색",
+                    "제품 정보 조회",
+                    "교육 자료 검색"
                 ]
             }
         ]

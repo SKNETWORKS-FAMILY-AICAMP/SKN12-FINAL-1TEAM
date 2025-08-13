@@ -235,10 +235,13 @@ class RouterAgent:
             elif agent_name == "client_agent":
                 # client_agent는 async 함수
                 logger.info(f"[EXECUTE_AGENT] Running client_agent with query: {query[:50]}...")
-                result = asyncio.run(client_agent.run(query, session_id or "default"))
-                
-                current_state["agent_type"] = agent_name
-                return result
+                try:
+                    result = asyncio.run(client_agent.run(query))
+                    current_state["agent_type"] = agent_name
+                    return result
+                except Exception as e:
+                    logger.error(f"[EXECUTE_AGENT] client_agent error: {e}")
+                    return {"success": False, "error": str(e)}
             
             elif agent_name == "search_agent":
                 # search_agent는 async 함수

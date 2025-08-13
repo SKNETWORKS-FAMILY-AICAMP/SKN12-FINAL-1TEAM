@@ -59,6 +59,14 @@ except Exception as e:
     print(f"[WARNING] Failed to import router_api_simple: {e}")
     simple_router = None
 
+# client_agent API 라우터 추가
+try:
+    from app.api.client_agent import router as client_router
+    print("[OK] client_agent imported successfully")
+except Exception as e:
+    print(f"[WARNING] Failed to import client_agent: {e}")
+    client_router = None
+
 app = FastAPI(title="Multi-Agent Router API")
 
 # CORS 설정
@@ -83,6 +91,11 @@ if docs_router:
 if simple_router:
     app.include_router(simple_router, prefix="/api")
     print("[OK] Simple router registered at /api")
+
+# client_agent API 라우터 등록
+if client_router:
+    app.include_router(client_router, prefix="/api")
+    print("[OK] Client agent router registered at /api")
 
 # 헬스 체크
 @app.get("/health")
