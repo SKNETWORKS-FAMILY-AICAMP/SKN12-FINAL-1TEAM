@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.schemas.document import DocumentBase, DocumentInfo
-from app.services.external.s3_service import upload_file, delete_file_from_s3
+from app.services.external.s3_service import upload_file, delete_file_from_s3, generate_presigned_url
 from app.services.external.postgres_service import save_document, get_documents, get_document_by_id, delete_document_from_postgres
 from app.models.documents import Document
 from app.services.external.opensearch_service import index_document_chunks, delete_document_chunks_from_opensearch, DOCUMENT_INDEX_NAME
@@ -660,17 +660,17 @@ def list_documents(user=Depends(get_current_user)):
     docs = get_documents()
     return [DocumentInfo.model_validate(doc) for doc in docs]
 
-@router.get("/documents/{doc_id}", response_model=DocumentInfo)
+@router.get("/documents/{doc_id}")
 def get_document(doc_id: int, user=Depends(get_current_user)):
     """
-    특정 문서를 조회합니다.
+    특정 문서를 조회합니다. 다운로드 링크를 포함합니다.
     
     Args:
         doc_id: 문서 ID
         user: 현재 인증된 사용자
         
     Returns:
-        DocumentInfo: 문서 정보
+        Dict: 문서 정보 및 다운로드 링크
         
     Raises:
         HTTPException: 문서를 찾을 수 없는 경우
@@ -678,7 +678,70 @@ def get_document(doc_id: int, user=Depends(get_current_user)):
     doc = get_document_by_id(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    return DocumentInfo.model_validate(doc)
+    
+    # 문서 정보를 dict로 변환
+    doc_info = DocumentInfo.model_validate(doc).dict()
+    
+    # S3에서 파일명 추출 (URL에서 파일명 부분만 추출)
+    file_name = doc.file_path.split("/")[-1]
+    
+    # Pre-signed URL 생성 (1시간 유효)
+    download_url = generate_presigned_url(file_name, expiration=3600)
+    
+    # 다운로드 링크 추가
+    doc_info["download_url"] = download_url
+    doc_info["download_expires_in"] = "1 hour"
+    
+    logger.info(f"문서 상세 조회 완료 (다운로드 링크 포함): doc_id={doc_id}")
+    
+    return doc_info
+
+@router.get("/documents/{doc_id}/download")
+def get_document_download_link(doc_id: int, expiration_hours: int = 1, user=Depends(get_current_user)):
+    """
+    문서의 다운로드 링크를 생성합니다.
+    
+    Args:
+        doc_id: 문서 ID
+        expiration_hours: 링크 유효 시간 (시간 단위, 기본값: 1시간, 최대: 24시간)
+        user: 현재 인증된 사용자
+        
+    Returns:
+        Dict: 다운로드 링크 정보
+        
+    Raises:
+        HTTPException: 문서를 찾을 수 없는 경우
+    """
+    # 유효 시간 제한 (최대 24시간)
+    if expiration_hours > 24:
+        expiration_hours = 24
+    elif expiration_hours < 1:
+        expiration_hours = 1
+    
+    doc = get_document_by_id(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # S3에서 파일명 추출
+    file_name = doc.file_path.split("/")[-1]
+    
+    # Pre-signed URL 생성
+    expiration_seconds = expiration_hours * 3600
+    download_url = generate_presigned_url(file_name, expiration=expiration_seconds)
+    
+    if not download_url:
+        raise HTTPException(status_code=500, detail="Failed to generate download link")
+    
+    logger.info(f"다운로드 링크 생성 완료: doc_id={doc_id}, 유효시간={expiration_hours}시간")
+    
+    return {
+        "doc_id": doc_id,
+        "doc_title": doc.doc_title,
+        "file_name": file_name,
+        "download_url": download_url,
+        "expires_in_hours": expiration_hours,
+        "generated_at": datetime.now().isoformat()
+    }
 
 @router.delete("/documents/{doc_id}", response_model=DocumentInfo)
 def delete_document(doc_id: int, admin=Depends(get_current_admin_user)):
