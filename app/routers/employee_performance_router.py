@@ -57,26 +57,45 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         
-        user_id = payload.get("sub")
+        user_id = payload.get("sub")  # 이메일
         user_role = payload.get("role", "user")
         
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        # 직원 ID 추출 시도
-        employee_id = None
+        # 데이터베이스에서 실제 employee_id 조회
+        from app.services.utils.db import get_db
+        from app.models.employees import Employee
+        from sqlalchemy.orm import Session
+        
+        db: Session = next(get_db())
         try:
-            if user_id.isdigit():
-                employee_id = int(user_id)
-        except:
-            pass
+            employee = db.query(Employee).filter(
+                Employee.email == user_id,
+                Employee.is_deleted == False
+            ).first()
+            
+            if employee:
+                # employee_info_id를 사용해야 함 (sales_records가 참조)
+                from app.models.employee_info import EmployeeInfo
+                emp_info = db.query(EmployeeInfo).filter(
+                    EmployeeInfo.name == employee.name
+                ).first()
+                
+                employee_id = emp_info.employee_info_id if emp_info else employee.employee_id
+                employee_name = employee.name
+            else:
+                employee_id = None
+                employee_name = user_id
+        finally:
+            db.close()
         
         # 사용자 정보 반환
         user_info = {
             "user_id": user_id,
             "role": user_role,
             "employee_id": employee_id,
-            "name": payload.get("name", user_id)
+            "name": employee_name
         }
         
         return user_info

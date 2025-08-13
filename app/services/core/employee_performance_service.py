@@ -232,7 +232,16 @@ class EmployeePerformanceService:
         with self.SessionLocal() as db:
             try:
                 start_date = f"{start_period[:4]}-{start_period[4:6]}-01"
-                end_date = f"{end_period[:4]}-{end_period[4:6]}-31"
+                # 월의 마지막 날을 정확히 계산
+                import calendar
+                year = int(end_period[:4])
+                month = int(end_period[4:6])
+                last_day = calendar.monthrange(year, month)[1]
+                end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
+                
+                # employee_id를 직접 employee_info_id로 사용
+                # (sales_records의 employee_id는 실제로 employee_info_id를 참조)
+                employee_info_id = employee_id
                 
                 query = text("""
                     SELECT 
@@ -242,7 +251,7 @@ class EmployeePerformanceService:
                         COUNT(*) as sales_count
                     FROM sales_records sr
                     INNER JOIN products p ON sr.product_id = p.product_id
-                    WHERE sr.employee_id = :employee_id
+                    WHERE sr.employee_id = :employee_info_id
                         AND sr.sale_date >= CAST(:start_date AS date)
                         AND sr.sale_date <= CAST(:end_date AS date)
                     GROUP BY p.product_id, p.product_name
@@ -251,7 +260,7 @@ class EmployeePerformanceService:
                 """)
                 
                 result = db.execute(query, {
-                    'employee_id': employee_id,
+                    'employee_info_id': employee_info_id,
                     'start_date': start_date,
                     'end_date': end_date,
                     'limit': limit
@@ -301,7 +310,16 @@ class EmployeePerformanceService:
         with self.SessionLocal() as db:
             try:
                 start_date = f"{start_period[:4]}-{start_period[4:6]}-01"
-                end_date = f"{end_period[:4]}-{end_period[4:6]}-31"
+                # 월의 마지막 날을 정확히 계산
+                import calendar
+                year = int(end_period[:4])
+                month = int(end_period[4:6])
+                last_day = calendar.monthrange(year, month)[1]
+                end_date = f"{year:04d}-{month:02d}-{last_day:02d}"
+                
+                # employee_id를 직접 employee_info_id로 사용
+                # (sales_records의 employee_id는 실제로 employee_info_id를 참조)
+                employee_info_id = employee_id
                 
                 query = text("""
                     SELECT 
@@ -312,7 +330,7 @@ class EmployeePerformanceService:
                         COUNT(*) as sales_count
                     FROM sales_records sr
                     INNER JOIN customers c ON sr.customer_id = c.customer_id
-                    WHERE sr.employee_id = :employee_id
+                    WHERE sr.employee_id = :employee_info_id
                         AND sr.sale_date >= CAST(:start_date AS date)
                         AND sr.sale_date <= CAST(:end_date AS date)
                     GROUP BY c.customer_id, c.customer_name, c.customer_grade
@@ -321,7 +339,7 @@ class EmployeePerformanceService:
                 """)
                 
                 result = db.execute(query, {
-                    'employee_id': employee_id,
+                    'employee_info_id': employee_info_id,
                     'start_date': start_date,
                     'end_date': end_date,
                     'limit': limit
@@ -386,23 +404,23 @@ class EmployeePerformanceService:
         """
         with self.SessionLocal() as db:
             try:
+                # employee_info 테이블에서 직접 조회
                 query = text("""
                     SELECT 
-                        e.employee_id,
-                        e.name,
+                        ei.employee_info_id as employee_id,
+                        ei.name,
                         ei.employee_number as 사번,
                         b.branch_name as department
-                    FROM employees e
-                    LEFT JOIN employee_info ei ON e.employee_id = ei.employee_id
+                    FROM employee_info ei
                     LEFT JOIN branches b ON ei.branch_id = b.branch_id
-                    WHERE e.name = :name AND e.is_deleted = false
+                    WHERE ei.name = :name
                 """)
                 
                 result = db.execute(query, {'name': employee_name}).fetchone()
                 
                 if result:
                     return {
-                        "employee_id": result.employee_id,
+                        "employee_id": result.employee_id,  # employee_info_id를 employee_id로 반환
                         "name": result.name,
                         "사번": result.사번,
                         "department": result.department
