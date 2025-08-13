@@ -8,7 +8,7 @@ class EmployeeQueryAnalyzer:
     """직원 실적 분석 쿼리 분석 클래스 - LLM 기반 통합 분석"""
     
     def __init__(self):
-        self.common_employee_names = ["최수아", "조시현"]  # 알려진 직원명들
+        pass  # 직원명 처리 불필요
     
     def analyze_query(self, query: str) -> Optional[Dict[str, Any]]:
         """사용자 쿼리를 LLM을 사용하여 분석합니다."""
@@ -37,7 +37,7 @@ class EmployeeQueryAnalyzer:
 요청: "{query}"
 
 추출해야 할 정보:
-1. employee_name: 직원명 (쿼리에서 명확히 언급된 직원명만 추출, 없으면 null)
+1. employee_name: null (직원명은 세션에서 처리하므로 항상 null)
 2. start_period: 시작 기간 (YYYYMM 형식, 예: "202312")
 3. end_period: 종료 기간 (YYYYMM 형식, 예: "202403")
 
@@ -47,6 +47,8 @@ class EmployeeQueryAnalyzer:
 - "이번 달": {datetime.now().strftime('%Y%m')} ~ {datetime.now().strftime('%Y%m')}
 - "지난 달": {(datetime.now() - timedelta(days=30)).strftime('%Y%m')} ~ {(datetime.now() - timedelta(days=30)).strftime('%Y%m')}
 - "최근 N개월": 현재 기준으로 N개월 전부터 현재까지
+- "1분기", "2분기", "3분기", "4분기": 해당 분기 기간
+- "상반기": 1월~6월, "하반기": 7월~12월
 - 구체적 날짜: YYYYMM 형식으로 변환
 
 응답은 다음 JSON 형식으로만 해주세요:
@@ -57,14 +59,15 @@ class EmployeeQueryAnalyzer:
 }}
 
 주의사항:
-- 직원명이 명확히 언급되지 않으면 employee_name을 null로 설정
-- 기간이 명시되지 않으면 start_period와 end_period를 null로 설정
+- employee_name은 항상 null (직원명은 API에서 별도 처리)
+- 기간이 명시되지 않으면 최근 3개월로 설정
+- 쿼리에 직원명이 포함되어도 무시하고 기간만 추출
 """
             
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "당신은 직원 실적 분석 요청을 정확히 파싱하는 전문가입니다. 항상 유효한 JSON 형식으로만 응답하세요."},
+                    {"role": "system", "content": "당신은 기간 정보를 추출하는 전문가입니다. 직원명은 무시하고 기간 정보만 추출하세요. 항상 유효한 JSON 형식으로만 응답하세요."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=800,
@@ -86,23 +89,10 @@ class EmployeeQueryAnalyzer:
         """LLM 분석 결과를 검증하고 정규화합니다."""
         # 필수 필드 확인 및 기본값 설정
         validated_result = {
-            "employee_name": result.get("employee_name"),
+            "employee_name": None,  # 항상 None (직원명은 API에서 처리)
             "start_period": result.get("start_period"),
             "end_period": result.get("end_period")
         }
-        
-        # 직원명 검증
-        if validated_result["employee_name"]:
-            # 알려진 직원명 목록에 있는지 확인
-            if validated_result["employee_name"] not in self.common_employee_names:
-                # 유사한 이름이 있는지 확인
-                for known_name in self.common_employee_names:
-                    if known_name in validated_result["employee_name"] or validated_result["employee_name"] in known_name:
-                        validated_result["employee_name"] = known_name
-                        break
-                else:
-                    # 유사한 이름이 없으면 null로 설정
-                    validated_result["employee_name"] = None
         
         # 기간 형식 검증
         for period_key in ["start_period", "end_period"]:
@@ -118,9 +108,8 @@ class EmployeeQueryAnalyzer:
     
     def _set_defaults(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
         """기본값을 설정합니다."""
-        # 직원명이 없으면 기본값 설정하지 않음 (오류 처리로 넘김)
-        if not analysis_result.get("employee_name"):
-            analysis_result["employee_name"] = None
+        # 직원명은 항상 None (API에서 처리)
+        analysis_result["employee_name"] = None
         
         # 기간이 없으면 None으로 설정 (오류 처리로 넘김)
         if not analysis_result.get("start_period"):
@@ -132,4 +121,4 @@ class EmployeeQueryAnalyzer:
     
     def get_enhanced_analysis(self, query: str) -> Optional[Dict[str, Any]]:
         """LLM 기반 통합 분석을 수행합니다."""
-        return self.analyze_query(query) 
+        return self.analyze_query(query)

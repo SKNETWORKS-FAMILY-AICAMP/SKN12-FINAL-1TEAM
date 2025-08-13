@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends, Body
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import sys
 from pathlib import Path
+import jwt
+import os
 
 # 경로 설정
 backend_dir = Path(__file__).parent.parent.parent
@@ -17,6 +20,13 @@ from app.services.common.database_api_client import DatabaseAPIClient
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/employee", tags=["Employee Performance"])
+
+# JWT 설정
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
+ALGORITHM = "HS256"
+
+# 보안 설정
+security = HTTPBearer()
 
 # 전역 인스턴스
 employee_agent = None
@@ -41,14 +51,57 @@ def get_db_client():
         db_client = DatabaseAPIClient()
     return db_client
 
+# 사용자 정보 추출 함수
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        user_role = payload.get("role", "user")
+        
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid authentication")
+        
+        # 이메일에서 이름 추출 또는 DB에서 조회
+        user_name = user_id.split("@")[0] if "@" in user_id else user_id
+        
+        # 관리자가 아닌 경우 실제 직원 이름 매핑
+        if user_role != "admin":
+            # 이메일과 직원명 매핑 (실제로는 DB에서 조회해야 함)
+            name_mapping = {
+                "suah@example.com": "최수아",
+                "younghee@example.com": "김영희",
+                "cheolsu@example.com": "박철수",
+                "sihyun@example.com": "조시현",
+                "minsu@example.com": "이민수"
+            }
+            user_name = name_mapping.get(user_id, user_name)
+        
+        return {
+            "user_id": user_id,
+            "role": user_role,
+            "name": user_name
+        }
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError as e:
+        logger.error(f"Invalid token error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 # Request/Response Models
 class AnalyzeRequest(BaseModel):
-    query: str
+    query: Optional[str] = None       # 자연어 쿼리
+    start_date: Optional[str] = None  # YYYY-MM-DD format
+    end_date: Optional[str] = None    # YYYY-MM-DD format
+    start_period: Optional[str] = None  # YYYYMM format
+    end_period: Optional[str] = None    # YYYYMM format
+    employee_name: Optional[str] = None  # 관리자용
 
 class PerformanceRequest(BaseModel):
-    employee_name: str
-    start_period: str  # YYYYMM format
-    end_period: str    # YYYYMM format
+    start_date: Optional[str] = None  # YYYY-MM-DD format
+    end_date: Optional[str] = None    # YYYY-MM-DD format
+    start_period: Optional[str] = None  # YYYYMM format
+    end_period: Optional[str] = None    # YYYYMM format
+    employee_name: Optional[str] = None  # 관리자용
 
 class PerformanceResponse(BaseModel):
     summary: Dict[str, Any]
@@ -63,10 +116,11 @@ class TargetResponse(BaseModel):
 # API Endpoints
 
 @router.get("/list")
-async def get_employee_list():
+async def get_employee_list(current_user: dict = Depends(get_current_user)):
     """
     직원 목록을 조회합니다.
-    관리자 권한 필요.
+    관리자: 모든 직원 목록 (실적 요약 포함)
+    일반 직원: 본인 정보만
     """
     try:
         db_manager = get_db_manager()
@@ -109,6 +163,11 @@ async def get_employee_list():
                 "department": "영업팀"
             })
         
+        # 권한에 따른 필터링
+        if current_user["role"] != "admin":
+            # 일반 직원은 본인 정보만
+            employee_list = [emp for emp in employee_list if emp["name"] == current_user["name"]]
+        
         return {"employees": employee_list}
         
     except Exception as e:
@@ -116,19 +175,47 @@ async def get_employee_list():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/performance", response_model=PerformanceResponse)
-async def get_employee_performance(request: PerformanceRequest = Body(...)):
+async def get_employee_performance(
+    request: PerformanceRequest = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
     """
     직원의 실적 데이터를 조회합니다.
-    관리자 권한 필요.
+    관리자: 모든 직원 데이터 조회 가능
+    일반 직원: 본인 데이터만 조회 가능
     """
     try:
         db_manager = get_db_manager()
         
+        # 직원명 결정
+        if current_user["role"] == "admin" and request.employee_name:
+            # 관리자는 지정한 직원 조회
+            employee_name = request.employee_name
+        else:
+            # 일반 직원은 본인만 조회
+            employee_name = current_user["name"]
+        
+        # 날짜 형식 처리 (YYYY-MM-DD 또는 YYYYMM)
+        if request.start_period and request.end_period:
+            # 이미 YYYYMM 형식으로 전달된 경우
+            start_period = request.start_period
+            end_period = request.end_period
+        elif request.start_date and request.end_date:
+            # YYYY-MM-DD 형식을 YYYYMM으로 변환
+            start_period = request.start_date.replace("-", "")[:6]
+            end_period = request.end_date.replace("-", "")[:6]
+        else:
+            # 기본값: 최근 3개월
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=90)
+            start_period = start_date.strftime("%Y%m")
+            end_period = end_date.strftime("%Y%m")
+        
         # 실적 데이터 조회
         performance_summary = db_manager.get_performance_summary(
-            request.employee_name,
-            request.start_period,
-            request.end_period
+            employee_name,
+            start_period,
+            end_period
         )
         
         if not performance_summary:
@@ -190,19 +277,42 @@ async def get_employee_performance(request: PerformanceRequest = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/target", response_model=TargetResponse)
-async def get_employee_target(request: PerformanceRequest = Body(...)):
+async def get_employee_target(
+    request: PerformanceRequest = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
     """
     직원의 목표 대비 실적을 조회합니다.
-    관리자 권한 필요.
+    관리자: 모든 직원 데이터 조회 가능안그
+    일반 직원: 본인 데이터만 조회 가능
     """
     try:
         db_manager = get_db_manager()
         
+        # 직원명 결정
+        if current_user["role"] == "admin" and request.employee_name:
+            employee_name = request.employee_name
+        else:
+            employee_name = current_user["name"]
+        
+        # 날짜 형식 처리
+        if request.start_period and request.end_period:
+            start_period = request.start_period
+            end_period = request.end_period
+        elif request.start_date and request.end_date:
+            start_period = request.start_date.replace("-", "")[:6]
+            end_period = request.end_date.replace("-", "")[:6]
+        else:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=90)
+            start_period = start_date.strftime("%Y%m")
+            end_period = end_date.strftime("%Y%m")
+        
         # 목표 대비 실적 데이터 조회
         target_comparison = db_manager.get_target_vs_performance(
-            request.employee_name,
-            request.start_period,
-            request.end_period
+            employee_name,
+            start_period,
+            end_period
         )
         
         if not target_comparison:
@@ -210,9 +320,9 @@ async def get_employee_target(request: PerformanceRequest = Body(...)):
         
         # 실적 데이터도 함께 조회하여 월별 비교
         performance_summary = db_manager.get_performance_summary(
-            request.employee_name,
-            request.start_period,
-            request.end_period
+            employee_name,
+            start_period,
+            end_period
         )
         
         # 월별 목표 vs 실적 데이터 생성
@@ -221,9 +331,9 @@ async def get_employee_target(request: PerformanceRequest = Body(...)):
         
         # 목표 데이터 조회 (월별)
         target_df = db_manager.get_employee_target_data(
-            request.employee_name,
-            request.start_period,
-            request.end_period
+            employee_name,
+            start_period,
+            end_period
         )
         
         # 월별 데이터 매칭
@@ -282,17 +392,55 @@ async def get_employee_target(request: PerformanceRequest = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/analyze")
-async def analyze_employee_performance(request: AnalyzeRequest = Body(...)):
+async def analyze_employee_performance(
+    request: AnalyzeRequest = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
     """
-    자연어 쿼리로 직원 실적을 분석합니다.
-    직원은 본인 데이터만, 관리자는 모든 직원 데이터 조회 가능.
+    선택한 기간의 직원 실적을 분석합니다.
+    관리자: 모든 직원 데이터 분석 가능
+    일반 직원: 본인 데이터만 분석 가능
     """
     try:
         agent = get_employee_agent()
         
+        # 직원명 결정
+        if current_user["role"] == "admin" and request.employee_name:
+            employee_name = request.employee_name
+        else:
+            employee_name = current_user["name"]
+        
+        # 쿼리 처리
+        if request.query:
+            # 자연어 쿼리가 전달된 경우
+            if employee_name and employee_name not in request.query:
+                # 관리자가 특정 직원을 선택한 경우 직원명 추가
+                query = request.query.replace("실적을 분석해주세요", f"{employee_name}의 실적을 분석해주세요")
+            else:
+                query = request.query
+                
+            # 쿼리에 직원명이 없으면 현재 사용자 이름 추가
+            if employee_name and employee_name not in query:
+                query = f"{employee_name}의 {query}"
+        elif request.start_period and request.end_period:
+            # YYYYMM 형식으로 지정된 경우
+            start_year = request.start_period[:4]
+            start_month = request.start_period[4:6]
+            end_year = request.end_period[:4]
+            end_month = request.end_period[4:6]
+            query = f"{employee_name}의 {start_year}년 {start_month}월부터 {end_year}년 {end_month}월까지 실적을 분석해주세요"
+        elif request.start_date and request.end_date:
+            # YYYY-MM-DD 형식으로 지정된 경우
+            start_date = datetime.strptime(request.start_date, "%Y-%m-%d")
+            end_date = datetime.strptime(request.end_date, "%Y-%m-%d")
+            query = f"{employee_name}의 {start_date.strftime('%Y년 %m월')}부터 {end_date.strftime('%Y년 %m월')}까지 실적을 분석해주세요"
+        else:
+            # 기본값: 최근 3개월
+            query = f"{employee_name}의 최근 3개월 실적을 분석해주세요"
+        
         # 에이전트 실행
         result = await agent.graph.ainvoke({
-            "query": request.query,
+            "query": query,
             "query_analysis": None,
             "employee_name": None,
             "start_period": None,
