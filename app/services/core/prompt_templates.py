@@ -34,13 +34,13 @@ class PromptTemplates:
 - 직급: 직급, 직위, 계급, 포지션 → position
 - 지점: 지점명, 지사, 소속, 부서 → branch_name
 
-### 고객 관련 (customers, sales_records, customer_monthly_patients)
+### 고객 관련 (customers, sales_records, customer_monthly_status)
 - 고객명: 거래처ID, 거래처명, 고객명, 병원명, 약국명, 기관명, 회사명, ID → customer_name
 - 주소: 주소, 소재지, 위치, 거래처주소, 병원주소, 약국주소, 기관주소, 주소지, 병원소재지 → address
 - 의사명: 의사명, 담당의사, 원장, 원장명, 대표의사, 대표원장 → doctor_name  
 - 연락처: 전화번호, 연락처, 대표번호, 핸드폰, 거래처전화, 병원연락처 → contact_number
-- 환자수: 총환자수, 환자수, 방문자수 → total_patients (customers) 또는 patient_count (customer_monthly_patients)
-- 월별 환자수: YYYYMM_환자수, 월별환자수, 월환자수 → patient_count (customer_monthly_patients)
+- 환자수: 총환자수, 환자수, 방문자수 → patient_count (customer_monthly_status)
+- 월별 환자수: YYYYMM_환자수, 월별환자수, 월환자수 → patient_count (customer_monthly_status)
 
 ⚠️ 주의: 주소 관련 컬럼이 있으면 반드시 address로 매핑하세요!
 
@@ -57,7 +57,6 @@ class PromptTemplates:
 ### 매출/실적 관련 (sales_records)
 - 매출액: 매출, 매출액, 판매액, 금액, 실적 → sale_amount
 - 날짜: 월, 날짜, 일자, 기간, 년월 → sale_date
-- 예산: 사용예산, 사용 예산, 예산액, 지출 → used_budget
 
 ### 상호작용 관련 (interaction_logs)
 - 상호작용 유형: 방문유형, 미팅타입, 활동종류 → interaction_type
@@ -67,10 +66,11 @@ class PromptTemplates:
 - 목표액: 목표, 목표액, 계획, 타겟 → target_amount
 - 년월: 년월, 기간, 대상월 → year_month
 
-### 월별 환자수 관련 (customer_monthly_patients)
+### 월별 상태 관련 (customer_monthly_status)
 - 거래처명: 거래처ID, 거래처명, 고객명, 병원명, 약국명 → customer_name (customer_id 조회용)
-- 년월: 년월, YYYYMM, 월별, 기간 → year_month
-- 환자수: 월별환자수, 월환자수, 방문자수, 내원환자수 → patient_count
+- 년월: 년월, YYYYMM, 월별, 기간, 월 → year_month
+- 환자수: 총환자수, 월별환자수, 월환자수, 방문자수, 내원환자수 → patient_count
+- 예산: 사용예산, 사용 예산, 예산액, 지출 → used_budget
 
 ⚠️ 중요: 컬럼명이 정확히 일치하지 않아도 의미가 유사하면 매핑하세요!
 ⚠️ sales_records는 직원 정보와 고객 정보가 모두 필요합니다!
@@ -81,9 +81,9 @@ class PromptTemplates:
 
     # 테이블별 특수 규칙
     TABLE_RULES = {
-        'customer_monthly_patients': """
-### customer_monthly_patients 테이블:
-거래처별 월간 환자수 관리 테이블입니다.
+        'customer_monthly_status': """
+### customer_monthly_status 테이블:
+거래처별 월간 상태(환자수, 사용예산) 관리 테이블입니다.
 
 ⚠️ 필수 조건 체크:
 1. 거래처 정보가 있는가?
@@ -91,18 +91,19 @@ class PromptTemplates:
    ❌ customer_id로 직접 매핑하지 마세요!
 
 2. 월별 데이터가 있는가?
-   - YYYYMM 형식의 컬럼명 또는 년월 컬럼 → year_month
-   - 월별 환자수 패턴 (202401_환자수 등)
+   - YYYYMM 형식의 컬럼명 또는 년월, 월 컬럼 → year_month
+   - 월별 환자수/예산 패턴 (202401_환자수, 202401_예산 등)
 
-3. 환자수 데이터가 있는가?
-   - 환자수, 월별환자수, 방문자수, 내원환자수 → patient_count
-   - 숫자형 데이터여야 함
+3. 환자수 또는 예산 데이터가 있는가?
+   - 환자수: 총환자수, 월별환자수, 방문자수, 내원환자수 → patient_count
+   - 예산: 사용예산, 사용 예산, 예산액 → used_budget
+   - 둘 중 하나라도 있으면 저장 가능
 
-위 조건이 모두 충족되어야 customer_monthly_patients로 분류 가능!
+위 조건이 충족되어야 customer_monthly_status로 분류 가능!
 
 ⚠️ 매우 중요:
 - 월별 환자수 변동 추적이 목적
-- customers 테이블의 total_patients와는 다른 월별 데이터
+- 월별 환자수 데이터를 관리
 """,
         'sales_records': """
 ### sales_records 테이블:
@@ -149,7 +150,7 @@ class PromptTemplates:
 ### customers 테이블:
 - 거래처/고객 정보 관리
 - 필수: customer_name(고객명/거래처명/ID)
-- 선택: address, doctor_name, contact_number, total_patients 등
+- 선택: address, doctor_name, contact_number 등
 
 ⚠️ 중요: 모든 고객 정보를 최대한 매핑하세요!
 
@@ -158,7 +159,6 @@ class PromptTemplates:
 - 주소/소재지/위치/병원주소/약국주소 → address (반드시 찾아서 매핑!)
 - 원장/원장명/의사명 → doctor_name
 - 연락처/전화번호/병원연락처 → contact_number
-- 환자수/총환자수 → total_patients
 
 주소가 있다면 반드시 address로 매핑하세요!
 """,
@@ -315,7 +315,7 @@ sales_records 완전한 매핑 예시:
             'customers': 1,
             'products': 1,
             'employee_info': 2,
-            'customer_monthly_patients': 2,
+            'customer_monthly_status': 2,
             'employee_performance': 3,
             'sales_records': 3,
             'interaction_logs': 3,

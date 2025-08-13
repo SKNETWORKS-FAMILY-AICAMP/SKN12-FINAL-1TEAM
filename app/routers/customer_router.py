@@ -4,19 +4,35 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime
+from pydantic import BaseModel
 
 from app.services.utils.db import get_db
 from app.services.core.customer_performance_service import CustomerPerformanceService
 from app.routers.user_router import get_current_user
+from app.models.customers import Customer
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+class CustomerInfo(BaseModel):
+    """거래처 정보 스키마"""
+    customer_id: int
+    customer_name: str
+    customer_grade: Optional[str] = None
+    address: Optional[str] = None
+    doctor_name: Optional[str] = None
+    contact_number: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
 
 @router.get("/customer/{customer_id}/performance")
 def get_customer_performance(
@@ -317,4 +333,150 @@ def compare_customer_performance(
         raise HTTPException(
             status_code=500,
             detail=f"거래처 성과 비교 중 오류가 발생했습니다: {str(e)}"
+        )
+
+@router.get("/customers", response_model=List[CustomerInfo])
+def get_all_customers(
+    skip: int = Query(0, description="건너뛸 항목 수"),
+    limit: int = Query(100, description="조회할 최대 항목 수"),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+) -> List[CustomerInfo]:
+    """
+    모든 거래처 정보 목록 조회
+    
+    Args:
+        skip: 건너뛸 항목 수 (페이지네이션용)
+        limit: 조회할 최대 항목 수
+        db: 데이터베이스 세션
+        user: 현재 인증된 사용자
+        
+    Returns:
+        List[CustomerInfo]: 거래처 정보 목록
+    """
+    try:
+        # 삭제되지 않은 거래처만 조회
+        customers = db.query(Customer).filter(
+            Customer.is_deleted == False
+        ).offset(skip).limit(limit).all()
+        
+        logger.info(f"거래처 목록 조회 완료: {len(customers)}개")
+        
+        return [CustomerInfo.from_orm(customer) for customer in customers]
+        
+    except Exception as e:
+        logger.error(f"거래처 목록 조회 중 오류: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"거래처 목록 조회 중 오류가 발생했습니다: {str(e)}"
+        )
+
+@router.get("/customer/search", response_model=Dict[str, Any])
+def search_customer_by_name(
+    name: str = Query(..., description="검색할 거래처명"),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    거래처명으로 거래처 ID 조회
+    
+    Args:
+        name: 검색할 거래처명 (부분 일치 검색)
+        db: 데이터베이스 세션
+        user: 현재 인증된 사용자
+        
+    Returns:
+        Dict: 검색 결과
+        {
+            "search_term": "검색어",
+            "count": 1,
+            "results": [
+                {
+                    "customer_id": 1,
+                    "customer_name": "서울병원",
+                    "customer_grade": "A",
+                    "address": "서울시 강남구"
+                }
+            ]
+        }
+    """
+    try:
+        # 부분 일치 검색 (대소문자 구분 없음)
+        customers = db.query(Customer).filter(
+            Customer.customer_name.ilike(f"%{name}%"),
+            Customer.is_deleted == False
+        ).all()
+        
+        if not customers:
+            logger.info(f"거래처명 '{name}' 검색 결과 없음")
+            return {
+                "search_term": name,
+                "count": 0,
+                "results": []
+            }
+        
+        results = []
+        for customer in customers:
+            results.append({
+                "customer_id": customer.customer_id,
+                "customer_name": customer.customer_name,
+                "customer_grade": customer.customer_grade,
+                "address": customer.address
+            })
+        
+        logger.info(f"거래처명 '{name}' 검색 완료: {len(results)}개 발견")
+        
+        return {
+            "search_term": name,
+            "count": len(results),
+            "results": results
+        }
+        
+    except Exception as e:
+        logger.error(f"거래처명 검색 중 오류: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"거래처명 검색 중 오류가 발생했습니다: {str(e)}"
+        )
+
+@router.get("/customer/{customer_id}", response_model=CustomerInfo)
+def get_customer_detail(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+) -> CustomerInfo:
+    """
+    특정 거래처의 상세 정보 조회
+    
+    Args:
+        customer_id: 거래처 ID
+        db: 데이터베이스 세션
+        user: 현재 인증된 사용자
+        
+    Returns:
+        CustomerInfo: 거래처 상세 정보
+    """
+    try:
+        customer = db.query(Customer).filter(
+            Customer.customer_id == customer_id,
+            Customer.is_deleted == False
+        ).first()
+        
+        if not customer:
+            raise HTTPException(
+                status_code=404,
+                detail=f"거래처 ID {customer_id}를 찾을 수 없습니다."
+            )
+        
+        logger.info(f"거래처 상세 정보 조회 완료: ID={customer_id}")
+        
+        return CustomerInfo.from_orm(customer)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"거래처 상세 정보 조회 중 오류: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"거래처 상세 정보 조회 중 오류가 발생했습니다: {str(e)}"
         )

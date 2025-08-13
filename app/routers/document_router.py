@@ -13,6 +13,7 @@ from app.services.core.document_relation_analyzer import document_relation_analy
 from app.services.core.document_analyzer import document_analyzer
 from app.services.core.text2sql_classifier import text2sql_classifier
 from app.services.processors.document_type_updater import DocumentTypeUpdater
+from app.services.core.document_summarizer import document_summarizer
 from app.routers.user_router import get_current_user, get_current_admin_user
 from pydantic import BaseModel
 import logging
@@ -317,16 +318,30 @@ async def process_table_document(
     logger.info(f"Text2SQL 분류 완료: {result['message']}")
     logger.info(f"분류 결과: {filename} -> {result['target_table']} (신뢰도: {result['confidence']:.2f})")
     
+    # 문서 요약 생성 (비동기 처리, 실패해도 계속 진행)
+    summary = None
+    try:
+        doc_type = f"text2sql_{result['target_table']}"
+        summary = document_summarizer.summarize_table_document(table_data, doc_title, doc_type)
+        if summary:
+            logger.info(f"테이블 문서 요약 생성 성공: {doc_title}")
+        else:
+            logger.warning(f"테이블 문서 요약 생성 실패 (빈 응답): {doc_title}")
+    except Exception as e:
+        logger.error(f"테이블 문서 요약 생성 중 오류 (계속 진행): {e}")
+        summary = None
+    
     # S3에 파일 저장
     file_path = upload_file(file_bytes, filename, "application/octet-stream")
     
-    # 문서 메타데이터 생성
+    # 문서 메타데이터 생성 (요약 포함)
     meta = DocumentBase(
         doc_title=doc_title,
         doc_type=f"text2sql_{result['target_table']}",
         file_path=file_path,
         uploader_id=uploader_id,
         version=version,
+        summary=summary,
         created_at=datetime.now()
     )
     
@@ -403,16 +418,29 @@ async def process_text_document(
     analyzed_doc_type = document_analyzer.analyze_document(text, filename)
     logger.info(f"문서 분석 결과: {filename} -> {analyzed_doc_type}")
     
+    # 문서 요약 생성 (비동기 처리, 실패해도 계속 진행)
+    summary = None
+    try:
+        summary = document_summarizer.summarize_text_document(text, doc_title, analyzed_doc_type)
+        if summary:
+            logger.info(f"문서 요약 생성 성공: {doc_title}")
+        else:
+            logger.warning(f"문서 요약 생성 실패 (빈 응답): {doc_title}")
+    except Exception as e:
+        logger.error(f"문서 요약 생성 중 오류 (계속 진행): {e}")
+        summary = None
+    
     # S3 업로드
     file_path = upload_file(file_bytes, filename, "application/octet-stream")
     
-    # 문서 메타데이터 생성
+    # 문서 메타데이터 생성 (요약 포함)
     meta = DocumentBase(
         doc_title=doc_title,
         doc_type=analyzed_doc_type,
         file_path=file_path,
         uploader_id=uploader_id,
         version=version,
+        summary=summary,
         created_at=datetime.now()
     )
     
@@ -424,17 +452,36 @@ async def process_text_document(
     else:
         db_doc = save_document(meta)
     
-    # OpenSearch 인덱싱 (텍스트 문서만)
+    # 문서 타입에 따른 처리 분기
     if file_extension in document_analyzer.supported_extensions["text"]:
-        chunking_type = document_analyzer.get_chunking_type(analyzed_doc_type)
-        index_document_chunks(
-            doc_id=db_doc.doc_id,
-            doc_title=doc_title,
-            file_name=filename,
-            text=text,
-            document_type=chunking_type
-        )
-        logger.info(f"텍스트 문서 업로드 완료: {db_doc.doc_id} (타입: {analyzed_doc_type}, 청킹: {chunking_type})")
+        # 규정/법률 문서는 OpenSearch에 청킹하여 저장
+        if analyzed_doc_type in ["regulation", "law"]:
+            chunking_type = document_analyzer.get_chunking_type(analyzed_doc_type)
+            index_document_chunks(
+                doc_id=db_doc.doc_id,
+                doc_title=doc_title,
+                file_name=filename,
+                text=text,
+                document_type=chunking_type
+            )
+            logger.info(f"규정/법률 문서 업로드 완료: {db_doc.doc_id} (타입: {analyzed_doc_type}, 청킹: {chunking_type})")
+        
+        # 보고서 문서는 관계 분석 후 DocumentRelation에 저장
+        elif analyzed_doc_type == "report":
+            # 문서 관계 분석
+            relation_result = document_relation_analyzer.analyze_document_relations(
+                doc_id=db_doc.doc_id,
+                text=text,
+                table_data=None
+            )
+            
+            if relation_result['success']:
+                logger.info(f"보고서 문서 업로드 완료: {db_doc.doc_id} (타입: {analyzed_doc_type}, 관계: {relation_result['relations_created']}개)")
+            else:
+                logger.warning(f"보고서 문서 관계 분석 실패: {relation_result['message']}")
+                logger.info(f"보고서 문서 업로드 완료: {db_doc.doc_id} (타입: {analyzed_doc_type})")
+        else:
+            logger.info(f"문서 업로드 완료: {db_doc.doc_id} (타입: {analyzed_doc_type})")
     else:
         logger.info(f"문서 업로드 완료: {db_doc.doc_id} (타입: {analyzed_doc_type})")
     

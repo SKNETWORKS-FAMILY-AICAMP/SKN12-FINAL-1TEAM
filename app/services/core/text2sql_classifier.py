@@ -21,6 +21,7 @@ from app.services.core.vector_similarity_service import vector_similarity_servic
 from app.services.core.table_processors import get_table_processor
 from app.services.core.table_validators import TableValidator
 from app.services.core.prompt_templates import PromptTemplates
+from app.services.core.mv_refresh_service import mv_refresh_service
 
 
 # 모델 import는 프로세서 클래스에서 처리됨
@@ -59,6 +60,24 @@ class Text2SQLTableClassifier:
                 
                 # sales_records 테이블 특별 처리
                 if table_name == 'sales_records':
+                    # products 테이블이 함께 선택되었고 product_name 매핑이 있는지 확인
+                    has_products_table = False
+                    has_product_mapping = False
+                    
+                    for other_table in target_tables:
+                        if other_table.get('table_name') == 'products':
+                            has_products_table = True
+                            product_mapping = other_table.get('column_mapping', {})
+                            if 'product_name' in product_mapping:
+                                has_product_mapping = True
+                            break
+                    
+                    # product_id가 필수이므로 products 테이블과 매핑이 없으면 sales_records 제외
+                    if not has_products_table or not has_product_mapping:
+                        reasons.append(f"{table_name}: products 테이블이 없거나 product_name 매핑이 없어 제외 (product_id가 필수)")
+                        logger.warning(f"❌ {table_name} 제외: products 테이블 정보 부족 (has_table: {has_products_table}, has_mapping: {has_product_mapping})")
+                        continue
+                    
                     # 월별 매출 패턴 컬럼이 있는지 확인 (YYYYMM 형식)
                     has_monthly_sales = any(re.match(r'^\d{6}$', str(col)) for col in uploaded_columns)
                     if has_monthly_sales:
@@ -90,6 +109,26 @@ class Text2SQLTableClassifier:
                 if not is_valid:
                     reasons.append(f"{table_name}: {reason}")
                     continue
+                
+                # sales_records 추가 검증 (일반적인 경우)
+                if table_name == 'sales_records':
+                    # products 테이블이 함께 선택되었고 product_name 매핑이 있는지 확인
+                    has_products_table = False
+                    has_product_mapping = False
+                    
+                    for other_table in target_tables:
+                        if other_table.get('table_name') == 'products':
+                            has_products_table = True
+                            product_mapping = other_table.get('column_mapping', {})
+                            if 'product_name' in product_mapping:
+                                has_product_mapping = True
+                            break
+                    
+                    # product_id가 필수이므로 products 테이블과 매핑이 없으면 sales_records 제외
+                    if not has_products_table or not has_product_mapping:
+                        reasons.append(f"{table_name}: products 테이블이 없거나 product_name 매핑이 없어 제외 (product_id가 필수)")
+                        logger.warning(f"❌ {table_name} 제외: products 테이블 정보 부족 (has_table: {has_products_table}, has_mapping: {has_product_mapping})")
+                        continue
                 
                 t['column_mapping'] = mapping
                 validated.append(t)
@@ -289,6 +328,16 @@ class Text2SQLTableClassifier:
                         # 통합 요약 로그 출력
                         self._log_consolidated_summary(single_result, document_id)
                         
+                        # MV 자동 갱신 (데이터 처리 성공 시)
+                        if created_count > 0 or updated_count > 0:
+                            try:
+                                async with self._get_db_session() as session:
+                                    logger.info(f"🔄 {target_table} 테이블 처리 완료, MV 자동 갱신 시작...")
+                                    mv_refresh_service.refresh_mvs_for_table(session, target_table)
+                            except Exception as e:
+                                logger.error(f"❌ MV 자동 갱신 실패: {e}")
+                                # MV 갱신 실패해도 데이터 처리는 성공으로 처리
+                        
                         if processed_count > 0:
                             message = f"Text2SQL 분류 완료: {target_table} 테이블에 {processed_count}건 저장 (문서 ID: {document_id})"
                         else:
@@ -417,7 +466,25 @@ class Text2SQLTableClassifier:
                         }
 
                     if result and 'target_tables' in result:
-                        logger.info(f"다중 테이블 LLM 분류 완료: {result.get('target_tables')}")
+                        # 다중 테이블 LLM 분류 결과를 보기 좋게 출력
+                        logger.info("="*80)
+                        logger.info("📊 다중 테이블 LLM 분류 완료")
+                        logger.info("-"*80)
+                        
+                        target_tables = result.get('target_tables', [])
+                        for idx, table in enumerate(target_tables, 1):
+                            logger.info(f"  [{idx}] {table['table_name']} (신뢰도: {table['confidence']:.2f})")
+                            logger.info(f"      ➤ 이유: {table.get('reasoning', 'N/A')}")
+                            
+                            # 컬럼 매핑 정보
+                            mapping = table.get('column_mapping', {})
+                            if mapping:
+                                logger.info(f"      ➤ 컬럼 매핑:")
+                                for db_col, src_col in mapping.items():
+                                    if src_col:  # None이 아닌 경우만 출력
+                                        logger.info(f"         • {db_col} ← {src_col}")
+                        
+                        logger.info("="*80)
                         
                         # 모든 선택된 테이블 처리(LLM metrics 기반 1차 필터)
                         target_tables = result.get('target_tables', [])

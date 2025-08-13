@@ -39,7 +39,7 @@ class CustomerPerformanceService:
                     customer_grade,
                     address,
                     doctor_name,
-                    total_patients,
+                    contact_number,
                     notes
                 FROM customers
                 WHERE customer_id = :customer_id
@@ -55,7 +55,7 @@ class CustomerPerformanceService:
                     "customer_grade": result.customer_grade,
                     "address": result.address,
                     "doctor_name": result.doctor_name,
-                    "total_patients": result.total_patients,
+                    "contact_number": result.contact_number,
                     "notes": result.notes
                 }
             return None

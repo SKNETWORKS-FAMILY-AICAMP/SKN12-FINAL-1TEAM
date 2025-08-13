@@ -26,6 +26,7 @@ class DocumentType(Enum):
     
     # 텍스트 문서
     REGULATION = "regulation"                # 내부 규정
+    LAW = "law"                              # 법률
     REPORT = "report"                        # 보고서
 
 class DocumentAnalyzer:
@@ -179,14 +180,17 @@ class DocumentAnalyzer:
 
 분류 가능한 타입:
 1. regulation - 내부 규정 (회사 규정, 정책, 지침, 규칙)
-2. report - 보고서 (분석 보고서, 현황 보고서, 결과 보고서)
+2. law - 법률 (법령, 시행령, 시행규칙, 조례, 법규)
+3. report - 보고서 (분석 보고서, 현황 보고서, 결과 보고서)
 
 분류 기준:
-- regulation: "규정", "정책", "지침", "제1조", "제2조", "목적", "정의" 등이 포함된 경우
-- report: "보고서", "분석", "현황", "결과", "통계", "시장", "업계" 등이 포함된 경우
+- regulation: "규정", "정책", "지침", "제1조", "제2조", "목적", "정의", "사규", "내규" 등이 포함된 경우
+- law: "법", "시행령", "시행규칙", "조례", "법령", "법률", "대통령령", "부령", "시행" 등이 포함된 경우
+- report: "보고서", "분석", "현황", "결과", "통계", "시장", "업계", "동향" 등이 포함된 경우
 
 응답 형식: 정확히 다음 중 하나만 답변해주세요.
 - regulation
+- law
 - report
 
 분류 결과:
@@ -202,6 +206,7 @@ class DocumentAnalyzer:
             DocumentType.CUSTOMER_INFO.value,
             DocumentType.HR_DATA.value,
             DocumentType.REGULATION.value,
+            DocumentType.LAW.value,
             DocumentType.REPORT.value
         ]
         
@@ -224,7 +229,7 @@ class DocumentAnalyzer:
         Returns:
             청킹 타입 ("regulation" 또는 "report")
         """
-        if document_type in [DocumentType.REGULATION.value]:
+        if document_type in [DocumentType.REGULATION.value, DocumentType.LAW.value]:
             return "regulation"
         else:
             return "report"

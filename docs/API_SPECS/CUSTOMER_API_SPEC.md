@@ -356,6 +356,192 @@ curl -X GET "https://your-domain.com/api/customer/1/performance/comparison?perio
 
 ---
 
+## 4. 거래처 목록 조회
+
+모든 거래처의 기본 정보를 목록으로 조회합니다.
+
+### Endpoint
+```
+GET /customers
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description | Example |
+|-----------|------|----------|-------------|---------|
+| skip | integer | No | 건너뛸 항목 수 (페이지네이션) | 0 |
+| limit | integer | No | 조회할 최대 항목 수 (기본값: 100) | 50 |
+
+### Request Example
+```bash
+curl -X GET "https://your-domain.com/api/customers?skip=0&limit=50" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Response
+
+#### Success Response (200 OK)
+```json
+[
+  {
+    "customer_id": 1,
+    "customer_name": "서울병원",
+    "customer_grade": "A",
+    "address": "서울시 강남구 테헤란로 123",
+    "doctor_name": "김철수",
+    "contact_number": "02-1234-5678",
+    "notes": "VIP 고객",
+    "created_at": "2024-01-15T09:30:00"
+  },
+  {
+    "customer_id": 2,
+    "customer_name": "부산의원",
+    "customer_grade": "B",
+    "address": "부산시 해운대구 마린시티 456",
+    "doctor_name": "이영희",
+    "contact_number": "051-9876-5432",
+    "notes": null,
+    "created_at": "2024-01-20T14:20:00"
+  },
+  {
+    "customer_id": 3,
+    "customer_name": "대구약국",
+    "customer_grade": "C",
+    "address": "대구시 중구 동성로 789",
+    "doctor_name": "박민수",
+    "contact_number": "053-1111-2222",
+    "notes": "소규모 거래처",
+    "created_at": "2024-02-01T11:00:00"
+  }
+]
+```
+
+### Notes
+- 삭제된 거래처(`is_deleted=true`)는 목록에서 제외됩니다
+- 기본적으로 최대 100개까지 조회되며, 더 많은 데이터가 필요한 경우 페이지네이션을 사용하세요
+
+---
+
+## 5. 거래처명으로 검색
+
+거래처명을 기준으로 거래처 정보와 ID를 검색합니다.
+
+### Endpoint
+```
+GET /customer/search
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description | Example |
+|-----------|------|----------|-------------|---------|
+| name | string | Yes | 검색할 거래처명 (부분 일치) | "서울" |
+
+### Request Example
+```bash
+curl -X GET "https://your-domain.com/api/customer/search?name=서울" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Response
+
+#### Success Response (200 OK)
+```json
+{
+  "search_term": "서울",
+  "count": 2,
+  "results": [
+    {
+      "customer_id": 1,
+      "customer_name": "서울병원",
+      "customer_grade": "A",
+      "address": "서울시 강남구 테헤란로 123"
+    },
+    {
+      "customer_id": 15,
+      "customer_name": "서울대학교병원",
+      "customer_grade": "VIP",
+      "address": "서울시 종로구 대학로 101"
+    }
+  ]
+}
+```
+
+#### No Results Found (200 OK)
+```json
+{
+  "search_term": "제주",
+  "count": 0,
+  "results": []
+}
+```
+
+### Notes
+- 검색은 대소문자를 구분하지 않습니다
+- 부분 일치 검색을 지원합니다 (예: "서울"로 검색 시 "서울병원", "서울대학교병원" 모두 검색)
+- 삭제된 거래처는 검색 결과에서 제외됩니다
+
+---
+
+## 6. 거래처 상세 정보 조회
+
+특정 거래처의 모든 상세 정보를 조회합니다.
+
+### Endpoint
+```
+GET /customer/{customer_id}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description | Example |
+|-----------|------|----------|-------------|---------|
+| customer_id | integer | Yes | 거래처 고유 ID (Path Parameter) | 1 |
+
+### Request Example
+```bash
+curl -X GET "https://your-domain.com/api/customer/1" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Response
+
+#### Success Response (200 OK)
+```json
+{
+  "customer_id": 1,
+  "customer_name": "서울병원",
+  "customer_grade": "A",
+  "address": "서울시 강남구 테헤란로 123",
+  "doctor_name": "김철수",
+  "contact_number": "02-1234-5678",
+  "notes": "VIP 고객, 월말 정산",
+  "created_at": "2024-01-15T09:30:00"
+}
+```
+
+#### Error Response (404 Not Found)
+```json
+{
+  "detail": "거래처 ID 999를 찾을 수 없습니다."
+}
+```
+
+### Response Fields Description
+
+| Field | Type | Description |
+|-------|------|-------------|
+| customer_id | integer | 거래처 고유 ID |
+| customer_name | string | 거래처명 (병원/약국명) |
+| customer_grade | string | 거래처 등급 (A, B, C, VIP 등) |
+| address | string | 거래처 주소 |
+| doctor_name | string | 담당 의사/약사명 |
+| contact_number | string | 연락처 |
+| notes | string | 메모 및 특이사항 |
+| created_at | datetime | 거래처 등록 일시 |
+
+---
+
 ## 사용 예제
 
 ### Python
@@ -366,7 +552,41 @@ import requests
 BASE_URL = "https://your-domain.com/api"
 headers = {"Authorization": "Bearer YOUR_JWT_TOKEN"}
 
-# 1. 단일 거래처 연간 실적 조회
+# 1. 거래처 목록 조회
+response = requests.get(
+    f"{BASE_URL}/customers",
+    params={"skip": 0, "limit": 10},
+    headers=headers
+)
+if response.status_code == 200:
+    customers = response.json()
+    for customer in customers:
+        print(f"ID: {customer['customer_id']}, 이름: {customer['customer_name']}, 등급: {customer['customer_grade']}")
+
+# 2. 거래처명으로 검색
+response = requests.get(
+    f"{BASE_URL}/customer/search",
+    params={"name": "서울"},
+    headers=headers
+)
+if response.status_code == 200:
+    result = response.json()
+    print(f"'{result['search_term']}' 검색 결과: {result['count']}개")
+    for customer in result['results']:
+        print(f"  - {customer['customer_name']} (ID: {customer['customer_id']})")
+
+# 3. 거래처 상세 정보 조회
+response = requests.get(
+    f"{BASE_URL}/customer/1",
+    headers=headers
+)
+if response.status_code == 200:
+    customer = response.json()
+    print(f"거래처명: {customer['customer_name']}")
+    print(f"주소: {customer['address']}")
+    print(f"연락처: {customer['contact_number']}")
+
+# 4. 단일 거래처 연간 실적 조회
 response = requests.get(
     f"{BASE_URL}/customer/1/performance",
     params={
@@ -381,7 +601,7 @@ if response.status_code == 200:
     print(f"연간 총 매출: {data['summary']['total_sales']:,}원")
     print(f"월 평균 매출: {data['summary']['average_monthly_sales']:,}원")
 
-# 2. 여러 거래처 동시 조회
+# 5. 여러 거래처 동시 조회
 response = requests.get(
     f"{BASE_URL}/customers/performance",
     params={
@@ -396,7 +616,7 @@ if response.status_code == 200:
     for customer in customers:
         print(f"{customer['customer_name']}: {customer['summary']['total_sales']:,}원")
 
-# 3. 전년 동기 대비 성장률 분석
+# 6. 전년 동기 대비 성장률 분석
 response = requests.get(
     f"{BASE_URL}/customer/1/performance/comparison",
     params={
@@ -422,7 +642,41 @@ const headers = {
     'Authorization': 'Bearer YOUR_JWT_TOKEN' 
 };
 
-// 단일 거래처 조회
+// 1. 거래처 목록 조회
+async function getCustomerList(skip = 0, limit = 10) {
+    try {
+        const response = await axios.get(`${BASE_URL}/customers`, {
+            params: { skip, limit },
+            headers
+        });
+        
+        const customers = response.data;
+        customers.forEach(customer => {
+            console.log(`${customer.customer_id}: ${customer.customer_name} (${customer.customer_grade}급)`);
+        });
+        return customers;
+    } catch (error) {
+        console.error('Error:', error.response?.data?.detail || error.message);
+    }
+}
+
+// 2. 거래처명으로 검색
+async function searchCustomerByName(name) {
+    try {
+        const response = await axios.get(`${BASE_URL}/customer/search`, {
+            params: { name },
+            headers
+        });
+        
+        const result = response.data;
+        console.log(`'${result.search_term}' 검색 결과: ${result.count}개`);
+        return result.results;
+    } catch (error) {
+        console.error('Error:', error.response?.data?.detail || error.message);
+    }
+}
+
+// 3. 단일 거래처 성과 조회
 async function getCustomerPerformance(customerId, startMonth, endMonth) {
     try {
         const response = await axios.get(
@@ -454,7 +708,9 @@ async function getCustomerPerformance(customerId, startMonth, endMonth) {
 }
 
 // 사용 예
-getCustomerPerformance(1, '202401', '202412');
+getCustomerList(0, 20);  // 처음 20개 거래처 목록
+searchCustomerByName('서울');  // '서울' 포함된 거래처 검색
+getCustomerPerformance(1, '202401', '202412');  // 거래처 성과 조회
 ```
 
 ---
@@ -485,6 +741,7 @@ getCustomerPerformance(1, '202401', '202412');
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
+| 1.2 | 2025-01-13 | 거래처 목록, 검색, 상세 정보 API 추가 |
 | 1.1 | 2025-01-12 | 성과 평가 로직 제거, 순수 데이터만 제공 |
 | 1.0 | 2025-01-01 | 초기 버전 배포 |
 

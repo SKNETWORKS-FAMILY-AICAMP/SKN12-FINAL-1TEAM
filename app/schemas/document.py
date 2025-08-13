@@ -8,6 +8,7 @@ class DocumentBase(BaseModel):
     file_path: str
     uploader_id: int
     version: Optional[str] = None
+    summary: Optional[str] = None
     created_at: Optional[datetime] = None
 
 class DocumentInfo(DocumentBase):
