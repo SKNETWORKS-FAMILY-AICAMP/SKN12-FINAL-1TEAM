@@ -5,21 +5,41 @@ import './App.css';
 
 // Components
 import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
-import SearchPage from './components/SearchPage';
-import ChatScreen from './components/ChatScreen';
-import DocsPage from './components/DocsPage';
-import ClientPage from './components/ClientPage';
+import Main from './components/Main';
+import SearchPage from './components/Search';
+import ChatBot from './components/ChatBot';
+import Docs from './components/Docs';
+import ClientAnalysis from './components/ClientAnalysis';
 import EmployeePerformance from './components/EmployeePerformance';
-import SchedulePage from './components/SchedulePage';
-import LoginPage from './components/LoginPage';
-import AdminPage from './components/AdminPage';
+import Schedule from './components/Schedule';
+import Login from './components/Login';
+import Admin from './components/Admin';
 
 function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [schedules, setSchedules] = useState([]);
+
+  // localStorage에서 일정 데이터 불러오기
+  useEffect(() => {
+    const savedSchedules = localStorage.getItem('narutalk_schedules');
+    if (savedSchedules) {
+      try {
+        setSchedules(JSON.parse(savedSchedules));
+      } catch (error) {
+        console.error('일정 데이터 로드 실패:', error);
+      }
+    }
+  }, []);
+
+  // 일정이 변경될 때마다 localStorage에 저장
+  useEffect(() => {
+    if (schedules.length > 0) {
+      localStorage.setItem('narutalk_schedules', JSON.stringify(schedules));
+    }
+  }, [schedules]);
 
   // 컴포넌트 마운트 시 로그인 상태 확인
   useEffect(() => {
@@ -29,8 +49,8 @@ function App() {
       
       if (token && userData) {
         try {
-          // 토큰 유효성 검증 (선택사항 - 백엔드에 /user/me 엔드포인트가 있는 경우)
-          // await verifyToken();
+          // 토큰 유효성 검증
+          await verifyToken();
           
           setIsLoggedIn(true);
           setCurrentUser(JSON.parse(userData));
@@ -77,7 +97,7 @@ function App() {
     return (
       <Router>
         <Routes>
-          <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
+          <Route path="/login" element={<Login onLogin={handleLogin} />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </Router>
@@ -96,14 +116,14 @@ function App() {
         />
         <div className={`main-content ${!sidebarVisible ? 'sidebar-hidden' : ''}`}>
           <Routes>
-            <Route path="/" element={<Dashboard currentUser={currentUser} />} />
+            <Route path="/" element={<Main currentUser={currentUser} schedules={schedules} />} />
             <Route path="/search" element={<SearchPage currentUser={currentUser} />} />
-            <Route path="/chat" element={<ChatScreen currentUser={currentUser} />} />
-            <Route path="/docs" element={<DocsPage currentUser={currentUser} />} />
-            <Route path="/client" element={<ClientPage currentUser={currentUser} />} />
-            <Route path="/employee-performance" element={<EmployeePerformance currentUser={currentUser} />} />
-            <Route path="/schedule" element={<SchedulePage currentUser={currentUser} />} />
-            <Route path="/admin" element={<AdminPage currentUser={currentUser} />} />
+            <Route path="/chat" element={<ChatBot currentUser={currentUser} />} />
+            <Route path="/docs" element={<Docs currentUser={currentUser} />} />
+            <Route path="/client" element={<ClientAnalysis currentUser={currentUser} />} />
+            <Route path="/employee" element={<EmployeePerformance currentUser={currentUser} />} />
+            <Route path="/schedule" element={<Schedule currentUser={currentUser} schedules={schedules} setSchedules={setSchedules} />} />
+            <Route path="/admin" element={<Admin currentUser={currentUser} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

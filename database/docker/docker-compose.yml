@@ -1,16 +1,16 @@
 services:
   # FastAPI 애플리케이션
-  fastapi-app:
-    image: ansirh/database-fastapi-app:v0.5
-    # build:
-    #   context: ../
-    #   dockerfile: docker/database-fastapi-app.Dockerfile
+  fastapi-app:  
     container_name: fastapi-app
+    # image: ansirh/database-fastapi-app:v0.6
+    build:
+      context: ../
+      dockerfile: docker/database-fastapi-app.Dockerfile
     ports:
       - "8010:8000"
 
     environment:
-      # 시간대 설정
+      # 시간대 설정 
       - TZ=Asia/Seoul
       # 데이터베이스 설정
       - POSTGRES_USER=${POSTGRES_USER}
@@ -38,9 +38,10 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       # 개발 중에는 로컬 파일을 마운트 (빌드 없이 즉시 반영)
-      # - ../app:/app/app
-      # - ../migrations:/app/migrations
-      # - ./.env:/app/.env
+      - ../app:/app/app
+      - ../migrations:/app/migrations
+      - ../requirements:/app/requirements
+      - ./.env:/app/.env
       # 캐시 볼륨 (로컬 마운트 이후에 마운트)
       - model_cache:/root/.cache/huggingface
       - pip_cache:/root/.cache/pip
@@ -65,10 +66,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      TZ: Asia/Seoul
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro  # 호스트 시간 동기화
     networks:
       - app-network
 
@@ -206,4 +209,4 @@ volumes:
   minio_data:
   pgadmin_data:
   model_cache:  # 모델 캐시를 위한 볼륨 
-  pip_cache:  # pip 캐시를 위한 볼륨 
+  pip_cache:  # pip 캐시를 위한 볼륨

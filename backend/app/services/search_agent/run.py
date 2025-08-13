@@ -4,7 +4,7 @@ Search Agent Run Module - 완전한 LLM 기반 아키텍처
 import os
 import json
 from typing import Dict, Any, Optional
-from search_agent import create_search_agent
+from .search_agent import create_search_agent
 
 async def run(query: str, session_id: str, api_token: Optional[str] = None) -> Dict[str, Any]:
     """

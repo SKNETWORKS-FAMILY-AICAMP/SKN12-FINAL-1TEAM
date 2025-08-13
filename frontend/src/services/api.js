@@ -1,9 +1,16 @@
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = '';
 
 // API 요청을 위한 기본 설정
 const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
   const token = localStorage.getItem('narutalk_token');
+  
+  console.log('🌐 API 요청:', {
+    url: url,
+    method: options.method || 'GET',
+    headers: options.headers,
+    body: options.body
+  });
   
   // FormData인지 확인
   const isFormData = options.body instanceof FormData;
@@ -27,71 +34,21 @@ const apiRequest = async (endpoint, options = {}) => {
   };
 
   try {
+    console.log('📤 실제 요청 설정:', config);
     const response = await fetch(url, config);
+    console.log('📥 응답 상태:', response.status, response.statusText);
+    
     const data = await response.json();
+    console.log('📥 응답 데이터:', data);
 
     if (!response.ok) {
-      // 오류 메시지를 문자열로 변환
-      let errorMessage = '요청에 실패했습니다.';
-      
-      if (data.detail) {
-        errorMessage = data.detail;
-      } else if (data.message) {
-        errorMessage = data.message;
-      } else if (typeof data === 'string') {
-        errorMessage = data;
-      } else if (data.error) {
-        errorMessage = data.error;
-      } else if (Array.isArray(data)) {
-        // 배열인 경우 각 요소를 문자열로 변환
-        errorMessage = data.map(item => {
-          if (typeof item === 'string') return item;
-          if (item && typeof item === 'object') {
-            return item.message || item.detail || item.error || JSON.stringify(item);
-          }
-          return String(item);
-        }).join(', ');
-      } else if (data && typeof data === 'object') {
-        // 객체인 경우 JSON.stringify 사용
-        errorMessage = JSON.stringify(data);
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(data.detail || 'Request failed');
     }
 
     return data;
   } catch (error) {
-    console.error('API request failed:', error);
-    
-    // 이미 Error 객체인 경우 그대로 던지기
-    if (error instanceof Error) {
-      throw error;
-    }
-    
-    // 객체인 경우 문자열로 변환
-    if (typeof error === 'object' && error !== null) {
-      if (Array.isArray(error)) {
-        const errorMessage = error.map(item => {
-          if (typeof item === 'string') return item;
-          if (item && typeof item === 'object') {
-            return item.message || item.detail || item.error || JSON.stringify(item);
-          }
-          return String(item);
-        }).join(', ');
-        throw new Error(errorMessage);
-      }
-      
-      const errorMessage = error.message || error.detail || error.error || JSON.stringify(error);
-      throw new Error(errorMessage);
-    }
-    
-    // 문자열인 경우 그대로 던지기
-    if (typeof error === 'string') {
-      throw new Error(error);
-    }
-    
-    // 기타 경우
-    throw new Error('알 수 없는 오류가 발생했습니다.');
+    console.error('❌ API request failed:', error);
+    throw error;
   }
 };
 
@@ -166,5 +123,94 @@ export const uploadDocument = async (file, docTitle) => {
 export const getDocuments = async () => {
   return await apiRequest('/documents/', {
     method: 'GET',
+  });
+};
+
+// 문서 상세 조회
+export const getDocumentDetail = async (docId) => {
+  return await apiRequest(`/documents/${docId}`, {
+    method: 'GET',
+  });
+};
+
+// 문서 내용 조회
+export const getDocumentContent = async (docId) => {
+  return await apiRequest(`/documents/${docId}/content`, {
+    method: 'GET',
+  });
+};
+
+// Employee Performance API 함수들
+
+// 직원 실적 목록 조회
+export const getEmployeeList = async () => {
+  return await apiRequest('/api/employee/list', {
+    method: 'GET',
+  });
+};
+
+// 직원 실적 조회
+export const getEmployeePerformance = async (employeeName, startPeriod, endPeriod) => {
+  const requestBody = {};
+  
+  // 날짜 형식 판단 (YYYY-MM-DD 또는 YYYYMM)
+  if (startPeriod && startPeriod.includes('-')) {
+    // YYYY-MM-DD 형식
+    requestBody.start_date = startPeriod;
+    requestBody.end_date = endPeriod;
+  } else {
+    // YYYYMM 형식
+    requestBody.start_period = startPeriod;
+    requestBody.end_period = endPeriod;
+  }
+  
+  // 관리자가 특정 직원을 조회하는 경우에만 employee_name 추가
+  if (employeeName) {
+    requestBody.employee_name = employeeName;
+  }
+  
+  return await apiRequest('/api/employee/performance', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+};
+
+// 직원 목표 대비 실적 조회
+export const getEmployeeTarget = async (employeeName, startPeriod, endPeriod) => {
+  const requestBody = {};
+  
+  // 날짜 형식 판단
+  if (startPeriod && startPeriod.includes('-')) {
+    requestBody.start_date = startPeriod;
+    requestBody.end_date = endPeriod;
+  } else {
+    requestBody.start_period = startPeriod;
+    requestBody.end_period = endPeriod;
+  }
+  
+  if (employeeName) {
+    requestBody.employee_name = employeeName;
+  }
+  
+  return await apiRequest('/api/employee/target', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+};
+
+// 직원 실적 자연어 분석
+export const analyzeEmployeePerformance = async (params) => {
+  const requestBody = {};
+  
+  if (params.query) requestBody.query = params.query;
+  if (params.start_date) requestBody.start_date = params.start_date;
+  if (params.end_date) requestBody.end_date = params.end_date;
+  if (params.start_period) requestBody.start_period = params.start_period;
+  if (params.end_period) requestBody.end_period = params.end_period;
+  if (params.employee_name) requestBody.employee_name = params.employee_name;
+  
+  return await apiRequest('/api/employee/analyze', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
   });
 }; 

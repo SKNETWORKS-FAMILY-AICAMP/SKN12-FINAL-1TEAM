@@ -22,7 +22,7 @@ class AnalysisState(TypedDict):
     error: Optional[str]
 
 class EnhancedEmployeeAgent:
-    """개선된 직원 실적 분석 에이전트"""
+    """직원 실적 분석 에이전트"""
     
     def __init__(self):
         self.db_manager = EmployeeDBManager()
@@ -59,22 +59,22 @@ class EnhancedEmployeeAgent:
             
             # 쿼리 분석 결과 검증
             if not query_analysis:
-                state["error"] = "쿼리 분석에 실패했습니다."
+                state["error"] = "쿼리 분석에 실패했습니다. 예시: '최수아의 2023년 1월부터 2023년 6월까지 실적 분석해줘'"
                 return state
             
-            # 필수 정보 확인 및 기본값 설정
+            # 필수 정보 확인
             employee_name = query_analysis.get("employee_name")
             start_period = query_analysis.get("start_period") 
             end_period = query_analysis.get("end_period")
             
+            # 필수 정보가 없는 경우 오류 반환
             if not employee_name:
-                print("[WARNING] 직원명이 추출되지 않아 기본값(최수아)을 사용합니다.")
-                employee_name = "최수아"
+                state["error"] = "직원명을 찾을 수 없습니다. 예시: '최수아의 2023년 1월부터 2023년 6월까지 실적 분석해줘'"
+                return state
             
-            if not start_period or not end_period:
-                print("[WARNING] 기간이 추출되지 않아 기본값(202312~202403)을 사용합니다.")
-                start_period = "202312"
-                end_period = "202403"
+            if not start_period or not end_period or start_period == "None" or end_period == "None":
+                state["error"] = "분석 기간을 찾을 수 없습니다. 예시: '최수아의 2023년 1월부터 2023년 6월까지 실적 분석해줘'"
+                return state
             
             state["query_analysis"] = query_analysis
             state["employee_name"] = employee_name
@@ -85,16 +85,8 @@ class EnhancedEmployeeAgent:
             print(f"[OK] 쿼리 분석 완료: 직원={employee_name}, 기간={start_period}~{end_period}")
             
         except Exception as e:
-            state["error"] = f"쿼리 분석 오류: {str(e)}"
+            state["error"] = f"쿼리 분석 중 오류가 발생했습니다: {str(e)}"
             print(f"[ERROR] 쿼리 분석 오류: {e}")
-            
-            # 오류 발생시 기본값으로 설정
-            print("[RETRY] 기본값으로 분석을 계속 진행합니다.")
-            state["employee_name"] = "최수아"
-            state["start_period"] = "202312" 
-            state["end_period"] = "202403"
-            state["analysis_type"] = "종합분석"
-            state["error"] = None  # 오류 상태 초기화
         
         return state
     
@@ -108,36 +100,27 @@ class EnhancedEmployeeAgent:
             start_period = state["start_period"]
             end_period = state["end_period"]
             
-            print(f"[DATA] 데이터 로드 시작: {employee_name}, {start_period}~{end_period}")
-            
             # 실적 데이터 로드
             performance_summary = self.db_manager.get_performance_summary(
                 employee_name, start_period, end_period
             )
             
-            # 실적 데이터가 없는 경우 확인
+            # 실적 데이터가 없는 경우 오류 반환
             if performance_summary["total_performance"] <= 0:
-                print(f"[WARNING] '{employee_name}' 직원의 {start_period}~{end_period} 기간 실적 데이터가 없습니다.")
-                # 사용 가능한 직원 목록 확인
                 available_employees = self.db_manager.get_available_employees()
                 if available_employees:
-                    print(f"[INFO] 사용 가능한 직원: {', '.join(available_employees)}")
-                    # 첫 번째 사용 가능한 직원으로 재시도
-                    alternative_employee = available_employees[0]
-                    print(f"[RETRY] '{alternative_employee}' 직원 데이터로 분석을 진행합니다.")
-                    
-                    performance_summary = self.db_manager.get_performance_summary(
-                        alternative_employee, start_period, end_period
-                    )
-                    state["employee_name"] = alternative_employee
+                    state["error"] = f"'{employee_name}' 직원의 {start_period}~{end_period} 기간 실적 데이터가 없습니다. 사용 가능한 직원: {', '.join(available_employees)}"
+                else:
+                    state["error"] = f"'{employee_name}' 직원의 {start_period}~{end_period} 기간 실적 데이터가 없습니다."
+                return state
             
             # 목표 대비 실적 데이터 로드
             target_vs_performance = self.db_manager.get_target_vs_performance(
                 state["employee_name"], start_period, end_period
             )
             
-            # 트렌드 분석 데이터 로드
-            trend_analysis = self.db_manager.analyze_performance_trend(
+            # 성장률 분석 데이터 로드
+            growth_analysis = self.db_manager.analyze_performance_trend(
                 state["employee_name"], start_period, end_period
             )
             
@@ -146,42 +129,19 @@ class EnhancedEmployeeAgent:
             
             # 추가 분석 데이터를 analysis_results에 임시 저장
             state["analysis_results"] = {
-                "trend_analysis": trend_analysis
+                "growth_analysis": growth_analysis
             }
             
             print(f"[OK] 데이터 로드 완료: 실적 {performance_summary['total_performance']:,.0f}원")
             
         except Exception as e:
-            state["error"] = f"데이터 로드 오류: {str(e)}"
+            state["error"] = f"데이터 로드 중 오류가 발생했습니다: {str(e)}"
             print(f"[ERROR] 데이터 로드 오류: {e}")
-            
-            # 오류 발생시 더미 데이터로 설정하여 분석 계속 진행
-            print("🔄 기본 데이터로 분석을 계속 진행합니다.")
-            state["performance_data"] = {
-                "employee_name": state["employee_name"],
-                "period": f"{state['start_period']}~{state['end_period']}",
-                "total_performance": 0,
-                "monthly_breakdown": [],
-                "product_breakdown": [],
-                "client_breakdown": []
-            }
-            # 더미 데이터 반환 (오류 방지)
-            state["target_data"] = {
-                "total_performance": 0,
-                "total_target": 0,
-                "achievement_rate": 0,
-                "evaluation": "데이터 없음",
-                "grade": "N/A",  # recommendation → grade로 변경
-                "gap_amount": 0
-            }
-            state["analysis_results"] = {
-                "trend_analysis": {"trend": "데이터 없음", "analysis": "분석할 데이터가 없습니다."}
-            }
-            state["error"] = None  # 오류 상태 초기화
         
         return state
     
     def _perform_analysis_node(self, state: AnalysisState) -> AnalysisState:
+        
         """실적 분석을 수행하는 노드"""
         try:
             if state.get("error"):
@@ -201,9 +161,9 @@ class EnhancedEmployeeAgent:
             if len(monthly_data) >= 2:
                 monthly_amounts = [data["amount"] for data in monthly_data]
                 
-                # 강화된 트렌드 분석 (안정성 정보 포함)
-                enhanced_trend = self.calc_tools.calculate_enhanced_trend_analysis(monthly_amounts)
-                analysis_results["enhanced_trend_analysis"] = enhanced_trend
+                # 강화된 성장률 분석 (안정성 정보 포함)
+                enhanced_growth = self.calc_tools.calculate_growth_analysis(monthly_amounts)
+                analysis_results["enhanced_growth_analysis"] = enhanced_growth
                 
                 # 계절성 분석 (4개월 이상일 때만)
                 seasonal_analysis = self.calc_tools.calculate_seasonal_analysis(monthly_data)
@@ -258,19 +218,19 @@ class EnhancedEmployeeAgent:
             achievement_score = 5
         score_components["achievement"] = achievement_score
         
-        # 2. 트렌드 점수 (30점)
-        enhanced_trend_data = analysis_results.get("enhanced_trend_analysis", {})
-        trend = enhanced_trend_data.get("trend", "안정")
-        if trend in ["강한 상승", "상승"]:
-            trend_score = 30
-        elif trend == "안정":
-            trend_score = 20
+        # 2. 성장률 점수 (30점)
+        enhanced_growth_data = analysis_results.get("enhanced_growth_analysis", {})
+        growth_trend = enhanced_growth_data.get("growth_trend", "안정")
+        if growth_trend in ["강한 성장", "성장"]:
+            growth_score = 30
+        elif growth_trend == "안정":
+            growth_score = 20
         else:
-            trend_score = 10
-        score_components["trend"] = trend_score
+            growth_score = 10
+        score_components["growth"] = growth_score
         
-        # 3. 안정성 점수 (20점) - 강화된 트렌드 분석에서 가져옴
-        stability = enhanced_trend_data.get("stability", "보통")
+        # 3. 안정성 점수 (20점) - 성장률 분석에서 가져옴
+        stability = enhanced_growth_data.get("stability", "보통")
         stability_score_map = {
             "매우 안정": 20, "안정": 16, "보통": 12, 
             "불안정": 8, "매우 불안정": 4
@@ -278,7 +238,7 @@ class EnhancedEmployeeAgent:
         stability_score = stability_score_map.get(stability, 10)
         score_components["stability"] = stability_score
         
-        # 총점 계산 (달성률 40점 + 트렌드 30점 + 안정성 20점 = 90점 만점)
+        # 총점 계산 (달성률 40점 + 성장률 30점 + 안정성 20점 = 90점 만점)
         total_score = sum(score_components.values())
         
         # 등급 결정 (90점 만점 기준으로 조정)
@@ -305,8 +265,8 @@ class EnhancedEmployeeAgent:
         for component, score in sorted_components[:2]:  # 가장 낮은 2개 영역
             if component == "achievement" and score < 30:
                 improvement_priorities.append("목표 달성률 개선")
-            elif component == "trend" and score < 25:
-                improvement_priorities.append("실적 증가 추세 확보")
+            elif component == "growth" and score < 25:
+                improvement_priorities.append("실적 성장률 개선")
             elif component == "stability" and score < 15:
                 improvement_priorities.append("실적 안정성 확보")
         
@@ -325,8 +285,8 @@ class EnhancedEmployeeAgent:
         strengths = []
         if score_components.get("achievement", 0) >= 35:
             strengths.append("목표 달성률 우수")
-        if score_components.get("trend", 0) >= 25:
-            strengths.append("성장 추세 양호")
+        if score_components.get("growth", 0) >= 25:
+            strengths.append("높은 성장률")
         if score_components.get("stability", 0) >= 16:
             strengths.append("실적 안정성 확보")
         
@@ -337,8 +297,8 @@ class EnhancedEmployeeAgent:
         weaknesses = []
         if score_components.get("achievement", 0) < 25:
             weaknesses.append("목표 달성률 부족")
-        if score_components.get("trend", 0) < 20:
-            weaknesses.append("성장 추세 부진")
+        if score_components.get("growth", 0) < 20:
+            weaknesses.append("낮은 성장률")
         if score_components.get("stability", 0) < 12:
             weaknesses.append("실적 변동성 과대")
         
@@ -498,112 +458,95 @@ class EnhancedEmployeeAgent:
         
         return report
     
-    def analyze_employee_performance(self, query: str) -> Dict[str, Any]:
-        """직원 실적 분석을 실행합니다."""
-        initial_state = {
-            "query": query,
-            "query_analysis": None,
-            "employee_name": None,
-            "start_period": None,
-            "end_period": None,
-            "analysis_type": None,
-            "performance_data": None,
-            "target_data": None,
-            "analysis_results": None,
-            "report": None,
-            "error": None
-        }
-        
+    async def run(self, query: str, session_id: str, messages: List[Dict] = None) -> Dict[str, Any]:
+        """router_api.py에서 호출하는 표준 인터페이스 (멀티턴 대화 지원)"""
         try:
-            # LangGraph 워크플로우 실행
-            result = self.graph.invoke(initial_state)
+            # 컨텍스트 유틸리티 임포트
+            from ..common.context_utils import resolve_references
             
-            if result.get("error"):
+            # 참조 해결 (그 사람 → 실제 이름)
+            enhanced_query = resolve_references(query, messages or [])
+            
+            # 로깅
+            if enhanced_query != query:
+                print(f"[CONTEXT] 쿼리 보완: '{query}' → '{enhanced_query}'")
+            
+            # EnhancedEmployeeAgent를 사용하여 쿼리 분석
+            initial_state = {
+                "query": enhanced_query,
+                "query_analysis": None,
+                "employee_name": None,
+                "start_period": None,
+                "end_period": None,
+                "analysis_type": None,
+                "performance_data": None,
+                "target_data": None,
+                "analysis_results": None,
+                "report": None,
+                "error": None
+            }
+            
+            try:
+                # LangGraph 워크플로우 실행
+                result = self.graph.invoke(initial_state)
+                
+                if result.get("error"):
+                    return {
+                        "success": False,
+                        "error": result["error"],
+                        "message": "분석 처리 중 오류가 발생했습니다.",
+                        "agent": "employee_agent",
+                        "session_id": session_id
+                    }
+                
+                # 성공적인 결과 반환
+                analysis_result = {
+                    "success": True,
+                    "employee_name": result.get("employee_name"),
+                    "period": f"{result.get('start_period')}~{result.get('end_period')}",
+                    "total_performance": int(result.get("performance_data", {}).get("total_performance", 0)),
+                    "achievement_rate": float(result.get("target_data", {}).get("achievement_rate", 0)),
+                    "evaluation": result.get("analysis_results", {}).get("comprehensive_evaluation", {}).get("grade_description", "평가 불가"),
+                    "report": result.get("report", "보고서 생성 실패"),
+                    "analysis_details": result.get("analysis_results", {}),
+                    "message": "실적 분석이 완료되었습니다."
+                }
+                
+                return {
+                    "success": True,
+                    "response": analysis_result.get("report", "분석 결과를 생성할 수 없습니다."),
+                    "report": analysis_result.get("report", ""),
+                    "agent": "employee_agent",
+                    "session_id": session_id,
+                    "employee_name": analysis_result.get("employee_name"),
+                    "period": analysis_result.get("period"),
+                    "total_performance": analysis_result.get("total_performance"),
+                    "achievement_rate": analysis_result.get("achievement_rate"),
+                    "evaluation": analysis_result.get("evaluation"),
+                    "analysis_details": analysis_result.get("analysis_details", {})
+                }
+                
+            except Exception as e:
                 return {
                     "success": False,
-                    "error": result["error"],
-                    "message": "분석 처리 중 오류가 발생했습니다."
+                    "error": str(e),
+                    "message": "분석 실행 중 오류가 발생했습니다.",
+                    "agent": "employee_agent",
+                    "session_id": session_id
                 }
             
-            # 성공적인 결과 반환
-            return {
-                "success": True,
-                "employee_name": result.get("employee_name"),
-                "period": f"{result.get('start_period')}~{result.get('end_period')}",
-                "total_performance": int(result.get("performance_data", {}).get("total_performance", 0)),  # numpy 타입 방지
-                "achievement_rate": float(result.get("target_data", {}).get("achievement_rate", 0)),  # numpy 타입 방지
-                "evaluation": result.get("analysis_results", {}).get("comprehensive_evaluation", {}).get("grade_description", "평가 불가"),
-                "report": result.get("report", "보고서 생성 실패"),
-                "analysis_details": result.get("analysis_results", {}),
-                "message": "실적 분석이 완료되었습니다."
-            }
-            
+
+                
         except Exception as e:
+            # 예외 처리
+            error_message = str(e)
+            print(f"[ERROR] Employee Agent 실행 오류: {error_message}")
+            
             return {
                 "success": False,
-                "error": str(e),
-                "message": "분석 실행 중 오류가 발생했습니다."
-            }
-
-# 전역 에이전트 인스턴스
-enhanced_agent = EnhancedEmployeeAgent()
-
-async def analyze_employee_query(query: str) -> Dict[str, Any]:
-    """비동기 쿼리 분석 함수 (API에서 호출)"""
-    return enhanced_agent.analyze_employee_performance(query)
-
-async def run(query: str, session_id: str, messages: List[Dict] = None) -> Dict[str, Any]:
-    """router_api.py에서 호출하는 표준 인터페이스 (멀티턴 대화 지원)"""
-    try:
-        # 컨텍스트 유틸리티 임포트
-        from ..common.context_utils import resolve_references
-        
-        # 참조 해결 (그 사람 → 실제 이름)
-        enhanced_query = resolve_references(query, messages or [])
-        
-        # 로깅
-        if enhanced_query != query:
-            print(f"[CONTEXT] 쿼리 보완: '{query}' → '{enhanced_query}'")
-        
-        # EnhancedEmployeeAgent를 사용하여 쿼리 분석
-        result = enhanced_agent.analyze_employee_performance(enhanced_query)
-        
-        # 결과가 성공적으로 반환된 경우
-        if result.get("success", False):
-            return {
-                "success": True,
-                "response": result.get("report", "분석 결과를 생성할 수 없습니다."),
-                "report": result.get("report", ""),
-                "agent": "employee_agent",
-                "session_id": session_id,
-                "employee_name": result.get("employee_name"),
-                "period": result.get("period"),
-                "total_performance": result.get("total_performance"),
-                "achievement_rate": result.get("achievement_rate"),
-                "evaluation": result.get("evaluation"),
-                "analysis_details": result.get("analysis_details", {})
-            }
-        else:
-            # 오류가 발생한 경우
-            error_message = result.get("error", "알 수 없는 오류")
-            return {
-                "success": False,
-                "response": f"분석 중 오류가 발생했습니다: {error_message}",
+                "response": f"직원 실적 분석 중 오류가 발생했습니다: {error_message}",
                 "error": error_message,
                 "agent": "employee_agent",
                 "session_id": session_id
-            }
-            
-    except Exception as e:
-        # 예외 처리
-        error_message = str(e)
-        print(f"[ERROR] Employee Agent 실행 오류: {error_message}")
-        
-        return {
-            "success": False,
-            "response": f"직원 실적 분석 중 오류가 발생했습니다: {error_message}",
-            "error": error_message,
-            "agent": "employee_agent",
-            "session_id": session_id
-        } 
+            } 
                   
