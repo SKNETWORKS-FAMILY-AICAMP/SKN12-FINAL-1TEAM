@@ -110,4 +110,32 @@ def list_files(prefix: str = ""):
         return files
     except Exception as e:
         logger.error(f"파일 목록 조회 실패: {str(e)}")
-        return [] 
+        return []
+
+def generate_presigned_url(file_name: str, expiration: int = 3600) -> str:
+    """
+    S3 파일에 대한 pre-signed URL을 생성합니다.
+    
+    Args:
+        file_name: S3에 저장된 파일명
+        expiration: URL 유효 시간 (초 단위, 기본값: 1시간)
+        
+    Returns:
+        str: Pre-signed URL (임시 다운로드 링크)
+    """
+    try:
+        url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': BUCKET_NAME, 'Key': file_name},
+            ExpiresIn=expiration
+        )
+        
+        # MinIO의 경우 내부 도커 주소를 외부 접근 가능한 주소로 변경
+        if storage_type == "minio" and "minio:9000" in url:
+            url = url.replace("http://minio:9000", "http://localhost:9000")
+        
+        logger.info(f"Pre-signed URL 생성 성공: {file_name}")
+        return url
+    except Exception as e:
+        logger.error(f"Pre-signed URL 생성 실패: {file_name}, 오류: {str(e)}")
+        return None 
