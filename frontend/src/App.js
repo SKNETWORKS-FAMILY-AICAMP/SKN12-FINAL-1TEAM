@@ -10,7 +10,7 @@ import SearchPage from './components/Search';
 import ChatBot from './components/ChatBot';
 import Docs from './components/Docs';
 import ClientAnalysis from './components/ClientAnalysis';
-import Employee from './components/Employee';
+import EmployeePerformance from './components/EmployeePerformance';
 import Schedule from './components/Schedule';
 import Login from './components/Login';
 import Admin from './components/Admin';
@@ -121,7 +121,7 @@ function App() {
             <Route path="/chat" element={<ChatBot currentUser={currentUser} />} />
             <Route path="/docs" element={<Docs currentUser={currentUser} />} />
             <Route path="/client" element={<ClientAnalysis currentUser={currentUser} />} />
-            <Route path="/employee" element={<Employee currentUser={currentUser} />} />
+            <Route path="/employee" element={<EmployeePerformance currentUser={currentUser} />} />
             <Route path="/schedule" element={<Schedule currentUser={currentUser} schedules={schedules} setSchedules={setSchedules} />} />
             <Route path="/admin" element={<Admin currentUser={currentUser} />} />
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -5,6 +5,7 @@ const ChatBot = () => {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
   const [selectedAgent, setSelectedAgent] = useState('router');
   const [chatHistory, setChatHistory] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
@@ -106,7 +107,7 @@ const ChatBot = () => {
   const loadChatHistoryFromBackend = async () => {
     try {
       console.log('🔄 백엔드에서 모든 세션 불러오는 중...');
-      const response = await fetch('http://localhost:8010/api/all-sessions');
+      const response = await fetch('/api/all-sessions');
       
       if (response.ok) {
         const data = await response.json();
@@ -208,7 +209,7 @@ const ChatBot = () => {
         // 백엔드에서 메시지 불러오기 시도
         try {
           if (selectedChat.sessionId) {
-            const response = await fetch(`http://localhost:8010/api/session/${selectedChat.sessionId}/messages`);
+            const response = await fetch(`/api/session/${selectedChat.sessionId}/messages`);
             if (response.ok) {
               const data = await response.json();
               if (data.success && data.messages) {
@@ -300,7 +301,7 @@ const ChatBot = () => {
         };
         
         // 기존 프로젝트 URL 사용 (8010 포트)
-        response = await fetch(`http://localhost:8010/api/resume/${sessionId}`, {
+        response = await fetch(`/api/resume/${sessionId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -314,7 +315,7 @@ const ChatBot = () => {
           session_id: sessionId
         };
 
-        response = await fetch('http://localhost:8010/api/chat', {
+        response = await fetch('/api/v1/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -546,7 +547,7 @@ const ChatBot = () => {
       console.error('API 요청 오류:', error);
       const errorMessage = {
         type: 'bot',
-        content: `❌ 연결 오류: ${error.message}\n\n백엔드 서버가 실행 중인지 확인해주세요. (http://localhost:8010)`,
+        content: `❌ 연결 오류: ${error.message}\n\n백엔드 서버가 실행 중인지 확인해주세요.`,
         timestamp: new Date().toLocaleTimeString(),
         agent: 'System'
       };
@@ -568,7 +569,7 @@ const ChatBot = () => {
       // 초기 화면에서 선택하는 경우
       const endpoint = query === '' ? '/api/initial-agent-select' : '/api/select-agent';
       
-      const response = await fetch(`http://localhost:8010${endpoint}`, {
+      const response = await fetch(`${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -666,7 +667,7 @@ const ChatBot = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:8010/api/reset-agent', {
+      const response = await fetch('/api/reset-agent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

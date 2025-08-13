@@ -138,4 +138,79 @@ export const getDocumentContent = async (docId) => {
   return await apiRequest(`/documents/${docId}/content`, {
     method: 'GET',
   });
+};
+
+// Employee Performance API 함수들
+
+// 직원 실적 목록 조회
+export const getEmployeeList = async () => {
+  return await apiRequest('/api/employee/list', {
+    method: 'GET',
+  });
+};
+
+// 직원 실적 조회
+export const getEmployeePerformance = async (employeeName, startPeriod, endPeriod) => {
+  const requestBody = {};
+  
+  // 날짜 형식 판단 (YYYY-MM-DD 또는 YYYYMM)
+  if (startPeriod && startPeriod.includes('-')) {
+    // YYYY-MM-DD 형식
+    requestBody.start_date = startPeriod;
+    requestBody.end_date = endPeriod;
+  } else {
+    // YYYYMM 형식
+    requestBody.start_period = startPeriod;
+    requestBody.end_period = endPeriod;
+  }
+  
+  // 관리자가 특정 직원을 조회하는 경우에만 employee_name 추가
+  if (employeeName) {
+    requestBody.employee_name = employeeName;
+  }
+  
+  return await apiRequest('/api/employee/performance', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+};
+
+// 직원 목표 대비 실적 조회
+export const getEmployeeTarget = async (employeeName, startPeriod, endPeriod) => {
+  const requestBody = {};
+  
+  // 날짜 형식 판단
+  if (startPeriod && startPeriod.includes('-')) {
+    requestBody.start_date = startPeriod;
+    requestBody.end_date = endPeriod;
+  } else {
+    requestBody.start_period = startPeriod;
+    requestBody.end_period = endPeriod;
+  }
+  
+  if (employeeName) {
+    requestBody.employee_name = employeeName;
+  }
+  
+  return await apiRequest('/api/employee/target', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+};
+
+// 직원 실적 자연어 분석
+export const analyzeEmployeePerformance = async (params) => {
+  const requestBody = {};
+  
+  if (params.query) requestBody.query = params.query;
+  if (params.start_date) requestBody.start_date = params.start_date;
+  if (params.end_date) requestBody.end_date = params.end_date;
+  if (params.start_period) requestBody.start_period = params.start_period;
+  if (params.end_period) requestBody.end_period = params.end_period;
+  if (params.employee_name) requestBody.employee_name = params.employee_name;
+  
+  return await apiRequest('/api/employee/analyze', {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
 }; 

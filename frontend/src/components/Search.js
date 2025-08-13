@@ -11,6 +11,8 @@ const Search = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
+  const [selectedItems, setSelectedItems] = useState(new Set());
+  const [selectAll, setSelectAll] = useState(false);
 
   // 컴포넌트 마운트 시 문서 목록 가져오기
   useEffect(() => {
@@ -91,11 +93,25 @@ const Search = () => {
     setIsDetailModalOpen(true);
     
     try {
-      // 문서 상세 정보와 내용을 함께 가져오기
-      const [documentDetail, documentContent] = await Promise.all([
-        getDocumentDetail(docId),
-        getDocumentContent(docId)
-      ]);
+      // 로그인 여부 확인
+      const token = localStorage.getItem('narutalk_token');
+      if (!token) {
+        setDetailError('문서를 조회하려면 로그인이 필요합니다.');
+        setDetailLoading(false);
+        return;
+      }
+
+      // 문서 상세 정보 가져오기
+      const documentDetail = await getDocumentDetail(docId);
+      
+      // 문서 내용 가져오기 (API가 있는 경우에만)
+      let documentContent = {};
+      try {
+        documentContent = await getDocumentContent(docId);
+      } catch (contentError) {
+        console.log('문서 내용 API가 없거나 접근 불가:', contentError);
+        // 내용을 가져올 수 없어도 상세 정보는 표시
+      }
       
       // 문서 상세 정보와 내용을 합치기
       const fullDocument = {
@@ -106,7 +122,13 @@ const Search = () => {
       setSelectedDocument(fullDocument);
     } catch (error) {
       console.error('문서 상세 조회 실패:', error);
-      setDetailError('문서 상세 정보를 불러오는데 실패했습니다.');
+      if (error.message?.includes('Not authenticated')) {
+        setDetailError('문서를 조회하려면 로그인이 필요합니다.');
+      } else if (error.message?.includes('Forbidden')) {
+        setDetailError('문서 조회 권한이 없습니다. 관리자 권한이 필요합니다.');
+      } else {
+        setDetailError('문서 상세 정보를 불러오는데 실패했습니다.');
+      }
     } finally {
       setDetailLoading(false);
     }
@@ -117,6 +139,51 @@ const Search = () => {
     setIsDetailModalOpen(false);
     setSelectedDocument(null);
     setDetailError('');
+  };
+
+  // 개별 체크박스 핸들러
+  const handleCheckboxChange = (id) => {
+    const newSelectedItems = new Set(selectedItems);
+    if (newSelectedItems.has(id)) {
+      newSelectedItems.delete(id);
+    } else {
+      newSelectedItems.add(id);
+    }
+    setSelectedItems(newSelectedItems);
+    
+    // 전체 선택 체크박스 상태 업데이트
+    setSelectAll(newSelectedItems.size === searchResults.length && searchResults.length > 0);
+  };
+
+  // 전체 선택 체크박스 핸들러
+  const handleSelectAllChange = () => {
+    if (selectAll) {
+      setSelectedItems(new Set());
+    } else {
+      const allIds = searchResults.map(doc => doc.id);
+      setSelectedItems(new Set(allIds));
+    }
+    setSelectAll(!selectAll);
+  };
+
+  // 선택된 항목 삭제
+  const handleDeleteSelected = async () => {
+    if (selectedItems.size === 0) {
+      alert('삭제할 문서를 선택해주세요.');
+      return;
+    }
+
+    if (!window.confirm(`선택한 ${selectedItems.size}개의 문서를 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    // TODO: 실제 삭제 API 호출
+    console.log('삭제할 문서 ID:', Array.from(selectedItems));
+    alert('문서 삭제 기능은 아직 구현되지 않았습니다.');
+    
+    // 삭제 후 선택 초기화
+    setSelectedItems(new Set());
+    setSelectAll(false);
   };
 
   return (
@@ -144,10 +211,28 @@ const Search = () => {
           </div>
         </form>
 
-        <div className="search-filters">
-          <button className="filter-button active">문서명</button>
-          <button className="filter-button">최신순</button>
-          <button className="filter-button">작성자</button>
+        <div className="search-toolbar">
+          <div className="toolbar-left">
+            {selectedItems.size > 0 && (
+              <>
+                <button 
+                  className="delete-button"
+                  onClick={handleDeleteSelected}
+                  title="선택 삭제"
+                >
+                  🗑️ 삭제
+                </button>
+                <span className="selected-count">
+                  {selectedItems.size}개 선택됨
+                </span>
+              </>
+            )}
+          </div>
+          <div className="search-filters">
+            <button className="filter-button active">문서명</button>
+            <button className="filter-button">최신순</button>
+            <button className="filter-button">작성자</button>
+          </div>
         </div>
 
         {/* 로딩 및 오류 메시지 */}
@@ -168,6 +253,13 @@ const Search = () => {
             <table>
               <thead>
                 <tr>
+                  <th className="checkbox-column">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={handleSelectAllChange}
+                    />
+                  </th>
                   <th>문서명</th>
                   <th>내/외부 구분</th>
                   <th>작성자</th>
@@ -177,7 +269,7 @@ const Search = () => {
               <tbody>
                 {searchResults.length === 0 && !isLoading && !error ? (
                   <tr>
-                    <td colSpan="4" className="no-results">
+                    <td colSpan="5" className="no-results">
                       업로드된 문서가 없습니다.
                     </td>
                   </tr>
@@ -185,18 +277,29 @@ const Search = () => {
                   searchResults.map((result) => (
                     <tr 
                       key={result.id} 
-                      onClick={() => handleDocumentClick(result.id)}
-                      style={{ cursor: 'pointer' }}
-                      className="document-row"
+                      className={`document-row ${selectedItems.has(result.id) ? 'selected' : ''}`}
                     >
-                      <td>{result.documentName}</td>
-                      <td>
+                      <td className="checkbox-column" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedItems.has(result.id)}
+                          onChange={() => handleCheckboxChange(result.id)}
+                        />
+                      </td>
+                      <td onClick={() => handleDocumentClick(result.id)}>
+                        {result.documentName}
+                      </td>
+                      <td onClick={() => handleDocumentClick(result.id)}>
                         <span className={`classification-tag ${result.classification === '내부' ? 'internal' : 'external'}`}>
                           {result.classification}
                         </span>
                       </td>
-                      <td>{result.author}</td>
-                      <td>{result.creationDate}</td>
+                      <td onClick={() => handleDocumentClick(result.id)}>
+                        {result.author}
+                      </td>
+                      <td onClick={() => handleDocumentClick(result.id)}>
+                        {result.creationDate}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -259,21 +362,32 @@ const Search = () => {
                     </div>
                   )}
                   
-                  {/* 문서 내용 표시 */}
+                  {/* 파일 다운로드 링크 */}
+                  {selectedDocument.file_path && (
+                    <div className="detail-item">
+                      <label>파일 다운로드:</label>
+                      <a 
+                        href={selectedDocument.file_path} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        style={{ 
+                          color: '#6f42c1', 
+                          textDecoration: 'none',
+                          fontWeight: '500'
+                        }}
+                      >
+                        📄 파일 다운로드
+                      </a>
+                    </div>
+                  )}
+                  
+                  {/* 문서 내용 표시 (있는 경우에만) */}
                   {selectedDocument.content && (
                     <div className="detail-item document-content">
                       <label>문서 내용:</label>
                       <div className="content-display">
                         <pre>{selectedDocument.content}</pre>
                       </div>
-                    </div>
-                  )}
-                  
-                  {/* 문서 내용이 없는 경우 */}
-                  {!selectedDocument.content && selectedDocument.error && (
-                    <div className="detail-item">
-                      <label>오류:</label>
-                      <span className="error-text">{selectedDocument.error}</span>
                     </div>
                   )}
                 </div>
@@ -286,4 +400,4 @@ const Search = () => {
   );
 };
 
-export default Search; 
+export default Search;
