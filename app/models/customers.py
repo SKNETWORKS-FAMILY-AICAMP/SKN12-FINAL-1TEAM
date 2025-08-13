@@ -16,9 +16,6 @@ class Customer(Base):
     doctor_name = Column(String)  # 담당 의사명
     contact_number = Column(String)  # 고객 연락처
     
-    # 규모 정보
-    total_patients = Column(Integer)  # 총 환자 수
-    
     # 등급 및 평가 정보
     customer_grade = Column(String)  # 고객 등급 (예: A, B, C, VIP)
     

@@ -12,10 +12,10 @@
     "sample_data": ["김철수", "1004", "대리", "1", "010-1234-5678", "3000000", "500000", "1000000", "A", "고객 관리", true, "pending"]
   },
   "customers": {
-    "description": "거래처 고객정보 테이블. 거래처명, ID, 의료기관 정보를 관리합니다. 실적자료의 거래처 정보, 고객 ID가 이 테이블에 저장됩니다. 매출실적의 기초가 되는 거래처 마스터 데이터입니다. sales_records, interaction_logs, assignment_map 테이블의 선행 테이블로 먼저 생성되어야 합니다. 주요 컬럼: customer_name(고객명, 거래처명, 기관명, 필수), address(고객 주소), doctor_name(담당 의사명), contact_number(고객 연락처), total_patients(총 환자 수), customer_grade(고객 등급 A/B/C/VIP), notes(고객 관련 특이사항), is_auto_created(자동 생성 여부), approval_status(승인 상태), is_deleted(논리적 삭제 상태). 필수 컬럼: customer_name.",
-    "columns": ["customer_name", "address", "doctor_name", "contact_number", "total_patients", "customer_grade", "notes", "is_auto_created", "approval_status", "is_deleted"],
+    "description": "거래처 고객정보 테이블. 거래처명, ID, 의료기관 정보를 관리합니다. 실적자료의 거래처 정보, 고객 ID가 이 테이블에 저장됩니다. 매출실적의 기초가 되는 거래처 마스터 데이터입니다. sales_records, interaction_logs, assignment_map 테이블의 선행 테이블로 먼저 생성되어야 합니다. 주요 컬럼: customer_name(고객명, 거래처명, 기관명, 필수), address(고객 주소), doctor_name(담당 의사명), contact_number(고객 연락처), customer_grade(고객 등급 A/B/C/VIP), notes(고객 관련 특이사항), is_auto_created(자동 생성 여부), approval_status(승인 상태), is_deleted(논리적 삭제 상태). 필수 컬럼: customer_name.",
+    "columns": ["customer_name", "address", "doctor_name", "contact_number", "customer_grade", "notes", "is_auto_created", "approval_status", "is_deleted"],
     "required_columns": ["customer_name"],
-    "sample_data": ["미라클신경과의원", "강서구 화곡동", "김의사", "02-1234-5678", "150", "A", "VIP 고객", true, "pending", false]
+    "sample_data": ["미라클신경과의원", "강서구 화곡동", "김의사", "02-1234-5678", "A", "VIP 고객", true, "pending", false]
   },
   "products": {
     "description": "제품 품목정보 테이블. 제품명, 품목명, 상품 정보를 관리합니다. 실적자료의 품목 정보, 제품명이 이 테이블에 저장됩니다. 매출실적의 기초가 되는 제품 마스터 데이터입니다. sales_records 테이블의 선행 테이블로 먼저 생성되어야 합니다. 주요 컬럼: product_name(제품명, 품목명, 상품명, 필수), description(제품 설명), category(제품 카테고리 의약품/의료기기/건강기능식품), is_active(제품 활성화 상태), is_auto_created(자동 생성 여부), approval_status(승인 상태). 필수 컬럼: product_name.",
@@ -24,10 +24,10 @@
     "sample_data": ["폭세틴", "항우울제", "의약품", true, true, "pending"]
   },
   "sales_records": {
-    "description": "매출 실적 기록 테이블. 실적자료, 매출실적, 영업실적, 판매실적 데이터를 관리합니다. 담당자별 실적, 월별 실적, 제품별 판매량, 거래처별 매출, 사용 예산을 추적합니다. 외래키 참조: employee_id는 employee_info(name/employee_number로 조회), customer_id는 customers(customer_name으로 조회), product_id는 products(product_name으로 조회, 선택). 매출 분석 및 실적 추적의 핵심 테이블입니다. 월별 데이터(202312, 202401 등)는 자동으로 sale_date로 변환됩니다. 주요 컬럼: sale_amount(매출 금액), sale_date(매출 날짜), used_budget(사용 예산, 선택), employee_id(직원 참조, 필수), customer_id(고객 참조, 필수), product_id(제품 참조, 선택). 필수 컬럼: sale_amount, sale_date, employee_id, customer_id.",
-    "columns": ["sale_amount", "sale_date", "used_budget", "employee_id", "customer_id", "product_id"],
-    "required_columns": ["sale_amount", "sale_date", "employee_id", "customer_id"],
-    "sample_data": ["5000000", "2024-01-15", "3000000", "1", "1", "1"]
+    "description": "매출 실적 기록 테이블. 실적자료, 매출실적, 영업실적, 판매실적 데이터를 관리합니다. 담당자별 실적, 월별 실적, 제품별 판매량, 거래처별 매출을 추적합니다. 외래키 참조: employee_id는 employee_info(name/employee_number로 조회), customer_id는 customers(customer_name으로 조회), product_id는 products(product_name으로 조회, 필수). 매출 분석 및 실적 추적의 핵심 테이블입니다. 월별 데이터(202312, 202401 등)는 자동으로 sale_date로 변환됩니다. 주요 컬럼: sale_amount(매출 금액), sale_date(매출 날짜), employee_id(직원 참조, 필수), customer_id(고객 참조, 필수), product_id(제품 참조, 필수). 필수 컬럼: sale_amount, sale_date, employee_id, customer_id, product_id.",
+    "columns": ["sale_amount", "sale_date", "employee_id", "customer_id", "product_id"],
+    "required_columns": ["sale_amount", "sale_date", "employee_id", "customer_id", "product_id"],
+    "sample_data": ["5000000", "2024-01-15", "1", "1", "1"]
   },
   "interaction_logs": {
     "description": "상호작용 로그 테이블. 직원과 고객 간의 상호작용 기록을 관리합니다. employee_info, customers 테이블에 의존하며, 감정 분석 및 준법 위험도 평가 결과를 포함합니다. 고객 관계 관리(CRM)에 활용됩니다. 주요 컬럼: employee_id(상호작용한 직원 ID, 필수), customer_id(상호작용한 고객 ID, 필수), interaction_type(상호작용 유형 방문/전화/이메일/미팅), summary(상호작용 요약), sentiment(감정 분석 결과 positive/negative/neutral), compliance_risk(준법 위험도 평가 low/medium/high), interacted_at(상호작용 발생 일시). 필수 컬럼: employee_id, customer_id.",
@@ -47,10 +47,10 @@
     "required_columns": [],
     "sample_data": ["1", "2024-01-01", "10000000", "1월 목표"]
   },
-  "customer_monthly_patients": {
-    "description": "거래처별 월간 환자수 관리 테이블. 거래처(병원/약국)의 월별 환자수 변동을 추적합니다. 월별 환자수, 방문자수 데이터가 포함된 문서에서 자동으로 추출됩니다. YYYYMM 형식의 월별 컬럼이나 환자수 관련 키워드가 있는 데이터에 최적화되어 있습니다. customers 테이블에 의존합니다. 주요 컬럼: customer_id(거래처 ID, customers 테이블 참조), year_month(년월, YYYY-MM 형식), patient_count(월간 환자수). 월별 환자수 패턴이나 방문자수 관련 컬럼이 있으면 자동으로 인식됩니다. 필수 컬럼: customer_id, year_month, patient_count.",
-    "columns": ["customer_id", "year_month", "patient_count"],
-    "required_columns": ["customer_id", "year_month", "patient_count"],
-    "sample_data": ["1", "2024-01", "1500"]
+  "customer_monthly_status": {
+    "description": "거래처별 월간 상태 관리 테이블. 거래처(병원/약국)의 월별 환자수와 사용 예산을 통합 관리합니다. 월별 환자수, 방문자수, 사용 예산 데이터가 포함된 문서에서 자동으로 추출됩니다. YYYYMM 형식의 월별 컬럼이나 환자수/예산 관련 키워드가 있는 데이터에 최적화되어 있습니다. customers 테이블에 의존합니다. 주요 컬럼: customer_id(거래처 ID, customers 테이블 참조), year_month(년월, YYYY-MM 형식), patient_count(월간 환자수), used_budget(월간 사용 예산). 월별 환자수 패턴이나 방문자수, 예산 관련 컬럼이 있으면 자동으로 인식됩니다. 필수 컬럼: customer_id, year_month.",
+    "columns": ["customer_id", "year_month", "patient_count", "used_budget"],
+    "required_columns": ["customer_id", "year_month"],
+    "sample_data": ["1", "2024-01", "1500", "3000000"]
   }
 } 

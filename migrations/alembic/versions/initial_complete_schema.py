@@ -72,7 +72,6 @@ def upgrade() -> None:
         sa.Column('address', sa.String(), nullable=True),
         sa.Column('doctor_name', sa.String(), nullable=True),
         sa.Column('contact_number', sa.String(), nullable=True),
-        sa.Column('total_patients', sa.Integer(), nullable=True),
         sa.Column('customer_grade', sa.String(), nullable=True),
         sa.Column('notes', sa.String(), nullable=True),
         sa.Column('is_auto_created', sa.Boolean(), server_default=sa.text('false'), nullable=True),
@@ -196,7 +195,7 @@ def upgrade() -> None:
         sa.Column('record_id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('sale_amount', sa.Numeric(15, 2), nullable=False),
         sa.Column('sale_date', sa.Date(), nullable=False),
-        sa.Column('used_budget', sa.Numeric(15, 2), nullable=True),
+        # used_budget 컬럼 제거 - customer_monthly_status로 이동
         sa.Column('employee_id', sa.Integer(), nullable=False),
         sa.Column('customer_id', sa.Integer(), nullable=False),
         sa.Column('product_id', sa.Integer(), nullable=True),
@@ -211,20 +210,21 @@ def upgrade() -> None:
     op.create_index(op.f('ix_sales_records_sale_date'), 'sales_records', ['sale_date'], unique=False)
     op.create_index(op.f('ix_sales_records_record_id'), 'sales_records', ['record_id'], unique=False)
     
-    # customer_monthly_patients 테이블 (거래처별 월간 환자수)
-    op.create_table('customer_monthly_patients',
-        sa.Column('patient_record_id', sa.Integer(), autoincrement=True, nullable=False),
+    # customer_monthly_status 테이블 (거래처별 월간 상태 - 환자수, 사용예산 등)
+    op.create_table('customer_monthly_status',
+        sa.Column('status_record_id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('customer_id', sa.Integer(), nullable=False),
         sa.Column('year_month', sa.String(), nullable=False),
         sa.Column('patient_count', sa.Integer(), nullable=False, server_default=sa.text('0')),
+        sa.Column('used_budget', sa.Numeric(15, 2), nullable=True),
         sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
         sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
         sa.ForeignKeyConstraint(['customer_id'], ['customers.customer_id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('patient_record_id'),
+        sa.PrimaryKeyConstraint('status_record_id'),
         sa.UniqueConstraint('customer_id', 'year_month', name='uq_customer_month')
     )
-    op.create_index(op.f('ix_customer_monthly_patients_customer_id'), 'customer_monthly_patients', ['customer_id'], unique=False)
-    op.create_index(op.f('ix_customer_monthly_patients_year_month'), 'customer_monthly_patients', ['year_month'], unique=False)
+    op.create_index(op.f('ix_customer_monthly_status_customer_id'), 'customer_monthly_status', ['customer_id'], unique=False)
+    op.create_index(op.f('ix_customer_monthly_status_year_month'), 'customer_monthly_status', ['year_month'], unique=False)
     
     # interaction_logs 테이블 (상호작용 기록) - 모델과 일치
     op.create_table('interaction_logs',
@@ -365,39 +365,39 @@ def upgrade() -> None:
                 sr.customer_id,
                 TO_CHAR(sr.sale_date, 'YYYY-MM') as year_month,
                 SUM(sr.sale_amount) as monthly_sales,
-                SUM(sr.used_budget) as budget_used,
                 COUNT(DISTINCT sr.sale_date) as visit_count,
                 COUNT(DISTINCT sr.record_id) as transaction_count
             FROM sales_records sr
             WHERE sr.sale_date IS NOT NULL
             GROUP BY sr.customer_id, TO_CHAR(sr.sale_date, 'YYYY-MM')
         ),
-        patient_summary AS (
+        status_summary AS (
             SELECT 
                 customer_id,
                 year_month,
-                patient_count
-            FROM customer_monthly_patients
+                patient_count,
+                used_budget as budget_used
+            FROM customer_monthly_status
         )
         SELECT 
-            ROW_NUMBER() OVER (ORDER BY c.customer_id, COALESCE(ss.year_month, ps.year_month)) as performance_id,
+            ROW_NUMBER() OVER (ORDER BY c.customer_id, COALESCE(ss.year_month, st.year_month)) as performance_id,
             c.customer_id,
             c.customer_name,
             c.customer_grade,
-            COALESCE(ss.year_month, ps.year_month) as year_month,
+            COALESCE(ss.year_month, st.year_month) as year_month,
             COALESCE(ss.monthly_sales, 0) as monthly_sales,
-            COALESCE(ss.budget_used, 0) as budget_used,
+            COALESCE(st.budget_used, 0) as budget_used,
             COALESCE(ss.visit_count, 0) as visit_count,
             COALESCE(ss.transaction_count, 0) as transaction_count,
-            COALESCE(ps.patient_count, 0) as patient_count,
+            COALESCE(st.patient_count, 0) as patient_count,
             NOW() as created_at
         FROM customers c
         LEFT JOIN sales_summary ss ON c.customer_id = ss.customer_id
-        FULL OUTER JOIN patient_summary ps 
-            ON c.customer_id = ps.customer_id 
-            AND ss.year_month = ps.year_month
+        FULL OUTER JOIN status_summary st 
+            ON c.customer_id = st.customer_id 
+            AND ss.year_month = st.year_month
         WHERE c.is_deleted = false
-            AND (ss.year_month IS NOT NULL OR ps.year_month IS NOT NULL)
+            AND (ss.year_month IS NOT NULL OR st.year_month IS NOT NULL)
     """)
     
     # Create indexes for customer performance materialized view
@@ -436,9 +436,9 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_interaction_logs_customer_id'), table_name='interaction_logs')
     op.drop_table('interaction_logs')
     
-    op.drop_index(op.f('ix_customer_monthly_patients_year_month'), table_name='customer_monthly_patients')
-    op.drop_index(op.f('ix_customer_monthly_patients_customer_id'), table_name='customer_monthly_patients')
-    op.drop_table('customer_monthly_patients')
+    op.drop_index(op.f('ix_customer_monthly_status_year_month'), table_name='customer_monthly_status')
+    op.drop_index(op.f('ix_customer_monthly_status_customer_id'), table_name='customer_monthly_status')
+    op.drop_table('customer_monthly_status')
     
     op.drop_index(op.f('ix_sales_records_record_id'), table_name='sales_records')
     op.drop_index(op.f('ix_sales_records_sale_date'), table_name='sales_records')

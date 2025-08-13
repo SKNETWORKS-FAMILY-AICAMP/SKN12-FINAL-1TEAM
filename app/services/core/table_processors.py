@@ -19,7 +19,7 @@ from app.models.document_relations import DocumentRelation
 from app.models.interaction_logs import InteractionLog
 from app.models.assignment_map import AssignmentMap
 from app.models.employee_performance import EmployeePerformance
-from app.models.customer_monthly_patients import CustomerMonthlyPatient
+from app.models.customer_monthly_status import CustomerMonthlyStatus
 from app.services.core.base_table_processor import BaseTableProcessor
 from app.services.utils.foreign_key_utils import get_customer_id, get_employee_id, get_product_id
 
@@ -358,43 +358,12 @@ class SalesRecordProcessor(BaseTableProcessor):
         if not sale_amount or not sale_date or sale_amount == 'nan' or sale_date == 'nan':
             raise ValueError(f"필수 필드 누락: sale_amount={sale_amount}, sale_date={sale_date}")
         
-        # used_budget 추출 (매핑 또는 자동 인식)
-        used_budget = None
-        if 'used_budget' in column_mapping:
-            source_col = column_mapping['used_budget']
-            if source_col in row and row[source_col] is not None:
-                used_budget = str(row[source_col]).strip()
-                logger.debug(f"사용예산 매핑으로 추출: {source_col} = {used_budget}")
         
-        if not used_budget:
-            # 자동 인식: 사용 예산 관련 컬럼 찾기
-            budget_keywords = ['사용 예산', '사용예산', '예산', '사용금액']
-            for col_name, value in row.items():
-                if any(keyword in str(col_name) for keyword in budget_keywords):
-                    if value and str(value).strip() != 'nan':
-                        try:
-                            # 숫자인지 확인
-                            test_value = str(value).replace(',', '').replace('₩', '').strip()
-                            float(test_value)  # 숫자 변환 가능한지 테스트
-                            used_budget = str(value).strip()
-                            logger.debug(f"사용 예산 컬럼 자동 인식: {col_name} → used_budget")
-                            break
-                        except ValueError:
-                            continue
-        
-        # 매출액과 사용 예산 숫자로 변환
+        # 매출액 숫자로 변환
         sale_amount_float = float(sale_amount.replace(',', '').replace('₩', '').strip())
-        used_budget_float = 0.0
         
-        if used_budget:
-            try:
-                used_budget_float = float(used_budget.replace(',', '').replace('₩', '').strip())
-            except ValueError:
-                logger.warning(f"사용 예산 값을 숫자로 변환할 수 없음: {used_budget}")
-                used_budget_float = 0.0
-        
-        # 매출과 사용 예산이 모두 0이거나 없으면 건너뛰기 (정상 케이스)
-        if sale_amount_float <= 0 and used_budget_float <= 0:
+        # 매출이 0이거나 없으면 건너뛰기 (정상 케이스)
+        if sale_amount_float <= 0:
             # 건너뛰기 신호를 위해 None 반환
             return None
         
@@ -417,16 +386,15 @@ class SalesRecordProcessor(BaseTableProcessor):
             'product_id': product_id     # 필수
         }
         
-        # used_budget이 있으면 추가
-        if used_budget_float > 0:
-            sales_data['used_budget'] = used_budget_float
-        
         # 일반 매출 기록 생성 로그 제거 - 반복적
         return SalesRecord(**sales_data)
     
     async def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
         """기존 매출 레코드 업데이트 (매출액과 사용예산만 업데이트)"""
         try:
+            update_made = False
+            update_details = []
+            
             # 매출액 추출 및 업데이트
             sale_amount = None
             if 'sale_amount' in column_mapping:
@@ -437,32 +405,26 @@ class SalesRecordProcessor(BaseTableProcessor):
             if sale_amount:
                 try:
                     sale_amount_float = float(sale_amount.replace(',', '').replace('₩', '').strip())
-                    if sale_amount_float > 0:  # 양수일 때만 업데이트
+                    existing_amount = float(existing_record.sale_amount)
+                    
+                    # 소수점 둘째자리까지 비교하여 실제 차이가 있을 때만 업데이트
+                    if sale_amount_float > 0 and abs(sale_amount_float - existing_amount) > 0.01:
+                        update_details.append(f"매출액: {existing_amount:,.0f} → {sale_amount_float:,.0f}")
+                        logger.info(f"  📝 매출액 업데이트: {existing_amount:,.0f} → {sale_amount_float:,.0f} (레코드ID: {existing_record.record_id})")
                         existing_record.sale_amount = sale_amount_float
-                        logger.debug(f"매출액 업데이트: {existing_record.sale_amount} → {sale_amount_float}")
-                except ValueError:
-                    pass
-            
-            # 사용 예산 추출 및 업데이트
-            used_budget = None
-            if 'used_budget' in column_mapping:
-                source_col = column_mapping['used_budget']
-                if source_col in row and row[source_col] is not None:
-                    used_budget = str(row[source_col]).strip()
-            
-            if used_budget:
-                try:
-                    used_budget_float = float(used_budget.replace(',', '').replace('₩', '').strip())
-                    if used_budget_float > 0:  # 양수일 때만 업데이트
-                        existing_record.used_budget = used_budget_float
-                        logger.debug(f"사용예산 업데이트: {existing_record.used_budget} → {used_budget_float}")
+                        update_made = True
                 except ValueError:
                     pass
             
             # product_id는 더 이상 업데이트하지 않음 (필수 필드이므로)
             
+            # 업데이트 내용 요약
+            if update_made and update_details:
+                logger.info(f"  ✅ 일반 매출 업데이트 완료: {', '.join(update_details)}")
+            
             # 업데이트 시각 기록
-            existing_record.updated_at = datetime.now()
+            if update_made:
+                existing_record.updated_at = datetime.now()
             
         except Exception as e:
             logger.error(f"매출 레코드 업데이트 중 오류: {e}")
@@ -620,21 +582,10 @@ class SalesRecordProcessor(BaseTableProcessor):
             for monthly_sale in monthly_sales:
                 try:
                     sale_amount = monthly_sale['sale_amount']
-                    used_budget = 0.0
                     parsed_date = self._parse_date(monthly_sale['sale_date'])
                     
-                    # 월별 사용 예산 추출 (YYYYMM_예산 형식)
-                    budget_column = f"{monthly_sale['source_column']}_예산"
-                    if budget_column in row:
-                        budget_value = row[budget_column]
-                        if budget_value and str(budget_value).strip() != 'nan':
-                            try:
-                                used_budget = float(str(budget_value).replace(',', '').strip())
-                            except ValueError:
-                                used_budget = 0.0
-                    
-                    # 매출과 사용 예산이 모두 0이거나 없으면 건너뛰기
-                    if sale_amount <= 0 and used_budget <= 0:
+                    # 매출이 0이거나 없으면 건너뛰기
+                    if sale_amount <= 0:
                         logger.debug(f"월별 데이터 - 매출과 사용 예산이 모두 0, 건너뛰기: {monthly_sale['source_column']}")
                         continue
                     
@@ -652,18 +603,39 @@ class SalesRecordProcessor(BaseTableProcessor):
                     if existing_record:
                         # 기존 레코드 업데이트 (매출액과 사용예산만)
                         update_made = False
+                        update_details = []
                         
-                        # 매출액 업데이트 (새 값이 다르면)
-                        if sale_amount > 0 and sale_amount != float(existing_record.sale_amount):
-                            logger.debug(f"매출액 업데이트: {existing_record.sale_amount} → {sale_amount} (날짜: {parsed_date}, 제품: {product_id})")
+                        # 매출액 업데이트 (새 값이 다르면 - 소수점 둘째자리까지 비교)
+                        existing_amount = float(existing_record.sale_amount)
+                        if sale_amount > 0 and abs(sale_amount - existing_amount) > 0.01:
+                            update_details.append(f"매출액: {existing_amount:,.0f} → {sale_amount:,.0f}")
+                            logger.info(f"  📝 매출액 업데이트: {existing_amount:,.0f} → {sale_amount:,.0f} (날짜: {parsed_date}, 제품: {product_id}, 고객: {customer_id})")
                             existing_record.sale_amount = sale_amount
                             update_made = True
                         
-                        # 사용 예산 업데이트
-                        if used_budget > 0 and (not existing_record.used_budget or used_budget != float(existing_record.used_budget or 0)):
-                            logger.debug(f"사용예산 업데이트: {existing_record.used_budget} → {used_budget} (날짜: {parsed_date}, 제품: {product_id})")
-                            existing_record.used_budget = used_budget
-                            update_made = True
+                        # 업데이트 내용 요약 로그
+                        if update_made:
+                            # 직원, 고객, 제품 정보 조회 (디버깅용)
+                            from app.models.employee_info import EmployeeInfo
+                            from app.models.customers import Customer
+                            from app.models.products import Product
+                            
+                            emp_result = await self.session.execute(
+                                select(EmployeeInfo).filter(EmployeeInfo.employee_info_id == employee_id)
+                            )
+                            emp = emp_result.scalar_one_or_none()
+                            
+                            cust_result = await self.session.execute(
+                                select(Customer).filter(Customer.customer_id == customer_id)
+                            )
+                            cust = cust_result.scalar_one_or_none()
+                            
+                            prod_result = await self.session.execute(
+                                select(Product).filter(Product.product_id == product_id)
+                            )
+                            prod = prod_result.scalar_one_or_none()
+                            
+                            logger.info(f"  ✅ 업데이트 완료: {emp.name if emp else 'Unknown'} | {cust.customer_name if cust else 'Unknown'} | {prod.product_name if prod else 'Unknown'} | {parsed_date} | {', '.join(update_details)}")
                         
                         if update_made:
                             updated_count += 1
@@ -677,10 +649,6 @@ class SalesRecordProcessor(BaseTableProcessor):
                             'employee_id': employee_id,  # 필수
                             'product_id': product_id     # 필수
                         }
-                        
-                        # used_budget이 있으면 추가
-                        if used_budget > 0:
-                            sales_data['used_budget'] = used_budget
                         
                         # 필수 필드 검증 (product_id 포함)
                         if sales_data.get('sale_date') and sales_data.get('sale_amount') and sales_data.get('customer_id') and sales_data.get('employee_id') and sales_data.get('product_id'):
@@ -1262,11 +1230,11 @@ class BranchProcessor(BaseTableProcessor):
                 if value is not None:
                     setattr(existing_record, db_field, value)
 
-class CustomerMonthlyPatientsProcessor(BaseTableProcessor):
-    """거래처별 월간 환자수 처리기"""
+class CustomerMonthlyStatusProcessor(BaseTableProcessor):
+    """거래처별 월간 상태 처리기 (환자수, 사용예산)"""
     
     def get_table_name(self) -> str:
-        return "customer_monthly_patients"
+        return "customer_monthly_status"
     
     def get_unit_name(self) -> str:
         return "건"
@@ -1275,7 +1243,7 @@ class CustomerMonthlyPatientsProcessor(BaseTableProcessor):
         return ["customer_id", "year_month"]
     
     async def find_existing_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """기존 월별 환자수 레코드 조회"""
+        """기존 월별 상태 레코드 조회"""
         customer_id = await self._get_customer_id(row, column_mapping)
         year_month = self._extract_year_month(row, column_mapping)
         
@@ -1283,57 +1251,64 @@ class CustomerMonthlyPatientsProcessor(BaseTableProcessor):
             return None
         
         result = await self.session.execute(
-            select(CustomerMonthlyPatient).filter(
-                CustomerMonthlyPatient.customer_id == customer_id,
-                CustomerMonthlyPatient.year_month == year_month
+            select(CustomerMonthlyStatus).filter(
+                CustomerMonthlyStatus.customer_id == customer_id,
+                CustomerMonthlyStatus.year_month == year_month
             )
         )
         return result.scalar_one_or_none()
     
     async def create_new_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """새 월별 환자수 레코드 생성"""
-        # 월별 환자수 데이터 추출 (YYYYMM 형식 컬럼들)
-        monthly_patients = self._extract_monthly_patients(row)
+        """새 월별 상태 레코드 생성 (환자수, 사용예산)"""
+        # 월별 데이터 추출 (YYYYMM 형식 컬럼들)
+        monthly_data = self._extract_monthly_data(row)
         
-        if monthly_patients:
-            # 월별 환자수가 있는 경우 개별 레코드 생성
+        if monthly_data:
+            # 월별 데이터가 있는 경우 개별 레코드 생성
             records = []
             customer_id = await self._get_customer_id(row, column_mapping)
             
             if not customer_id:
                 raise ValueError("거래처 정보를 찾을 수 없습니다")
             
-            for month_data in monthly_patients:
-                record = CustomerMonthlyPatient(
+            for month_data in monthly_data:
+                record = CustomerMonthlyStatus(
                     customer_id=customer_id,
                     year_month=month_data['year_month'],
-                    patient_count=month_data['patient_count']
+                    patient_count=month_data.get('patient_count', 0),
+                    used_budget=month_data.get('used_budget')
                 )
                 records.append(record)
-                logger.info(f"환자수 생성: 거래처 {customer_id}, {month_data['year_month']}, 환자수: {month_data['patient_count']:,}")
+                logger.info(f"월별 상태 생성: 거래처 {customer_id}, {month_data['year_month']}, 환자수: {month_data.get('patient_count', 0):,}, 예산: {month_data.get('used_budget', 0):,.0f}")
             
             return records if records else None
         
         else:
-            # 단일 환자수 데이터 처리
+            # 단일 데이터 처리
             customer_id = await self._get_customer_id(row, column_mapping)
             year_month = self._extract_year_month(row, column_mapping)
             patient_count = self._extract_patient_count(row, column_mapping)
+            used_budget = self._extract_used_budget(row, column_mapping)
             
             if not customer_id or not year_month:
                 raise ValueError(f"필수 필드 누락: customer_id={customer_id}, year_month={year_month}")
             
-            return CustomerMonthlyPatient(
+            return CustomerMonthlyStatus(
                 customer_id=customer_id,
                 year_month=year_month,
-                patient_count=patient_count
+                patient_count=patient_count,
+                used_budget=used_budget
             )
     
     async def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """기존 환자수 레코드 업데이트"""
+        """기존 상태 레코드 업데이트"""
         patient_count = self._extract_patient_count(row, column_mapping)
         if patient_count is not None:
             existing_record.patient_count = patient_count
+        
+        used_budget = self._extract_used_budget(row, column_mapping)
+        if used_budget is not None:
+            existing_record.used_budget = used_budget
     
     async def _get_customer_id(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[int]:
         """거래처 ID 조회"""
@@ -1367,18 +1342,55 @@ class CustomerMonthlyPatientsProcessor(BaseTableProcessor):
     
     def _extract_year_month(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[str]:
         """년월 정보 추출 (YYYY-MM 형식으로 변환)"""
+        from datetime import datetime
+        
         # 매핑된 year_month 필드 확인
         if 'year_month' in column_mapping:
             value = row.get(column_mapping['year_month'])
             if value:
-                # YYYYMM을 YYYY-MM으로 변환
                 value_str = str(value).strip()
+                
+                # YYYYMM 형식
                 if re.match(r'^\d{6}$', value_str):
                     return f"{value_str[:4]}-{value_str[4:6]}"
+                
+                # YYYY-MM 형식
                 elif re.match(r'^\d{4}-\d{2}$', value_str):
                     return value_str
+                
+                # YYYY/MM 형식
+                elif re.match(r'^\d{4}/\d{2}$', value_str):
+                    return value_str.replace('/', '-')
+                
+                # YYYY.MM 형식
+                elif re.match(r'^\d{4}\.\d{2}$', value_str):
+                    return value_str.replace('.', '-')
+                
+                # YYYY년 MM월 형식
+                elif re.match(r'^\d{4}년\s*\d{1,2}월$', value_str):
+                    year = re.search(r'(\d{4})년', value_str).group(1)
+                    month = re.search(r'(\d{1,2})월', value_str).group(1).zfill(2)
+                    return f"{year}-{month}"
+                
+                # MM월 형식 (현재 년도 사용)
+                elif re.match(r'^\d{1,2}월$', value_str):
+                    month = re.search(r'(\d{1,2})월', value_str).group(1).zfill(2)
+                    current_year = datetime.now().year
+                    return f"{current_year}-{month}"
+                
+                # 날짜 형식 (YYYY-MM-DD 등) - 년월만 추출
+                try:
+                    # 다양한 날짜 형식 시도
+                    for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d', '%Y%m%d']:
+                        try:
+                            date_obj = datetime.strptime(value_str[:10] if len(value_str) >= 10 else value_str, fmt)
+                            return f"{date_obj.year:04d}-{date_obj.month:02d}"
+                        except:
+                            continue
+                except:
+                    pass
         
-        # 월별 컬럼이 있는지 확인
+        # 월별 컬럼이 있는지 확인 (YYYYMM 형식)
         for col_name in row.keys():
             col_str = str(col_name).strip()
             if re.match(r'^\d{6}$', col_str):  # YYYYMM 형식
@@ -1397,8 +1409,73 @@ class CustomerMonthlyPatientsProcessor(BaseTableProcessor):
                     pass
         return 0
     
+    def _extract_used_budget(self, row: Dict[str, Any], column_mapping: Dict[str, str]) -> Optional[float]:
+        """사용예산 추출"""
+        if 'used_budget' in column_mapping:
+            value = row.get(column_mapping['used_budget'])
+            if value:
+                try:
+                    return float(str(value).replace(',', '').replace('₩', '').replace('원', ''))
+                except:
+                    pass
+        return None
+    
+    def _extract_monthly_data(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """월별 상태 데이터 추출 (환자수, 사용예산)"""
+        monthly_data = {}
+        
+        # 월별 컬럼 처리
+        for col_name, value in row.items():
+            col_str = str(col_name).strip()
+            
+            # YYYYMM_환자수 형식
+            if '환자' in col_str or '방문' in col_str:
+                month_match = re.search(r'(\d{6})', col_str)
+                if month_match:
+                    month_str = month_match.group(1)
+                    year_month = f"{month_str[:4]}-{month_str[4:6]}"
+                    
+                    if year_month not in monthly_data:
+                        monthly_data[year_month] = {}
+                    
+                    if value and str(value) not in ['', 'nan', 'None']:
+                        try:
+                            patient_count = int(float(str(value).replace(',', '').replace('명', '')))
+                            monthly_data[year_month]['patient_count'] = patient_count
+                        except:
+                            pass
+            
+            # YYYYMM_예산 형식
+            elif '예산' in col_str or '사용' in col_str:
+                month_match = re.search(r'(\d{6})', col_str)
+                if month_match:
+                    month_str = month_match.group(1)
+                    year_month = f"{month_str[:4]}-{month_str[4:6]}"
+                    
+                    if year_month not in monthly_data:
+                        monthly_data[year_month] = {}
+                    
+                    if value and str(value) not in ['', 'nan', 'None']:
+                        try:
+                            used_budget = float(str(value).replace(',', '').replace('₩', '').replace('원', ''))
+                            monthly_data[year_month]['used_budget'] = used_budget
+                        except:
+                            pass
+        
+        # 결과 리스트로 변환
+        result = []
+        for year_month, data in monthly_data.items():
+            if data:  # 데이터가 있는 경우만
+                result.append({
+                    'year_month': year_month,
+                    'patient_count': data.get('patient_count', 0),
+                    'used_budget': data.get('used_budget')
+                })
+        
+        return result
+    
     def _extract_monthly_patients(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """월별 환자수 데이터 추출 (YYYYMM 형식 컬럼들)"""
+        """월별 환자수 데이터 추출 (YYYYMM 형식 컬럼들) - 하위 호환성용"""
         monthly_patients = []
         
         for col_name, value in row.items():
@@ -1459,7 +1536,7 @@ def get_table_processor(table_name: str, session: AsyncSession) -> BaseTableProc
         'assignment_map': AssignmentMapProcessor,
         'branches': BranchProcessor,
         'employee_performance': EmployeePerformanceProcessor,  # 직원 실적 목표 처리기
-        'customer_monthly_patients': CustomerMonthlyPatientsProcessor,  # 거래처별 월간 환자수 처리기
+        'customer_monthly_status': CustomerMonthlyStatusProcessor,  # 거래처별 월간 상태 처리기
     }
     
     processor_class = processors.get(table_name)
