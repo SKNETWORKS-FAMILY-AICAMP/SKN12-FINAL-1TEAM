@@ -237,6 +237,7 @@ class SalesRecordProcessor(BaseTableProcessor):
     def __init__(self, session: AsyncSession):
         super().__init__(session)
         self.total_records_created = 0  # 전체 배치에서 생성된 총 레코드 수
+        self.total_records_updated = 0  # 전체 배치에서 업데이트된 총 레코드 수
     
     def get_table_name(self) -> str:
         return "sales_records"
@@ -248,7 +249,7 @@ class SalesRecordProcessor(BaseTableProcessor):
         return ["sale_amount", "sale_date"]
     
     async def find_existing_record(self, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """직원ID + 고객ID + 날짜로 기존 매출 레코드 조회"""
+        """직원ID + 고객ID + 제품ID + 날짜로 기존 매출 레코드 조회"""
         try:
             # 날짜 추출
             sale_date = None
@@ -269,22 +270,24 @@ class SalesRecordProcessor(BaseTableProcessor):
             if not sale_date:
                 return None
             
-            # 직원ID, 고객ID 해결
+            # 직원ID, 고객ID, 제품ID 해결
             try:
                 employee_id = await self._get_or_create_employee_id(row, column_mapping)
                 customer_id = await self._get_or_create_customer_id(row, column_mapping)
+                product_id = await self._get_or_create_product_id(row, column_mapping)
                 parsed_date = self._parse_date(sale_date)
                 
-                if not employee_id or not customer_id or not parsed_date:
+                # 제품ID가 없으면 조회하지 않음 (저장도 안 할 것이므로)
+                if not employee_id or not customer_id or not product_id or not parsed_date:
                     return None
                 
-                # 동일한 직원+고객+날짜 조합의 기존 레코드 조회
+                # 동일한 직원+고객+제품+날짜 조합의 기존 레코드 조회
                 result = await self.session.execute(
                     select(SalesRecord).filter(
                         SalesRecord.employee_id == employee_id,
                         SalesRecord.customer_id == customer_id,
-                        SalesRecord.sale_date == parsed_date,
-                        SalesRecord.is_deleted == False
+                        SalesRecord.product_id == product_id,
+                        SalesRecord.sale_date == parsed_date
                     )
                 )
                 return result.scalar_one_or_none()
@@ -400,28 +403,29 @@ class SalesRecordProcessor(BaseTableProcessor):
         employee_id = await self._get_or_create_employee_id(row, column_mapping)
         product_id = await self._get_or_create_product_id(row, column_mapping)
         
-        # 매출 기록 생성 (employee_id와 customer_id는 필수)
+        # 제품 정보가 없으면 건너뛰기
+        if not product_id:
+            logger.warning(f"제품 정보가 없어 매출 데이터를 건너뜁니다. (직원: {row.get(column_mapping.get('name'))}, 고객: {row.get(column_mapping.get('customer_name'))}, 날짜: {sale_date})")
+            return None
+        
+        # 매출 기록 생성 (employee_id, customer_id, product_id 모두 필수)
         sales_data = {
             'sale_amount': sale_amount_float,
             'sale_date': self._parse_date(sale_date),
             'customer_id': customer_id,  # 필수
             'employee_id': employee_id,  # 필수
-            'product_id': product_id
+            'product_id': product_id     # 필수
         }
         
         # used_budget이 있으면 추가
         if used_budget_float > 0:
             sales_data['used_budget'] = used_budget_float
         
-        # product_id만 None이 아닌 경우에만 포함
-        if sales_data['product_id'] is None:
-            del sales_data['product_id']
-        
         # 일반 매출 기록 생성 로그 제거 - 반복적
         return SalesRecord(**sales_data)
     
     async def update_existing_record(self, existing_record, row: Dict[str, Any], column_mapping: Dict[str, str]):
-        """기존 매출 레코드 업데이트 (새 값이 유효하면 덮어쓰기, 0/None이면 기존 값 유지)"""
+        """기존 매출 레코드 업데이트 (매출액과 사용예산만 업데이트)"""
         try:
             # 매출액 추출 및 업데이트
             sale_amount = None
@@ -455,12 +459,7 @@ class SalesRecordProcessor(BaseTableProcessor):
                 except ValueError:
                     pass
             
-            # product_id 추출 및 업데이트 (기존에 없을 때만 추가)
-            if not existing_record.product_id:
-                product_id = await self._get_or_create_product_id(row, column_mapping)
-                if product_id:
-                    existing_record.product_id = product_id
-                    logger.debug(f"product_id 추가: None → {product_id}")
+            # product_id는 더 이상 업데이트하지 않음 (필수 필드이므로)
             
             # 업데이트 시각 기록
             existing_record.updated_at = datetime.now()
@@ -474,12 +473,17 @@ class SalesRecordProcessor(BaseTableProcessor):
         # 부모 클래스의 process_batch 호출
         result = await super().process_batch(table_data, column_mapping, document_id, uploader_id)
         
-        # 총 생성된 레코드 수 로그
-        if self.total_records_created > 0:
-            logger.info(f"📊 sales_records 총 결과: {len(table_data)}행에서 {self.total_records_created}건 생성")
+        # 총 생성/업데이트된 레코드 수 로그
+        if self.total_records_created > 0 or self.total_records_updated > 0:
+            logger.info(f"📊 sales_records 총 결과: {len(table_data)}행에서 {self.total_records_created}건 생성, {self.total_records_updated}건 업데이트")
         
         # 결과에 총 레코드 수 추가
         result['total_records_created'] = self.total_records_created
+        result['total_records_updated'] = self.total_records_updated
+        
+        # 업데이트 카운트 반영
+        if self.total_records_updated > 0:
+            result['updated_count'] = self.total_records_updated
         
         return result
     
@@ -590,8 +594,11 @@ class SalesRecordProcessor(BaseTableProcessor):
         return monthly_sales
     
     async def _create_monthly_sales_records(self, row: Dict[str, Any], column_mapping: Dict[str, Any], monthly_sales: List[Dict[str, Any]]) -> List[SalesRecord]:
-        """월별 매출 데이터를 개별 매출 기록으로 변환"""
+        """월별 매출 데이터를 개별 매출 기록으로 변환 (기존 레코드 확인 및 업데이트 포함)"""
         sales_records = []
+        updated_count = 0
+        created_count = 0
+        skipped_count = 0
         
         if not monthly_sales:
             logger.warning("월별 매출 데이터가 없습니다.")
@@ -603,12 +610,18 @@ class SalesRecordProcessor(BaseTableProcessor):
             employee_id = await self._get_or_create_employee_id(row, column_mapping)
             product_id = await self._get_or_create_product_id(row, column_mapping)
             
+            # 제품 정보가 없으면 건너뛰기
+            if not product_id:
+                logger.warning(f"제품 정보가 없어 월별 매출 데이터를 건너뜁니다. (직원: {row.get(column_mapping.get('name'))}, 고객: {row.get(column_mapping.get('customer_name'))})")
+                return []
+            
             # 외래키 해결 완료 로그 제거 - 반복적
             
             for monthly_sale in monthly_sales:
                 try:
                     sale_amount = monthly_sale['sale_amount']
                     used_budget = 0.0
+                    parsed_date = self._parse_date(monthly_sale['sale_date'])
                     
                     # 월별 사용 예산 추출 (YYYYMM_예산 형식)
                     budget_column = f"{monthly_sale['source_column']}_예산"
@@ -625,43 +638,72 @@ class SalesRecordProcessor(BaseTableProcessor):
                         logger.debug(f"월별 데이터 - 매출과 사용 예산이 모두 0, 건너뛰기: {monthly_sale['source_column']}")
                         continue
                     
-                    sales_data = {
-                        'sale_amount': sale_amount,
-                        'sale_date': self._parse_date(monthly_sale['sale_date']),
-                        'customer_id': customer_id,  # 필수
-                        'employee_id': employee_id,  # 필수
-                        'product_id': product_id
-                    }
+                    # 기존 레코드 확인 (직원+고객+제품+날짜 조합)
+                    existing_result = await self.session.execute(
+                        select(SalesRecord).filter(
+                            SalesRecord.employee_id == employee_id,
+                            SalesRecord.customer_id == customer_id,
+                            SalesRecord.product_id == product_id,
+                            SalesRecord.sale_date == parsed_date
+                        )
+                    )
+                    existing_record = existing_result.scalar_one_or_none()
                     
-                    # used_budget이 있으면 추가
-                    if used_budget > 0:
-                        sales_data['used_budget'] = used_budget
-                    
-                    # product_id만 None이 아닌 경우에만 포함
-                    if sales_data['product_id'] is None:
-                        del sales_data['product_id']
-                    
-                    # 필수 필드 검증
-                    if sales_data.get('sale_date') and sales_data.get('sale_amount') and sales_data.get('customer_id') and sales_data.get('employee_id'):
-                        record = SalesRecord(**sales_data)
-                        sales_records.append(record)
-                        self.total_records_created += 1  # 총 레코드 수 증가
+                    if existing_record:
+                        # 기존 레코드 업데이트 (매출액과 사용예산만)
+                        update_made = False
                         
-                        # 개별 레코드 생성 로그 제거 - 반복적
+                        # 매출액 업데이트 (새 값이 다르면)
+                        if sale_amount > 0 and sale_amount != float(existing_record.sale_amount):
+                            logger.debug(f"매출액 업데이트: {existing_record.sale_amount} → {sale_amount} (날짜: {parsed_date}, 제품: {product_id})")
+                            existing_record.sale_amount = sale_amount
+                            update_made = True
+                        
+                        # 사용 예산 업데이트
+                        if used_budget > 0 and (not existing_record.used_budget or used_budget != float(existing_record.used_budget or 0)):
+                            logger.debug(f"사용예산 업데이트: {existing_record.used_budget} → {used_budget} (날짜: {parsed_date}, 제품: {product_id})")
+                            existing_record.used_budget = used_budget
+                            update_made = True
+                        
+                        if update_made:
+                            updated_count += 1
+                            self.total_records_updated += 1  # 전체 업데이트 카운트 증가
                     else:
-                        logger.warning(f"필수 필드 누락 - 건너뜀: {sales_data}")
+                        # 새 레코드 생성 (product_id 필수)
+                        sales_data = {
+                            'sale_amount': sale_amount,
+                            'sale_date': parsed_date,
+                            'customer_id': customer_id,  # 필수
+                            'employee_id': employee_id,  # 필수
+                            'product_id': product_id     # 필수
+                        }
+                        
+                        # used_budget이 있으면 추가
+                        if used_budget > 0:
+                            sales_data['used_budget'] = used_budget
+                        
+                        # 필수 필드 검증 (product_id 포함)
+                        if sales_data.get('sale_date') and sales_data.get('sale_amount') and sales_data.get('customer_id') and sales_data.get('employee_id') and sales_data.get('product_id'):
+                            record = SalesRecord(**sales_data)
+                            sales_records.append(record)
+                            self.total_records_created += 1  # 총 레코드 수 증가
+                            created_count += 1
+                            
+                            # 개별 레코드 생성 로그 제거 - 반복적
+                        else:
+                            logger.warning(f"필수 필드 누락 - 건너뜀: {sales_data}")
                         
                 except Exception as e:
-                    logger.error(f"월별 매출 레코드 생성 실패: {monthly_sale}, 오류: {e}")
+                    logger.error(f"월별 매출 레코드 처리 실패: {monthly_sale}, 오류: {e}")
                     continue
             
-            if sales_records:
-                logger.debug(f"{len(sales_records)}개 월별 매출 레코드 생성")
+            if created_count > 0 or updated_count > 0:
+                logger.info(f"월별 매출 처리 완료: {created_count}개 생성, {updated_count}개 업데이트")
             
             return sales_records
             
         except Exception as e:
-            logger.error(f"월별 매출 레코드 생성 중 전체 오류: {e}")
+            logger.error(f"월별 매출 레코드 처리 중 전체 오류: {e}")
             return []
     
     def _parse_date(self, date_str: str):
