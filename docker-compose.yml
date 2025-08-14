@@ -24,14 +24,20 @@ services:
       timeout: 3s
       retries: 3
 
-  # Frontend (포트 3000 -> 80)
+  # Frontend (개발 모드 - 포트 3000)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: narutalk-frontend
     ports:
-      - "3000:80"  # 호스트 3000 -> 컨테이너 80 (nginx)
+      - "3000:3000"  # 개발 서버 포트
+    volumes:
+      - ./frontend/src:/app/src  # 소스 코드 마운트로 실시간 반영
+      - ./frontend/public:/app/public  # public 폴더도 마운트
+    environment:
+      - REACT_APP_API_URL=http://backend:8000  # API URL 설정
+      - WDS_SOCKET_PORT=3000  # WebSocket 포트 설정
     depends_on:
       - backend
     networks:

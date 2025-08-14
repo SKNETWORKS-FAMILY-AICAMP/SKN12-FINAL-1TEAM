@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { registerEmployee, getEmployees, getEmployeeInfo, uploadDocument } from '../services/api';
+import { registerEmployee, getEmployeeInfo, uploadDocument } from '../services/api';
 import './Admin.css';
 
 const Admin = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState('employees');
   const [employees, setEmployees] = useState([]);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [newEmployee, setNewEmployee] = useState({ 
     name: '', 
     email: '', 
@@ -13,7 +15,7 @@ const Admin = ({ currentUser }) => {
     team: '',
     role: 'user'
   });
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploadedFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [documentTitle, setDocumentTitle] = useState('');
@@ -27,6 +29,9 @@ const Admin = ({ currentUser }) => {
   const fetchEmployees = async () => {
     try {
       const employeeInfoData = await getEmployeeInfo();
+      console.log('직원 정보 데이터:', employeeInfoData); // 디버깅용
+      
+      // 관리자는 모든 정보를 볼 수 있으므로 필터 제거
       const formattedEmployees = employeeInfoData
         .map(emp => ({
           id: emp.employee_info_id,
@@ -35,7 +40,16 @@ const Admin = ({ currentUser }) => {
           branch_name: emp.branch_name || '-',
           headquarters: emp.headquarters || '-',
           department: emp.department || '-',
-          hasAccount: emp.employee_id ? '✓' : '✗'  // 계정 유무
+          hasAccount: emp.employee_id ? '✓' : '✗',  // 계정 유무
+          // 상세 정보도 저장
+          employee_number: emp.employee_number || '-',
+          contact_number: emp.contact_number || '-',
+          base_salary: emp.base_salary || 0,
+          incentive_pay: emp.incentive_pay || 0,
+          latest_evaluation: emp.latest_evaluation || '-',
+          responsibilities: emp.responsibilities || '-',
+          approval_status: emp.approval_status,
+          created_at: emp.created_at
         }));
       setEmployees(formattedEmployees);
     } catch (error) {
@@ -62,7 +76,7 @@ const Admin = ({ currentUser }) => {
         role: newEmployee.role
       };
 
-      const response = await registerEmployee(employeeData);
+      await registerEmployee(employeeData);
       
       // 폼 초기화
       setNewEmployee({ 
@@ -96,6 +110,16 @@ const Admin = ({ currentUser }) => {
       const fileNames = files.map(file => file.name).join(', ');
       setMessage(`✅ ${files.length}개의 파일이 선택되었습니다: ${fileNames}`);
     }
+  };
+
+  const handleEmployeeClick = (employee) => {
+    setSelectedEmployee(employee);
+    setShowEmployeeModal(true);
+  };
+
+  const closeEmployeeModal = () => {
+    setShowEmployeeModal(false);
+    setSelectedEmployee(null);
   };
 
   const handleUpload = async () => {
@@ -243,7 +267,7 @@ const Admin = ({ currentUser }) => {
             </thead>
             <tbody>
               {employees.map((employee) => (
-                <tr key={employee.id}>
+                <tr key={employee.id} onClick={() => handleEmployeeClick(employee)} style={{ cursor: 'pointer' }}>
                   <td>{employee.name}</td>
                   <td>{employee.position}</td>
                   <td>{employee.branch_name}</td>
@@ -258,6 +282,110 @@ const Admin = ({ currentUser }) => {
           </table>
         </div>
       </div>
+
+      {/* 직원 상세 정보 모달 */}
+      {showEmployeeModal && selectedEmployee && (
+        <div className="modal-overlay" onClick={closeEmployeeModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>직원 상세 정보</h2>
+              <button className="modal-close" onClick={closeEmployeeModal}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="detail-section">
+                <h3>기본 정보</h3>
+                <div className="detail-row">
+                  <span className="detail-label">이름:</span>
+                  <span className="detail-value">{selectedEmployee.name}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">사번:</span>
+                  <span className="detail-value">{selectedEmployee.employee_number}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">직급:</span>
+                  <span className="detail-value">{selectedEmployee.position}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">연락처:</span>
+                  <span className="detail-value">{selectedEmployee.contact_number}</span>
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>조직 정보</h3>
+                <div className="detail-row">
+                  <span className="detail-label">지점:</span>
+                  <span className="detail-value">{selectedEmployee.branch_name}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">본부:</span>
+                  <span className="detail-value">{selectedEmployee.headquarters}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">부서:</span>
+                  <span className="detail-value">{selectedEmployee.department}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">담당업무:</span>
+                  <span className="detail-value">{selectedEmployee.responsibilities}</span>
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>급여 및 평가</h3>
+                <div className="detail-row">
+                  <span className="detail-label">기본급:</span>
+                  <span className="detail-value">
+                    {selectedEmployee.base_salary ? 
+                      `₩${selectedEmployee.base_salary.toLocaleString()}` : '-'}
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">인센티브:</span>
+                  <span className="detail-value">
+                    {selectedEmployee.incentive_pay ? 
+                      `₩${selectedEmployee.incentive_pay.toLocaleString()}` : '-'}
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">최근 평가:</span>
+                  <span className="detail-value">{selectedEmployee.latest_evaluation}</span>
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>계정 상태</h3>
+                <div className="detail-row">
+                  <span className="detail-label">계정 유무:</span>
+                  <span className="detail-value" style={{ 
+                    fontWeight: 'bold', 
+                    color: selectedEmployee.hasAccount === '✓' ? 'green' : 'red' 
+                  }}>
+                    {selectedEmployee.hasAccount === '✓' ? '계정 있음' : '계정 없음'}
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">승인 상태:</span>
+                  <span className="detail-value">
+                    {selectedEmployee.approval_status === 'approved' ? '승인됨' : 
+                     selectedEmployee.approval_status === 'pending' ? '대기중' : '거부됨'}
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">등록일:</span>
+                  <span className="detail-value">
+                    {new Date(selectedEmployee.created_at).toLocaleDateString('ko-KR')}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-close" onClick={closeEmployeeModal}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
