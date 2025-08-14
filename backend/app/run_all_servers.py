@@ -26,6 +26,7 @@ if __name__ == "__main__":
     print("1. Agent Server: http://localhost:8000")
     print("   - Docs Agent API: /api/v1/docs/*")
     print("   - Router Agent API: /api/v1/*")
+    print("   - Employee Agent API: /api/employee/*")
     print("-"*60)
     print("2. Main Server: http://localhost:8010")
     print("   - User API: /user/*")

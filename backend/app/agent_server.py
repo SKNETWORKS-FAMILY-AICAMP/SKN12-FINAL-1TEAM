@@ -68,6 +68,14 @@ try:
 except Exception as e:
     print(f"[ERROR] Failed to import docs_agent_api: {e}")
 
+# Employee Agent API 임포트
+try:
+    from app.api.employee_agent_api import router as employee_router
+    app.include_router(employee_router, prefix="/api/employee")
+    print("[OK] Employee agent API registered at /api/employee")
+except Exception as e:
+    print(f"[ERROR] Failed to import employee_agent_api: {e}")
+
 # 헬스 체크
 @app.get("/health")
 def health():

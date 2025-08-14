@@ -52,6 +52,9 @@ except Exception as e:
     print(f"[WARNING] Failed to import employee_router: {e}")
     employee_router = None
 
+# Employee Agent는 별도 서버(포트 8000)에서 실행
+# employee_agent_server.py 참조
+
 # Docs Agent 라우터 추가
 try:
     from app.api.docs_agent_api import router as docs_router
@@ -102,6 +105,8 @@ if admin_router:
 if employee_router:
     app.include_router(employee_router)  # prefix는 라우터 내부에서 /api/employee로 설정됨
     print("[OK] Employee router registered at /api/employee")
+
+# Employee Agent는 별도 서버(포트 8000)에서 실행됨
 
 # docs_agent 라우터 등록
 if docs_router:
