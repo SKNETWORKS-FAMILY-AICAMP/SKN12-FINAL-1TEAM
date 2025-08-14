@@ -1011,10 +1011,10 @@ class CreateDocumentAgent:
         violation = state.get("violation", "")
         
         if self.api_mode:
-            # API 모드에서는 규정 위반 발견 시 즉시 종료
+            # API 모드에서는 규정 위반이 있어도 파싱을 계속 진행
             if violation != "OK":
-                print(f"[ERROR] 규정 위반이 발견되어 처리를 중단합니다 (API 모드)")
-                return "inform_violation"
+                print(f"[WARNING] 규정 위반 발견 - 파싱은 계속 진행 (API 모드)")
+                return "parse_user_input"  # 파싱 진행
             else:
                 print(f"[SUCCESS] 규정 위반 없음 - parse_user_input으로 이동")
                 return "parse_user_input"

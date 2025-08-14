@@ -353,12 +353,20 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
                     response.response += "✅ 템플릿 양식이 그대로 유지되면서 플레이스홀더만 치환되었습니다."
                     
                 elif filled_data:
-                    # 데이터는 있지만 파일 생성 실패
-                    response.response = "문서 분석이 완료되었지만 파일 생성에 실패했습니다.\n\n"
-                    response.response += "**분석된 내용:**\n"
-                    for key, value in filled_data.items():
-                        if value:
-                            response.response += f"• {key}: {value}\n"
+                    # 규정 위반 확인
+                    violation = result.get("violation") or (result_data.get("violation") if isinstance(result_data, dict) else None)
+                    violation_blocked = result.get("violation_blocked") or (result_data.get("violation_blocked") if isinstance(result_data, dict) else False)
+                    
+                    if violation and violation != "OK":
+                        # 규정 위반으로 파일 생성 차단
+                        response.response = f"[위반 내용]\n{violation}"
+                    else:
+                        # 다른 이유로 파일 생성 실패
+                        response.response = "문서 분석이 완료되었지만 파일 생성에 실패했습니다.\n\n"
+                        response.response += "**분석된 내용:**\n"
+                        for key, value in filled_data.items():
+                            if value:
+                                response.response += f"• {key}: {value}\n"
                 else:
                     response.response = "처리가 완료되었습니다."
                 
