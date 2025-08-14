@@ -95,9 +95,16 @@ export const registerEmployee = async (employeeData) => {
   });
 };
 
-// 직원 리스트 조회
+// 직원 리스트 조회 (계정 정보)
 export const getEmployees = async () => {
   return await apiRequest('/user/employees/all', {
+    method: 'GET',
+  });
+};
+
+// 직원 정보 리스트 조회 (인사 정보)
+export const getEmployeeInfo = async () => {
+  return await apiRequest('/employee-info', {
     method: 'GET',
   });
 };
@@ -110,8 +117,15 @@ export const uploadDocument = async (file, docTitle) => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('doc_title', docTitle);
-  formData.append('uploader_id', currentUser.employee_id);
+  formData.append('uploader_id', String(currentUser.employee_id));
   // version 파라미터는 백엔드에서 선택사항이므로 제거
+  
+  console.log('📤 Upload request:', {
+    doc_title: docTitle,
+    uploader_id: currentUser.employee_id,
+    file_name: file.name,
+    file_size: file.size
+  });
   
   return await apiRequest('/documents/upload', {
     method: 'POST',

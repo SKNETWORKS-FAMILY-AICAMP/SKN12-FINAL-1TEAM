@@ -1,9 +1,12 @@
 """
 에이전트 전용 FastAPI 서버 (포트 8000)
 docs_agent, router_agent 등 에이전트 API를 제공합니다.
+8010 포트의 database API (user, admin, documents)를 프록시합니다.
 """
 import sys
 from pathlib import Path
+import httpx
+from fastapi import Request, Response
 
 # 경로 설정
 current_file = Path(__file__).resolve()
@@ -93,6 +96,76 @@ def get_api_routes():
             })
     return {"routes": routes}
 
+# Database API 프록시 (8010 포트로 전달)
+# user, admin, documents 등의 요청을 database API로 프록시
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+async def proxy_to_database(path: str, request: Request):
+    """
+    /user/*, /admin/*, /documents/* 등의 요청을 
+    fastapi-app:8000 (database API)로 프록시합니다.
+    """
+    # API 요청이 아닌 경우만 프록시 (api로 시작하지 않는 경로)
+    if not path.startswith("api/") and not path in ["health", "api-routes", "docs", "openapi.json", "redoc"]:
+        # Database API URL 구성
+        database_url = f"http://fastapi-app:8000/{path}"
+        
+        # 디버깅용 로그
+        print(f"[PROXY] Path: {path}")
+        print(f"[PROXY] Method: {request.method}")
+        print(f"[PROXY] Headers: {dict(request.headers)}")
+        
+        # 요청 본문 읽기
+        body = await request.body()
+        print(f"[PROXY] Body length: {len(body)}")
+        
+        # 프록시하지 말아야 할 헤더들 필터링
+        skip_headers = ['host', 'content-length', 'connection']
+        filtered_headers = {
+            k: v for k, v in request.headers.items() 
+            if k.lower() not in skip_headers
+        }
+        
+        # httpx 클라이언트로 프록시 요청 (타임아웃 30초로 증가)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            try:
+                # 원본 요청을 그대로 전달
+                response = await client.request(
+                    method=request.method,
+                    url=database_url,
+                    headers=filtered_headers,
+                    content=body,
+                    params=dict(request.query_params)
+                )
+                
+                # 응답 반환
+                return Response(
+                    content=response.content,
+                    status_code=response.status_code,
+                    headers=dict(response.headers)
+                )
+            except httpx.ConnectError:
+                return Response(
+                    content=b'{"detail": "Database API service is not available"}',
+                    status_code=503,
+                    headers={"content-type": "application/json"}
+                )
+            except Exception as e:
+                import traceback
+                error_detail = f"Proxy error: {str(e)}\n{traceback.format_exc()}"
+                print(f"[PROXY ERROR] {error_detail}")
+                return Response(
+                    content=f'{{"detail": "Proxy error: {str(e)}"}}'.encode(),
+                    status_code=500,
+                    headers={"content-type": "application/json"}
+                )
+    
+    # API 경로는 404 반환 (위의 라우터들이 처리하지 못한 경우)
+    return Response(
+        content=b'{"detail": "Not Found"}',
+        status_code=404,
+        headers={"content-type": "application/json"}
+    )
+
 # 메인 실행
 if __name__ == "__main__":
     import uvicorn
@@ -106,9 +179,9 @@ if __name__ == "__main__":
     print("="*60 + "\n")
     
     uvicorn.run(
-        app,
+        "app.agent_server:app",
         host="0.0.0.0",
         port=8000,
-        reload=False,
+        reload=True,  # 핫리로드 활성화
         log_level="info"
     )

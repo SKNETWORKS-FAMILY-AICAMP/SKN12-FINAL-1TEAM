@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Backend Agent Server (포트 8000)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: narutalk-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app  # 코드 마운트로 실시간 반영
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PYTHONUNBUFFERED=1
+    networks:
+      - narutalk-network
+      - docker_app-network  # database 네트워크 연결
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Frontend (포트 3000 -> 80)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: narutalk-frontend
+    ports:
+      - "3000:80"  # 호스트 3000 -> 컨테이너 80 (nginx)
+    depends_on:
+      - backend
+    networks:
+      - narutalk-network
+    restart: unless-stopped
+
+networks:
+  narutalk-network:
+    driver: bridge
+  docker_app-network:
+    external: true

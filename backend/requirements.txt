@@ -1,0 +1,38 @@
+# FastAPI 및 서버
+fastapi
+uvicorn
+python-dotenv
+
+# LangChain & LangGraph (AI Agent)
+langchain
+langchain-community
+langchain-core
+langchain-openai
+langgraph
+langgraph-checkpoint
+
+# OpenAI API
+openai
+
+# 데이터베이스
+SQLAlchemy
+chromadb
+
+# 데이터 처리
+pandas
+numpy
+openpyxl
+python-docx
+PyYAML
+
+# HTTP 클라이언트
+requests
+httpx
+aiohttp
+
+# 기타 유틸리티
+pydantic
+pydantic-settings
+python-dateutil
+tenacity
+tqdm

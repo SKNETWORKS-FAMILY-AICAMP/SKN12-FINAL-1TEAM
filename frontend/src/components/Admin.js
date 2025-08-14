@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { registerEmployee, getEmployees, uploadDocument } from '../services/api';
+import { registerEmployee, getEmployees, getEmployeeInfo, uploadDocument } from '../services/api';
 import './Admin.css';
 
 const Admin = ({ currentUser }) => {
@@ -26,20 +26,21 @@ const Admin = ({ currentUser }) => {
 
   const fetchEmployees = async () => {
     try {
-      const employeesData = await getEmployees();
-      const formattedEmployees = employeesData
-        .filter(emp => emp.role !== 'admin' && emp.is_active) // 관리자 제외, 활성 직원만
+      const employeeInfoData = await getEmployeeInfo();
+      const formattedEmployees = employeeInfoData
         .map(emp => ({
-          id: emp.employee_id,
+          id: emp.employee_info_id,
           name: emp.name,
-          email: emp.email,
-          username: emp.username,
-          team: emp.role === 'manager' ? '매니저' : '영업부'
+          position: emp.position || '-',
+          branch_name: emp.branch_name || '-',
+          headquarters: emp.headquarters || '-',
+          department: emp.department || '-',
+          hasAccount: emp.employee_id ? '✓' : '✗'  // 계정 유무
         }));
       setEmployees(formattedEmployees);
     } catch (error) {
-      console.error('직원 리스트 조회 실패:', error);
-      setMessage('직원 리스트를 불러오는데 실패했습니다.');
+      console.error('직원 정보 조회 실패:', error);
+      setMessage('직원 정보를 불러오는데 실패했습니다.');
     }
   };
 
@@ -227,24 +228,30 @@ const Admin = ({ currentUser }) => {
 
       {/* 직원 리스트 */}
       <div className="employee-list">
-        <h3>직원 리스트</h3>
+        <h3>직원 정보 리스트</h3>
         <div className="employee-table">
           <table>
             <thead>
               <tr>
                 <th>이름</th>
-                <th>이메일</th>
-                <th>아이디</th>
+                <th>직급</th>
+                <th>지점명</th>
+                <th>본부</th>
                 <th>부서</th>
+                <th>계정유무</th>
               </tr>
             </thead>
             <tbody>
               {employees.map((employee) => (
                 <tr key={employee.id}>
                   <td>{employee.name}</td>
-                  <td>{employee.email}</td>
-                  <td>{employee.username}</td>
-                  <td>{employee.team}</td>
+                  <td>{employee.position}</td>
+                  <td>{employee.branch_name}</td>
+                  <td>{employee.headquarters}</td>
+                  <td>{employee.department}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 'bold', color: employee.hasAccount === '✓' ? 'green' : 'red' }}>
+                    {employee.hasAccount}
+                  </td>
                 </tr>
               ))}
             </tbody>
