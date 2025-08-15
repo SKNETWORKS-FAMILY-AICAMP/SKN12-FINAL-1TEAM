@@ -7,6 +7,9 @@ from .db_manager import EmployeeDBManager
 from .query_analyzer import EmployeeQueryAnalyzer
 from ..tools.calculation_tools import PerformanceCalculationTools
 
+# 중앙 설정 import
+from app.core.config import config
+
 # 상태 정의
 class AnalysisState(TypedDict):
     query: str
@@ -337,7 +340,7 @@ class EnhancedEmployeeAgent:
         """LLM을 활용한 지능형 보고서 생성"""
         
         try:
-            api_key = os.getenv("OPENAI_API_KEY")
+            api_key = config.get_openai_api_key()
             if not api_key:
                 return self._generate_basic_report(analysis_results, performance_data, target_data)
             

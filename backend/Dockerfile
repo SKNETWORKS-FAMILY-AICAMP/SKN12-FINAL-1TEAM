@@ -1,21 +1,31 @@
-# Python 3.11 이미지 사용
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1.4
 
-# 작업 디렉토리 설정
+########## 1단계: Builder ##########
+FROM python:3.11-slim AS builder
 WORKDIR /app
 
-# 시스템 패키지 업데이트 및 필요 패키지 설치
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    curl \
+# requirements.txt 복사
+COPY requirements.txt .
+
+# 빌드 도구 설치 + uv 설치 + 패키지 설치를 한 번에 처리
+RUN --mount=type=cache,target=/root/.cache/uv \
+    apt-get update && apt-get install -y gcc g++ curl \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && /root/.local/bin/uv pip install --system -r requirements.txt \
     && rm -rf /var/lib/apt/lists/*
 
-# requirements.txt 복사 및 패키지 설치
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# PATH 설정 (나중에 필요할 수 있으므로 유지)
+ENV PATH="/root/.local/bin:${PATH}"
 
-# 애플리케이션 코드 복사
+# 앱 소스 복사
+COPY app/ ./app/
+
+########## 2단계: Runtime ##########
+FROM python:3.11-slim
+WORKDIR /app
+
+# builder에서 설치된 Python 패키지 복사
+COPY --from=builder /usr/local /usr/local
 COPY app/ ./app/
 
 # 환경변수 설정

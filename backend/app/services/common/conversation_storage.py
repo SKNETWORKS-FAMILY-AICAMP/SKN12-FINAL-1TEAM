@@ -22,6 +22,9 @@ from datetime import datetime
 import logging
 import os
 
+# 중앙 설정 import
+from app.core.config import config
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,15 +34,15 @@ class ConversationStorage:
     PostgreSQL API와 통신하여 대화 내역을 관리합니다.
     """
     
-    def __init__(self, base_url: str = "http://localhost:8010", token: Optional[str] = None):
+    def __init__(self, base_url: Optional[str] = None, token: Optional[str] = None):
         """
         초기화
         
         Args:
-            base_url: PostgreSQL API 주소 (기본값: http://localhost:8010)
+            base_url: PostgreSQL API 주소 (None이면 config에서 가져옴)
             token: JWT 토큰 (선택사항)
         """
-        self.base_url = base_url
+        self.base_url = base_url or config.get_database_api_url()
         self.token = token or os.getenv("CHAT_API_TOKEN")
         self.employee_id = 1  # 기본값 (필요시 변경 가능)
         
@@ -360,7 +363,7 @@ def save_message_sync(session_id: str, role: str, message: str, employee_id: int
     import logging
     
     logger = logging.getLogger(__name__)
-    base_url = "http://localhost:8010"
+    base_url = config.get_database_api_url()
     
     try:
         with httpx.Client(timeout=10.0) as client:

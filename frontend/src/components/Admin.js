@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { registerEmployee, getEmployeeInfo, uploadDocument } from '../services/api';
+import { registerEmployee, getEmployeeInfo, getEmployees, uploadDocumentWithSSE, uploadDocumentsBatchWithSSE, getDocuments } from '../services/api';
+import ProcessProgressBar from './ProcessProgressBar';
+import BatchProcessProgressBar from './BatchProcessProgressBar';
 import './Admin.css';
 
 const Admin = ({ currentUser }) => {
@@ -7,23 +9,55 @@ const Admin = ({ currentUser }) => {
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
-  const [newEmployee, setNewEmployee] = useState({ 
-    name: '', 
-    email: '', 
-    username: '',
+  const [showAccountCreateModal, setShowAccountCreateModal] = useState(false);
+  const [showAccountInfoModal, setShowAccountInfoModal] = useState(false);
+  const [accountInfo, setAccountInfo] = useState(null);
+  const [accountFormData, setAccountFormData] = useState({
+    email: '',
     password: '',
-    team: '',
-    role: 'user'
+    confirmPassword: ''
   });
-  const [uploadedFiles] = useState([]);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [documentTitle, setDocumentTitle] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState({});
+  const [fileStatuses, setFileStatuses] = useState({});
+  const [currentStep, setCurrentStep] = useState('');
+  const [documentType, setDocumentType] = useState(null); // 문서 타입 (table/text)
+  const [showProcessBar, setShowProcessBar] = useState(false); // 프로세스 바 표시 여부
+  const [isUploadCompleted, setIsUploadCompleted] = useState(false); // 업로드 완료 상태
+  const [batchProgress, setBatchProgress] = useState({
+    totalFiles: 0,
+    currentFileIndex: 0,
+    successCount: 0,
+    failCount: 0,
+    currentFileName: '',
+    failedFiles: []
+  });
 
-  // 컴포넌트 마운트 시 직원 리스트 가져오기
+  // 문서 목록 불러오기
+  const fetchDocuments = async () => {
+    try {
+      const documents = await getDocuments();
+      // 문서 데이터를 표시용 형식으로 변환
+      const formattedDocs = documents.map(doc => ({
+        id: doc.doc_id,
+        name: doc.doc_title || doc.file_path?.split('/').pop() || 'Untitled',
+        size: doc.file_size ? `${(doc.file_size / 1024 / 1024).toFixed(2)}MB` : 'N/A',
+        uploadDate: new Date(doc.upload_date || doc.created_at).toLocaleDateString('ko-KR')
+      }));
+      setUploadedFiles(formattedDocs);
+    } catch (error) {
+      console.error('문서 목록 조회 실패:', error);
+    }
+  };
+
+  // 컴포넌트 마운트 시 데이터 불러오기
   useEffect(() => {
     fetchEmployees();
+    fetchDocuments();
   }, []);
 
   const fetchEmployees = async () => {
@@ -58,9 +92,20 @@ const Admin = ({ currentUser }) => {
     }
   };
 
-  const handleAddEmployee = async () => {
-    if (!newEmployee.name || !newEmployee.email || !newEmployee.username || !newEmployee.password || !newEmployee.team) {
-      setMessage('모든 필드를 입력해주세요.');
+  // 계정 생성 핸들러
+  const handleCreateAccount = async () => {
+    if (!accountFormData.email || !accountFormData.password) {
+      setMessage('❌ 모든 필드를 입력해주세요.');
+      return;
+    }
+
+    if (accountFormData.password !== accountFormData.confirmPassword) {
+      setMessage('❌ 비밀번호가 일치하지 않습니다.');
+      return;
+    }
+
+    if (accountFormData.password.length < 8) {
+      setMessage('❌ 비밀번호는 8자 이상이어야 합니다.');
       return;
     }
 
@@ -69,32 +114,49 @@ const Admin = ({ currentUser }) => {
 
     try {
       const employeeData = {
-        name: newEmployee.name,
-        email: newEmployee.email,
-        username: newEmployee.username,
-        password: newEmployee.password,
-        role: newEmployee.role
+        name: selectedEmployee.name,
+        email: accountFormData.email,
+        password: accountFormData.password,
+        role: 'user'
       };
 
       await registerEmployee(employeeData);
       
       // 폼 초기화
-      setNewEmployee({ 
-        name: '', 
-        email: '', 
-        username: '',
-        password: '',
-        team: '',
-        role: 'user'
-      });
+      setAccountFormData({ email: '', password: '', confirmPassword: '' });
+      setShowAccountCreateModal(false);
       
       // 직원 리스트 새로고침
       await fetchEmployees();
       
-      setMessage('직원이 성공적으로 등록되었습니다!');
+      setMessage('✅ 계정이 성공적으로 생성되었습니다.');
     } catch (error) {
-      console.error('직원 등록 실패:', error);
-      setMessage(error.message || '직원 등록에 실패했습니다.');
+      console.error('계정 생성 실패:', error);
+      setMessage(`❌ 계정 생성에 실패했습니다: ${error.message || '알 수 없는 오류'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 계정 정보 조회 핸들러
+  const handleViewAccountInfo = async () => {
+    setIsLoading(true);
+    try {
+      const accounts = await getEmployees();
+      const account = accounts.find(acc => 
+        acc.name === selectedEmployee.name || 
+        acc.employee_id === selectedEmployee.employee_id
+      );
+      
+      if (account) {
+        setAccountInfo(account);
+        setShowAccountInfoModal(true);
+      } else {
+        setMessage('❌ 계정 정보를 찾을 수 없습니다.');
+      }
+    } catch (error) {
+      console.error('계정 정보 조회 실패:', error);
+      setMessage('❌ 계정 정보 조회에 실패했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -110,6 +172,32 @@ const Admin = ({ currentUser }) => {
       const fileNames = files.map(file => file.name).join(', ');
       setMessage(`✅ ${files.length}개의 파일이 선택되었습니다: ${fileNames}`);
     }
+  };
+  
+  // 프로세스 바 확인 버튼 핸들러
+  const handleConfirmUpload = () => {
+    setShowProcessBar(false);
+    setIsUploadCompleted(false);
+    setCurrentStep('');
+    setDocumentType(null);
+    setBatchProgress({
+      totalFiles: 0,
+      currentFileIndex: 0,
+      successCount: 0,
+      failCount: 0,
+      currentFileName: '',
+      failedFiles: []
+    });
+    setSelectedFiles([]);
+    setDocumentTitle('');
+    setFileStatuses({});
+    // 파일 선택 input 초기화
+    const fileInput = document.getElementById('file-upload');
+    if (fileInput) {
+      fileInput.value = '';
+    }
+    // 문서 목록 새로고침
+    fetchDocuments();
   };
 
   const handleEmployeeClick = (employee) => {
@@ -128,26 +216,161 @@ const Admin = ({ currentUser }) => {
       return;
     }
     
-    if (!documentTitle.trim()) {
-      setMessage('❌ 문서 제목을 입력해주세요.');
-      return;
-    }
+    // 문서 제목이 없으면 파일명 사용
+    const docTitle = documentTitle.trim() || selectedFiles[0]?.name.replace(/\.[^/.]+$/, '') || '제목 없음';
     
     setIsLoading(true);
     setMessage('');
+    setUploadProgress({});
+    setFileStatuses({});
+    setCurrentStep('');
+    setDocumentType(null);
+    setShowProcessBar(true);
+    setIsUploadCompleted(false);
     
     try {
-      // 각 파일을 개별적으로 업로드
-      for (const file of selectedFiles) {
-        await uploadDocument(file, documentTitle);
+      // SSE 방식으로만 업로드
+      if (selectedFiles.length === 1) {
+          // 단일 파일 SSE 업로드
+          const file = selectedFiles[0];
+          setFileStatuses({ [file.name]: 'processing' });
+          
+          await uploadDocumentWithSSE(file, docTitle, (data) => {
+            console.log('진행 상황 업데이트:', data);
+            setCurrentStep(data.step);
+            
+            // 문서 타입 감지
+            if (data.docType) {
+              setDocumentType(data.docType);
+            }
+            
+            // 진행 단계별 처리
+            switch(data.step) {
+              case 'completed':
+                setFileStatuses({ [file.name]: 'completed' });
+                setIsUploadCompleted(true);
+                setIsLoading(false);
+                break;
+              case 'error':
+                setFileStatuses({ [file.name]: 'error' });
+                setMessage(`❌ ${data.message}`);
+                setShowProcessBar(false);
+                setIsLoading(false);
+                break;
+              default:
+                setFileStatuses({ [file.name]: 'processing' });
+                break;
+            }
+          });
+        } else {
+          // 배치 SSE 업로드
+          setBatchProgress({
+            totalFiles: selectedFiles.length,
+            currentFileIndex: 0,
+            successCount: 0,
+            failCount: 0,
+            currentFileName: '',
+            failedFiles: []
+          });
+          
+          await uploadDocumentsBatchWithSSE(selectedFiles, docTitle, (data) => {
+            console.log('배치 업로드 이벤트:', data.step, data);
+            setCurrentStep(data.step);
+            
+            // 문서 타입 감지
+            if (data.docType) {
+              setDocumentType(data.docType);
+            }
+            
+            // 배치 시작 시 total 설정
+            if (data.step === 'batch_start' && data.total) {
+              console.log('배치 시작 - 총 파일 수:', data.total);
+              setBatchProgress(prev => {
+                const newProgress = {
+                  ...prev,
+                  totalFiles: data.total
+                };
+                console.log('배치 진행 상태 업데이트 (batch_start):', newProgress);
+                return newProgress;
+              });
+            }
+            
+            // progress 정보가 있을 때 항상 업데이트
+            if (data.progress) {
+              console.log('Progress 정보 수신:', data.progress);
+              setBatchProgress(prev => {
+                const newProgress = {
+                  ...prev,
+                  currentFileIndex: data.progress.current || prev.currentFileIndex,
+                  successCount: data.progress.successful || 0,
+                  failCount: data.progress.failed || 0
+                };
+                console.log('배치 진행 상태 업데이트:', newProgress);
+                return newProgress;
+              });
+            }
+            
+            // 파일별 상태 업데이트
+            if (data.fileName) {
+              setBatchProgress(prev => ({
+                ...prev,
+                currentFileName: data.fileName
+              }));
+              
+              switch(data.step) {
+                case 'file_start':
+                  setFileStatuses(prev => ({ ...prev, [data.fileName]: 'processing' }));
+                  // file_start 시에도 progress 업데이트
+                  if (data.progress) {
+                    setBatchProgress(prev => ({
+                      ...prev,
+                      currentFileIndex: data.progress.current
+                    }));
+                  }
+                  break;
+                case 'file_completed':
+                  setFileStatuses(prev => ({ ...prev, [data.fileName]: 'completed' }));
+                  // file_completed 시에도 progress 업데이트 필수
+                  if (data.progress) {
+                    console.log('file_completed progress:', data.progress);
+                    setBatchProgress(prev => {
+                      const newProgress = {
+                        ...prev,
+                        currentFileIndex: data.progress.current,
+                        successCount: data.progress.successful,
+                        failCount: data.progress.failed || 0
+                      };
+                      console.log('file_completed 후 상태:', newProgress);
+                      return newProgress;
+                    });
+                  }
+                  break;
+                case 'file_error':
+                  setFileStatuses(prev => ({ ...prev, [data.fileName]: 'error' }));
+                  setBatchProgress(prev => ({
+                    ...prev,
+                    failedFiles: [...prev.failedFiles, data.fileIndex]
+                  }));
+                  if (data.progress) {
+                    setBatchProgress(prev => ({
+                      ...prev,
+                      currentFileIndex: data.progress.current,
+                      successCount: data.progress.successful || 0,
+                      failCount: data.progress.failed
+                    }));
+                  }
+                  break;
+                default:
+                  break;
+              }
+            }
+            
+            if (data.step === 'batch_completed') {
+              setIsUploadCompleted(true);
+              setIsLoading(false);
+            }
+          });
       }
-      
-      // 성공 메시지
-      setMessage(`✅ ${selectedFiles.length}개의 문서가 성공적으로 업로드되었습니다!`);
-      
-      // 폼 초기화
-      setDocumentTitle('');
-      setSelectedFiles([]);
       
     } catch (error) {
       console.error('문서 업로드 실패:', error);
@@ -179,6 +402,7 @@ const Admin = ({ currentUser }) => {
       }
       
       setMessage(`❌ ${errorMessage}`);
+      setShowProcessBar(false);
     } finally {
       setIsLoading(false);
     }
@@ -195,61 +419,6 @@ const Admin = ({ currentUser }) => {
         </div>
       )}
       
-      {/* 직원 등록 */}
-      <div className="employee-registration">
-        <h3>새 직원 등록</h3>
-        <div className="registration-form">
-          <input
-            type="text"
-            placeholder="이름"
-            value={newEmployee.name}
-            onChange={(e) => setNewEmployee({...newEmployee, name: e.target.value})}
-          />
-          <input
-            type="email"
-            placeholder="이메일"
-            value={newEmployee.email}
-            onChange={(e) => setNewEmployee({...newEmployee, email: e.target.value})}
-          />
-          <input
-            type="text"
-            placeholder="아이디"
-            value={newEmployee.username}
-            onChange={(e) => setNewEmployee({...newEmployee, username: e.target.value})}
-          />
-          <input
-            type="password"
-            placeholder="비밀번호 (8자 이상)"
-            value={newEmployee.password}
-            onChange={(e) => setNewEmployee({...newEmployee, password: e.target.value})}
-          />
-          <select
-            value={newEmployee.team}
-            onChange={(e) => setNewEmployee({...newEmployee, team: e.target.value})}
-          >
-            <option value="">부서 선택</option>
-            <option value="영업팀">영업</option>
-            <option value="마케팅팀">마케팅</option>
-            <option value="개발팀">개발</option>
-            <option value="인사팀">인사</option>
-          </select>
-          <select
-            value={newEmployee.role}
-            onChange={(e) => setNewEmployee({...newEmployee, role: e.target.value})}
-          >
-            <option value="user">일반 사용자</option>
-            <option value="admin">관리자</option>
-          </select>
-          <button 
-            onClick={handleAddEmployee} 
-            className="add-btn"
-            disabled={isLoading}
-          >
-            {isLoading ? '등록 중...' : '직원 추가'}
-          </button>
-        </div>
-      </div>
-
       {/* 직원 리스트 */}
       <div className="employee-list">
         <h3>직원 정보 리스트</h3>
@@ -381,7 +550,136 @@ const Admin = ({ currentUser }) => {
               </div>
             </div>
             <div className="modal-footer">
+              {selectedEmployee.hasAccount === '✓' ? (
+                <button className="btn-account-info" onClick={handleViewAccountInfo}>
+                  계정 정보 조회
+                </button>
+              ) : (
+                <button className="btn-create-account" onClick={() => {
+                  setAccountFormData({
+                    email: '',
+                    password: '',
+                    confirmPassword: ''
+                  });
+                  setShowAccountCreateModal(true);
+                }}>
+                  계정 생성
+                </button>
+              )}
               <button className="btn-close" onClick={closeEmployeeModal}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 계정 생성 모달 */}
+      {showAccountCreateModal && (
+        <div className="modal-overlay" onClick={() => setShowAccountCreateModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>계정 생성</h2>
+              <button className="modal-close" onClick={() => setShowAccountCreateModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="detail-section">
+                <h3>직원 정보</h3>
+                <div className="detail-row">
+                  <span className="detail-label">이름:</span>
+                  <span className="detail-value">{selectedEmployee?.name}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">사번:</span>
+                  <span className="detail-value">{selectedEmployee?.employee_number}</span>
+                </div>
+              </div>
+              
+              <div className="detail-section">
+                <h3>계정 정보 입력</h3>
+                <div className="form-group">
+                  <label>이메일</label>
+                  <input
+                    type="email"
+                    placeholder="example@company.com"
+                    value={accountFormData.email}
+                    onChange={(e) => setAccountFormData({...accountFormData, email: e.target.value})}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>비밀번호 (8자 이상)</label>
+                  <input
+                    type="password"
+                    placeholder="비밀번호 입력"
+                    value={accountFormData.password}
+                    onChange={(e) => setAccountFormData({...accountFormData, password: e.target.value})}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>비밀번호 확인</label>
+                  <input
+                    type="password"
+                    placeholder="비밀번호 재입력"
+                    value={accountFormData.confirmPassword}
+                    onChange={(e) => setAccountFormData({...accountFormData, confirmPassword: e.target.value})}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="btn-primary" 
+                onClick={handleCreateAccount}
+                disabled={isLoading}
+              >
+                {isLoading ? '생성 중...' : '계정 생성'}
+              </button>
+              <button className="btn-close" onClick={() => setShowAccountCreateModal(false)}>취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 계정 정보 조회 모달 */}
+      {showAccountInfoModal && accountInfo && (
+        <div className="modal-overlay" onClick={() => setShowAccountInfoModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>계정 정보</h2>
+              <button className="modal-close" onClick={() => setShowAccountInfoModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="detail-section">
+                <h3>계정 상세 정보</h3>
+                <div className="detail-row">
+                  <span className="detail-label">이메일:</span>
+                  <span className="detail-value">{accountInfo.email}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">역할:</span>
+                  <span className="detail-value">
+                    {accountInfo.role === 'admin' ? '관리자' : '일반 사용자'}
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">계정 상태:</span>
+                  <span className="detail-value" style={{
+                    color: accountInfo.is_active ? 'green' : 'red',
+                    fontWeight: 'bold'
+                  }}>
+                    {accountInfo.is_active ? '활성' : '비활성'}
+                  </span>
+                </div>
+                {accountInfo.created_at && (
+                  <div className="detail-row">
+                    <span className="detail-label">계정 생성일:</span>
+                    <span className="detail-value">
+                      {new Date(accountInfo.created_at).toLocaleDateString('ko-KR')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-close" onClick={() => setShowAccountInfoModal(false)}>닫기</button>
             </div>
           </div>
         </div>
@@ -436,15 +734,54 @@ const Admin = ({ currentUser }) => {
           <p className="upload-hint">PDF, DOC, DOCX, TXT, XLSX, XLS, CSV 파일만 업로드 가능합니다. (최대 10MB)</p>
           
           {/* 선택된 파일 목록 */}
-          {selectedFiles.length > 0 && (
+          {selectedFiles.length > 0 && !showProcessBar && (
             <div className="selected-files">
               <h4>선택된 파일 ({selectedFiles.length}개):</h4>
               <ul>
                 {selectedFiles.map((file, index) => (
-                  <li key={index}>{file.name} ({(file.size / 1024 / 1024).toFixed(2)}MB)</li>
+                  <li key={index} className={`file-item ${fileStatuses[file.name] || ''}`}>
+                    <span className="file-name">{file.name} ({(file.size / 1024 / 1024).toFixed(2)}MB)</span>
+                    {fileStatuses[file.name] && (
+                      <span className={`file-status-icon ${fileStatuses[file.name]}`}>
+                        {fileStatuses[file.name] === 'processing' && '⏳'}
+                        {fileStatuses[file.name] === 'completed' && '✅'}
+                        {fileStatuses[file.name] === 'error' && '❌'}
+                      </span>
+                    )}
+                  </li>
                 ))}
               </ul>
             </div>
+          )}
+          
+          {/* 새로운 프로세스 바 */}
+          {showProcessBar && (
+            <>
+              {selectedFiles.length === 1 ? (
+                // 단일 파일 업로드 프로세스 바
+                <ProcessProgressBar
+                  currentStep={currentStep}
+                  documentType={documentType}
+                  fileName={selectedFiles[0]?.name}
+                  isCompleted={isUploadCompleted}
+                  onConfirm={handleConfirmUpload}
+                />
+              ) : (
+                // 배치 업로드 프로세스 바
+                <BatchProcessProgressBar
+                  totalFiles={batchProgress.totalFiles}
+                  currentFileIndex={batchProgress.currentFileIndex}
+                  successCount={batchProgress.successCount}
+                  failCount={batchProgress.failCount}
+                  currentFileName={batchProgress.currentFileName}
+                  currentStep={currentStep}
+                  documentType={documentType}
+                  isCompleted={isUploadCompleted}
+                  onConfirm={handleConfirmUpload}
+                  failedFiles={batchProgress.failedFiles}
+                />
+              )}
+            </>
           )}
         </div>
       </div>

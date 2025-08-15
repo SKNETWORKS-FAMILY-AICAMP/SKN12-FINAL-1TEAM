@@ -87,7 +87,6 @@ export const registerEmployee = async (employeeData) => {
     method: 'POST',
     body: JSON.stringify({
       email: employeeData.email,
-      username: employeeData.username,
       password: employeeData.password,
       name: employeeData.name,
       role: employeeData.role || 'user'
@@ -109,7 +108,7 @@ export const getEmployeeInfo = async () => {
   });
 };
 
-// 문서 업로드
+// 문서 업로드 (기존 방식)
 export const uploadDocument = async (file, docTitle) => {
   // 현재 사용자 정보 가져오기
   const currentUser = await verifyToken();
@@ -130,6 +129,232 @@ export const uploadDocument = async (file, docTitle) => {
   return await apiRequest('/documents/upload', {
     method: 'POST',
     body: formData,
+  });
+};
+
+// SSE 기반 단일 문서 업로드
+export const uploadDocumentWithSSE = async (file, docTitle, onProgress) => {
+  const currentUser = await verifyToken();
+  const token = localStorage.getItem('narutalk_token');
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('doc_title', docTitle || file.name);
+  formData.append('uploader_id', String(currentUser.employee_id));
+  
+  return new Promise((resolve, reject) => {
+    // fetch + ReadableStream 사용하여 SSE 처리
+    fetch(`/documents/upload-sse`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    })
+    .then(async response => {
+      console.log('SSE 응답 상태:', response.status);
+      console.log('SSE 응답 헤더:', response.headers.get('content-type'));
+      
+      // 에러 상태 코드 확인
+      if (!response.ok) {
+        console.error('서버 에러:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('에러 내용:', errorText);
+        throw new Error(`서버 에러: ${response.status} - ${errorText}`);
+      }
+      
+      // Content-Type 확인
+      if (!response.headers.get('content-type')?.includes('text/event-stream')) {
+        // SSE가 아니면 일반 응답으로 처리
+        console.log('일반 응답으로 처리');
+        
+        // 응답이 JSON인지 확인
+        const contentType = response.headers.get('content-type');
+        if (contentType?.includes('application/json')) {
+          const result = await response.json();
+          onProgress({ step: 'completed', message: '업로드 완료', result });
+          return resolve(result);
+        } else {
+          // JSON이 아니면 텍스트로 처리
+          const text = await response.text();
+          console.log('텍스트 응답:', text);
+          throw new Error(`예상치 못한 응답 형식: ${text}`);
+        }
+      }
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      
+      const processStream = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            console.log('스트림 종료');
+            break;
+          }
+          
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+          console.log('받은 청크:', chunk);
+          
+          // 버퍼에서 완전한 라인들만 처리
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // 마지막 불완전한 라인은 버퍼에 유지
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const dataStr = line.slice(6).trim();
+                if (!dataStr) continue; // 빈 데이터는 무시
+                
+                console.log('SSE 데이터 파싱:', dataStr);
+                const data = JSON.parse(dataStr);
+                console.log('파싱된 데이터:', data);
+                
+                // onProgress 호출
+                onProgress(data);
+                
+                if (data.step === 'completed') {
+                  console.log('업로드 완료:', data.result);
+                  resolve(data.result);
+                  return;
+                } else if (data.step === 'error') {
+                  console.error('업로드 오류:', data.message);
+                  reject(new Error(data.message));
+                  return;
+                }
+              } catch (e) {
+                console.error('SSE 파싱 오류:', e, '라인:', line);
+              }
+            }
+          }
+        }
+      };
+      
+      processStream().catch(error => {
+        console.error('스트림 처리 오류:', error);
+        reject(error);
+      });
+    })
+    .catch(error => {
+      console.error('fetch 오류:', error);
+      reject(error);
+    });
+  });
+};
+
+// SSE 기반 배치 문서 업로드
+export const uploadDocumentsBatchWithSSE = async (files, documentTitle, onProgress) => {
+  const currentUser = await verifyToken();
+  const token = localStorage.getItem('narutalk_token');
+  
+  const formData = new FormData();
+  files.forEach(file => {
+    formData.append('files', file);
+  });
+  formData.append('uploader_id', String(currentUser.employee_id));
+  
+  return new Promise((resolve, reject) => {
+    fetch(`/documents/upload-batch-sse`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    })
+    .then(async response => {
+      console.log('배치 SSE 응답 상태:', response.status);
+      console.log('배치 SSE 응답 헤더:', response.headers.get('content-type'));
+      
+      // 에러 상태 코드 확인
+      if (!response.ok) {
+        console.error('배치 서버 에러:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('배치 에러 내용:', errorText);
+        throw new Error(`서버 에러: ${response.status} - ${errorText}`);
+      }
+      
+      // Content-Type 확인
+      if (!response.headers.get('content-type')?.includes('text/event-stream')) {
+        // SSE가 아니면 일반 응답으로 처리
+        console.log('배치 업로드 - 일반 응답으로 처리');
+        
+        // 응답이 JSON인지 확인
+        const contentType = response.headers.get('content-type');
+        if (contentType?.includes('application/json')) {
+          const result = await response.json();
+          onProgress({ 
+            step: 'batch_completed', 
+            message: '배치 업로드 완료', 
+            summary: result 
+          });
+          return resolve(result);
+        } else {
+          // JSON이 아니면 텍스트로 처리
+          const text = await response.text();
+          console.log('배치 텍스트 응답:', text);
+          throw new Error(`예상치 못한 응답 형식: ${text}`);
+        }
+      }
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      
+      const processStream = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            console.log('배치 스트림 종료');
+            break;
+          }
+          
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+          console.log('배치 청크:', chunk);
+          
+          // 버퍼에서 완전한 라인들만 처리
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // 마지막 불완전한 라인은 버퍼에 유지
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const dataStr = line.slice(6).trim();
+                if (!dataStr) continue; // 빈 데이터는 무시
+                
+                console.log('배치 SSE 데이터 파싱:', dataStr);
+                const data = JSON.parse(dataStr);
+                console.log('파싱된 데이터:', data);
+                
+                // onProgress 호출
+                onProgress(data);
+                
+                if (data.step === 'batch_completed') {
+                  console.log('배치 업로드 완료:', data.summary);
+                  resolve(data.summary);
+                  return;
+                }
+              } catch (e) {
+                console.error('배치 SSE 파싱 오류:', e, '라인:', line);
+              }
+            }
+          }
+        }
+      };
+      
+      processStream().catch(error => {
+        console.error('배치 스트림 처리 오류:', error);
+        reject(error);
+      });
+    })
+    .catch(error => {
+      console.error('배치 fetch 오류:', error);
+      reject(error);
+    });
   });
 };
 

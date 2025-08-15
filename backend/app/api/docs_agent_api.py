@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # FastAPI 라우터 생성
-router = APIRouter(prefix="/v1/docs", tags=["docs-agent"])
+router = APIRouter(tags=["docs-agent"])
 
 # 전역 docs_agent 인스턴스 (API 모드로 설정)
 docs_agent = None

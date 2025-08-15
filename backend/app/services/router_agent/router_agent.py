@@ -4,6 +4,9 @@ from openai import AsyncOpenAI
 from pathlib import Path
 from dotenv import load_dotenv
 
+# 중앙 설정 import
+from app.core.config import config
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -45,7 +48,7 @@ AGENT_DESCS = {
 
 class RouterAgent:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.client = AsyncOpenAI(api_key=config.get_openai_api_key())
         self.prompt = self._build_prompt()
 
     def _build_prompt(self) -> str:

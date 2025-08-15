@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # FastAPI 라우터 생성
-router = APIRouter(prefix="/v1", tags=["langgraph"])
+router = APIRouter(tags=["langgraph"])
 
 # 전역 라우터 에이전트 인스턴스
 router_agent = RouterAgent()

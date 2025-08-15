@@ -6,6 +6,9 @@ import requests
 import json
 from dotenv import load_dotenv
 
+# 중앙 설정 import
+from app.core.config import config
+
 load_dotenv()
 
 @tool
@@ -75,7 +78,7 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
         
         # 2단계: FastAPI를 통해 각 문구별로 유사한 규정 정보 검색
         violations = []
-        fastapi_url = "http://localhost:8010/qa/question"
+        fastapi_url = f"{config.get_database_api_url()}/qa/question"
         
         for phrase in policy_phrases:
             try:

@@ -4,6 +4,9 @@ import openai
 import os
 import json
 
+# 중앙 설정 import
+from app.core.config import config
+
 class EmployeeQueryAnalyzer:
     """직원 실적 분석 쿼리 분석 클래스 - LLM 기반 통합 분석"""
     
@@ -25,7 +28,7 @@ class EmployeeQueryAnalyzer:
     def analyze_with_llm(self, query: str) -> Optional[Dict[str, Any]]:
         """LLM을 사용하여 쿼리를 정확히 분석합니다."""
         try:
-            api_key = os.getenv("OPENAI_API_KEY")
+            api_key = config.get_openai_api_key()
             if not api_key:
                 return None
             

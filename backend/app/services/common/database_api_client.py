@@ -7,13 +7,16 @@ import logging
 from typing import Dict, List, Optional
 from datetime import datetime
 
+# 중앙 설정 import
+from app.core.config import config
+
 logger = logging.getLogger(__name__)
 
 class DatabaseAPIClient:
     """Database API 클라이언트"""
     
-    def __init__(self, base_url: str = "http://database:8000"):
-        self.base_url = base_url
+    def __init__(self, base_url: Optional[str] = None):
+        self.base_url = base_url or config.get_database_api_url()
         self.session = None
     
     async def _get_session(self):

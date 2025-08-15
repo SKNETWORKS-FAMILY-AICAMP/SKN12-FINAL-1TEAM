@@ -13,12 +13,15 @@ import re
 from .grade_utils import map_grade_to_score, map_score_to_grade
 from . import thresholds
 
+# 중앙 설정 import
+from app.core.config import config
+
 
 async def parse_query_params(query: str) -> Dict:
     """쿼리에서 거래처명과 기간 추출"""
     try:
         # OpenAI API 사용 가능 여부 확인
-        if not os.getenv("OPENAI_API_KEY"):
+        if not config.get_openai_api_key():
             # API 키가 없으면 간단한 파싱
             return _simple_parse(query)
         
@@ -230,7 +233,7 @@ async def generate_analysis_report(company_name: str, grade_result: Dict,
 """
     
     # OpenAI API를 사용한 상세 분석 (가능한 경우)
-    if os.getenv("OPENAI_API_KEY"):
+    if config.get_openai_api_key():
         try:
             detailed_analysis = await _generate_ai_analysis(company_name, grade_result, df)
             report += f"\n\n📋 상세 분석\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{detailed_analysis}"

@@ -6,7 +6,7 @@
 ## 기본 정보
 - **Base URL**: `/qa`
 - **Content-Type**: `application/json`
-- **인증**: JWT 토큰 기반
+- **인증**: 필요 없음 (공개 엔드포인트)
 
 ## API 엔드포인트
 
@@ -114,13 +114,26 @@ Authorization: Bearer <access_token>
 ```json
 {
   "success": true,
-  "question": "테스트 질문",
-  "answer": "이것은 테스트 답변입니다.",
-  "summary": "테스트 요약",
-  "sources": [],
-  "search_results": [],
-  "total_sources": 0,
-  "confidence_score": 1.0
+  "question": "신입사원 교육 기간은 얼마나 되나요?",
+  "answer": "신입사원 교육 기간은 일반적으로 3개월입니다. 이 기간 동안 기본 업무 교육과 회사 문화 적응을 위한 다양한 프로그램이 제공됩니다.",
+  "summary": "총 2개의 관련 문서를 찾았습니다. 주요 내용은 다음과 같습니다: 신입사원 교육 기간은 일반적으로 3개월입니다. 이 기간 동안 기본 업무 교육과 회사 문화 적응을 위한 다양한 프로그램이 제공됩니다...",
+  "sources": [
+    {
+      "doc_id": 1,
+      "doc_title": "신입사원 교육 가이드",
+      "content": "신입사원 교육 기간은 3개월...",
+      "similarity_score": 0.95
+    }
+  ],
+  "search_results": [
+    {
+      "id": "chunk_1",
+      "content": "신입사원 교육 기간은 3개월입니다...",
+      "similarity_score": 0.95
+    }
+  ],
+  "total_sources": 1,
+  "confidence_score": 0.95
 }
 ```
 
@@ -129,6 +142,11 @@ Authorization: Bearer <access_token>
 curl -X POST "http://localhost:8010/qa/test" \
   -H "Authorization: Bearer <access_token>"
 ```
+
+#### 기능 설명
+- 기본 테스트 질문으로 QA 시스템을 확인
+- 시스템 상태 및 성능 테스트용
+- 실제 질문과 동일한 처리 과정 수행
 
 ---
 
@@ -222,6 +240,13 @@ curl -X POST "http://localhost:8010/qa/test" \
 curl -X GET "http://localhost:8010/qa/health"
 ```
 
+### 테스트 실행
+```bash
+# 테스트 질문으로 시스템 확인
+curl -X POST "http://localhost:8010/qa/test" \
+  -H "Authorization: Bearer <access_token>"
+```
+
 ### 로그 확인
 ```bash
 # QA 시스템 로그 확인
@@ -236,4 +261,5 @@ docker logs fastapi-app | grep qa
 2. **문서 업로드**: 질문과 관련된 문서가 먼저 업로드되어야 함
 3. **시스템 상태**: 사용 전 `/qa/health`로 상태 확인
 4. **응답 시간**: 복잡한 질문은 처리 시간이 오래 걸릴 수 있음
-5. **정확도**: AI 기반 답변이므로 중요한 결정에는 추가 검증 필요 
+5. **정확도**: AI 기반 답변이므로 중요한 결정에는 추가 검증 필요
+6. **테스트 기능**: `/qa/test` 엔드포인트로 시스템 상태 확인 가능 

@@ -15,9 +15,11 @@
 
 #### 요청 본문 (Form Data)
 ```
-username: string (이메일)
-password: string
+username: string (필수, 실제로는 이메일 주소를 입력)
+password: string (필수)
 ```
+
+**참고**: OAuth2 표준에 따라 필드명은 'username'이지만, 실제로는 이메일 주소를 입력해야 합니다.
 
 #### 응답
 ```json
@@ -49,7 +51,6 @@ Authorization: Bearer <access_token>
 {
   "employee_id": 1,
   "email": "admin@example.com",
-  "username": "admin",
   "name": "관리자",
   "role": "admin",
   "is_active": true,
@@ -79,7 +80,6 @@ Authorization: Bearer <admin_token>
   {
     "employee_id": 1,
     "email": "admin@example.com",
-    "username": "admin",
     "name": "관리자",
     "role": "admin",
     "is_active": true,
@@ -88,13 +88,18 @@ Authorization: Bearer <admin_token>
   {
     "employee_id": 2,
     "email": "user@example.com",
-    "username": "user",
     "name": "일반 사용자",
     "role": "user",
     "is_active": true,
     "created_at": "2024-01-01T12:00:00Z"
   }
 ]
+```
+
+#### 사용 예시
+```bash
+curl -X GET "http://localhost:8010/user/employees" \
+  -H "Authorization: Bearer <admin_token>"
 ```
 
 ---
@@ -113,14 +118,32 @@ Authorization: Bearer <access_token>
   {
     "employee_id": 1,
     "email": "admin@example.com",
-    "username": "admin",
     "name": "관리자",
     "role": "admin",
+    "is_active": true,
+    "created_at": "2024-01-01T12:00:00Z"
+  },
+  {
+    "employee_id": 2,
+    "email": "user@example.com",
+    "name": "일반 사용자",
+    "role": "user",
     "is_active": true,
     "created_at": "2024-01-01T12:00:00Z"
   }
 ]
 ```
+
+#### 사용 예시
+```bash
+curl -X GET "http://localhost:8010/user/employees/all" \
+  -H "Authorization: Bearer <access_token>"
+```
+
+#### 기능 설명
+- 일반 사용자도 전체 직원 목록을 조회할 수 있음
+- 관리자 전용 엔드포인트와 동일한 데이터 반환
+- 권한 차이는 없지만 별도 엔드포인트로 제공
 
 ---
 
@@ -182,7 +205,9 @@ Authorization: Bearer <access_token>
 
 ## 주의사항
 
-1. **토큰 보안**: 토큰을 안전하게 보관하고 노출하지 마세요
-2. **토큰 만료**: 60분 후 자동 만료되므로 재로그인 필요
-3. **권한 확인**: 관리자 기능은 admin 역할이 필요합니다
-4. **HTTPS 사용**: 프로덕션 환경에서는 반드시 HTTPS 사용 
+1. **로그인 필드**: OAuth2 표준에 따라 'username' 필드명을 사용하지만, 실제로는 이메일 주소를 입력
+2. **토큰 보안**: 토큰을 안전하게 보관하고 노출하지 마세요
+3. **토큰 만료**: 60분 후 자동 만료되므로 재로그인 필요
+4. **권한 확인**: 관리자 기능은 admin 역할이 필요합니다
+5. **HTTPS 사용**: 프로덕션 환경에서는 반드시 HTTPS 사용
+6. **직원 목록**: 일반 사용자와 관리자 모두 전체 직원 목록 조회 가능 

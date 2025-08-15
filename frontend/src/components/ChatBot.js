@@ -301,7 +301,7 @@ const ChatBot = () => {
         };
         
         // 기존 프로젝트 URL 사용 (8010 포트)
-        response = await fetch(`/api/resume/${sessionId}`, {
+        response = await fetch(`/api/v1/resume/${sessionId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

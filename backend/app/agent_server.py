@@ -25,6 +25,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 
+# 중앙 설정 import
+from app.core.config import config
+
 # .env 파일 로드
 env_paths = [
     app_dir / ".env",
@@ -38,7 +41,7 @@ for env_path in env_paths:
         break
 
 # OPENAI_API_KEY 확인
-if os.getenv("OPENAI_API_KEY"):
+if config.get_openai_api_key():
     print("[ENV] OPENAI_API_KEY is set")
 else:
     print("[WARNING] OPENAI_API_KEY is not set")
@@ -58,15 +61,15 @@ app.add_middleware(
 # Router Agent API 임포트
 try:
     from app.api.router_api import router as router_api
-    app.include_router(router_api, prefix="/api")
-    print("[OK] Router API registered at /api")
+    app.include_router(router_api, prefix="/api/v1")
+    print("[OK] Router API registered at /api/v1")
 except Exception as e:
     print(f"[ERROR] Failed to import router_api: {e}")
 
 # Docs Agent API 임포트
 try:
     from app.api.docs_agent_api import router as docs_router
-    app.include_router(docs_router, prefix="/api")
+    app.include_router(docs_router, prefix="/api/v1/docs")
     print("[OK] Docs agent API registered at /api/v1/docs")
 except Exception as e:
     print(f"[ERROR] Failed to import docs_agent_api: {e}")
@@ -98,6 +101,9 @@ def get_api_routes():
 
 # Database API 프록시 (8010 포트로 전달)
 # user, admin, documents 등의 요청을 database API로 프록시
+from fastapi.responses import StreamingResponse
+import asyncio
+
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 async def proxy_to_database(path: str, request: Request):
     """
@@ -107,7 +113,7 @@ async def proxy_to_database(path: str, request: Request):
     # API 요청이 아닌 경우만 프록시 (api로 시작하지 않는 경로)
     if not path.startswith("api/") and not path in ["health", "api-routes", "docs", "openapi.json", "redoc"]:
         # Database API URL 구성
-        database_url = f"http://fastapi-app:8000/{path}"
+        database_url = f"{config.get_database_api_url()}/{path}"
         
         # 디버깅용 로그
         print(f"[PROXY] Path: {path}")
@@ -125,10 +131,53 @@ async def proxy_to_database(path: str, request: Request):
             if k.lower() not in skip_headers
         }
         
-        # httpx 클라이언트로 프록시 요청 (타임아웃 30초로 증가)
+        # SSE 엔드포인트 확인
+        is_sse = path.endswith('-sse') or 'upload-sse' in path
+        
+        if is_sse:
+            # SSE를 위한 스트리밍 요청
+            print(f"[PROXY] SSE 스트리밍 요청: {path}")
+            
+            async def generate_sse():
+                # 클라이언트를 제너레이터 내부에서 생성
+                async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+                    try:
+                        async with client.stream(
+                            method=request.method,
+                            url=database_url,
+                            headers=filtered_headers,
+                            content=body,
+                            params=dict(request.query_params)
+                        ) as response:
+                            print(f"[PROXY] SSE 응답 상태: {response.status_code}")
+                            print(f"[PROXY] SSE 응답 헤더: {dict(response.headers)}")
+                            
+                            if response.status_code != 200:
+                                error_text = await response.aread()
+                                yield error_text
+                                return
+                            
+                            async for chunk in response.aiter_bytes():
+                                if chunk:
+                                    yield chunk
+                    except Exception as e:
+                        print(f"[PROXY] SSE 스트리밍 에러: {e}")
+                        yield f"data: {{\"step\": \"error\", \"message\": \"프록시 에러: {str(e)}\"}}\n\n".encode()
+            
+            # SSE 응답 반환
+            return StreamingResponse(
+                generate_sse(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no"
+                }
+            )
+        
+        # 일반 요청 처리
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
             try:
-                # 원본 요청을 그대로 전달
                 response = await client.request(
                     method=request.method,
                     url=database_url,

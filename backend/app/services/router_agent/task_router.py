@@ -15,6 +15,9 @@ from .router_agent import RouterAgent, AVAILABLE_AGENT_IDS
 from .prompts import get_task_decomposition_prompt
 from ..common.handlers import agent_handlers
 
+# 중앙 설정 import
+from app.core.config import config
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,7 @@ class TaskRouter:
     """통합 태스크 라우터"""
     
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.client = AsyncOpenAI(api_key=config.get_openai_api_key())
         self.router_agent = RouterAgent()  # 기존 라우터 활용
         self.agent_handlers = agent_handlers
         

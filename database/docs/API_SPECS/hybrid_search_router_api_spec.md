@@ -10,83 +10,7 @@
 
 ## API 엔드포인트
 
-### 1. 하이브리드 검색 (POST)
-**POST** `/search/hybrid`
-
-#### 헤더
-```
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-#### 요청 본문
-```json
-{
-  "query": "매출 현황",
-  "limit": 20
-}
-```
-
-#### 파라미터 설명
-- **query**: 검색 쿼리 (문자열)
-- **limit**: 결과 개수 제한 (기본값: 20)
-
-#### 응답
-```json
-{
-  "success": true,
-  "message": "검색이 완료되었습니다.",
-  "query": "매출 현황",
-  "search_type": "hybrid",
-  "analysis": {
-    "query_type": "sales_inquiry",
-    "confidence": 0.85
-  },
-  "table_results": [
-    {
-      "id": 1,
-      "doc_id": 1,
-      "table_type": "sales_data",
-      "content": {
-        "month": "2024-01",
-        "sales": 1500000,
-        "growth": "15%"
-      },
-      "created_at": "2024-01-01T12:00:00Z",
-      "similarity_score": 0.95,
-      "source": "text2sql_search"
-    }
-  ],
-  "text_results": [
-    {
-      "id": "chunk_1",
-      "doc_id": 2,
-      "doc_title": "매출 보고서",
-      "content": "2024년 1월 매출은 150만원으로...",
-      "created_at": "2024-01-01T12:00:00Z",
-      "similarity_score": 0.88,
-      "source": "opensearch"
-    }
-  ],
-  "total_count": 2,
-  "search_time": 0.15
-}
-```
-
-#### 사용 예시
-```bash
-curl -X POST "http://localhost:8010/search/hybrid" \
-  -H "Authorization: Bearer <access_token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "매출 현황",
-    "limit": 20
-  }'
-```
-
----
-
-### 2. 하이브리드 검색 (GET)
+### 1. 하이브리드 검색
 **GET** `/search/hybrid`
 
 #### 헤더
@@ -132,7 +56,7 @@ Authorization: Bearer <access_token>
       "content": "2024년 1월 매출은 150만원으로...",
       "created_at": "2024-01-01T12:00:00Z",
       "similarity_score": 0.88,
-      "source": "opensearch"
+      "source": "opensearch_pipeline"
     }
   ],
   "total_count": 2,
@@ -159,18 +83,13 @@ Authorization: Bearer <access_token>
 #### 응답
 ```json
 {
-  "total_searches": 150,
-  "average_search_time": 0.12,
-  "success_rate": 0.98,
-  "popular_queries": [
-    "매출 현황",
-    "직원 정보",
-    "고객 데이터"
-  ],
-  "search_types": {
-    "table_only": 30,
-    "text_only": 45,
-    "hybrid": 75
+  "success": true,
+  "message": "하이브리드 검색 통계 조회 완료",
+  "stats": {
+    "opensearch": {
+      "total_documents": 0,
+      "indexed_documents": 0
+    }
   }
 }
 ```
@@ -291,4 +210,5 @@ curl -X GET "http://localhost:8010/search/hybrid/stats" \
 2. **결과 정렬**: 유사도 점수 기준 내림차순
 3. **캐싱**: 자주 사용되는 쿼리는 캐시됨
 4. **실시간**: 최신 데이터 반영
-5. **보안**: 인증된 사용자만 접근 가능 
+5. **보안**: 인증된 사용자만 접근 가능
+6. **HTTP 메서드**: POST와 GET 모두 지원 (동일한 기능) 

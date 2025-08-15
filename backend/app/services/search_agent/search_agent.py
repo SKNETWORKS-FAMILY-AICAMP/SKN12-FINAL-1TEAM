@@ -10,33 +10,28 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
+# 중앙 설정 import
+from app.core.config import config
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# .env 파일 로드
-env_path = Path(__file__).parent.parent.parent / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
-    logger.info(f"Loaded .env from: {env_path}")
-else:
-    logger.warning(f".env file not found at: {env_path}")
-
 class SearchAgent:
-    def __init__(self, base_url: str = "http://localhost:8010", api_token: Optional[str] = None):
+    def __init__(self, base_url: Optional[str] = None, api_token: Optional[str] = None):
         """
         검색 에이전트 초기화
         
         Args:
-            base_url: API 서버 기본 URL
+            base_url: API 서버 기본 URL (None이면 config에서 가져옴)
             api_token: JWT 토큰 (선택사항)
         """
-        self.base_url = base_url
+        self.base_url = base_url or config.get_database_api_url()
         self.api_token = api_token or os.getenv("API_TOKEN")
         self.llm = ChatOpenAI(
             model="gpt-3.5-turbo",
             temperature=0.1,
-            api_key=os.getenv("OPENAI_API_KEY")
+            api_key=config.get_openai_api_key()
         )
         
         # API 헤더 설정
@@ -285,12 +280,12 @@ class SearchAgent:
         
         return health_status
 
-def create_search_agent(base_url: str = "http://localhost:8010", api_token: Optional[str] = None):
+def create_search_agent(base_url: Optional[str] = None, api_token: Optional[str] = None):
     """
     검색 에이전트 팩토리 함수
     
     Args:
-        base_url: API 서버 기본 URL
+        base_url: API 서버 기본 URL (None이면 config에서 가져옴)
         api_token: JWT 토큰
         
     Returns:
