@@ -1,9 +1,10 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
-from typing import List, Optional, Union, Dict
+from typing import List, Optional, Union, Dict, AsyncGenerator
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.schemas.document import DocumentBase, DocumentInfo
+import uuid
 from app.services.external.s3_service import upload_file, delete_file_from_s3, generate_presigned_url
 from app.services.external.postgres_service import save_document, get_documents, get_document_by_id, delete_document_from_postgres
 from app.models.documents import Document
@@ -18,6 +19,8 @@ from app.routers.user_router import get_current_user, get_current_admin_user
 from pydantic import BaseModel
 import logging
 import re
+import json
+from sse_starlette.sse import EventSourceResponse
 
 # 파일 처리 관련 라이브러리들
 try:
@@ -661,7 +664,7 @@ def list_documents(user=Depends(get_current_user)):
     return [DocumentInfo.model_validate(doc) for doc in docs]
 
 @router.get("/documents/{doc_id}")
-def get_document(doc_id: int, user=Depends(get_current_user)):
+def get_document(doc_id: str, user=Depends(get_current_user)):
     """
     특정 문서를 조회합니다. 다운로드 링크를 포함합니다.
     
@@ -697,7 +700,7 @@ def get_document(doc_id: int, user=Depends(get_current_user)):
     return doc_info
 
 @router.get("/documents/{doc_id}/download")
-def get_document_download_link(doc_id: int, expiration_hours: int = 1, user=Depends(get_current_user)):
+def get_document_download_link(doc_id: str, expiration_hours: int = 1, user=Depends(get_current_user)):
     """
     문서의 다운로드 링크를 생성합니다.
     
@@ -744,7 +747,7 @@ def get_document_download_link(doc_id: int, expiration_hours: int = 1, user=Depe
     }
 
 @router.delete("/documents/{doc_id}", response_model=DocumentInfo)
-def delete_document(doc_id: int, admin=Depends(get_current_admin_user)):
+def delete_document(doc_id: str, admin=Depends(get_current_admin_user)):
     """
     문서를 삭제합니다. (관리자만 가능)
     
@@ -794,4 +797,622 @@ def delete_document(doc_id: int, admin=Depends(get_current_admin_user)):
         
     except Exception as e:
         logger.error(f"문서 삭제 중 오류: {e}")
-        raise HTTPException(status_code=500, detail=f"문서 삭제 중 오류가 발생했습니다: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"문서 삭제 중 오류가 발생했습니다: {str(e)}")
+
+
+# ==================== SSE 기반 업로드 함수들 ====================
+
+async def process_table_document_sse(
+    file_bytes: bytes,
+    filename: str,
+    doc_title: str,
+    table_data: list,
+    uploader_id: int,
+    version: str = None
+) -> AsyncGenerator[str, None]:
+    """
+    테이블 문서를 처리하면서 진행 상황을 yield합니다.
+    """
+    try:
+        # UUID 생성
+        doc_id = str(uuid.uuid4())
+        
+        # Text2SQL 분류
+        yield json.dumps({
+            "step": "classifying",
+            "message": "Text2SQL 분류 진행 중...",
+            "docType": "table"
+        })
+        
+        result = await text2sql_classifier.classify_table_with_text2sql(
+            table_data=table_data,
+            table_description=doc_title,
+            document_id=None,
+            uploader_id=uploader_id
+        )
+        
+        if not result['success']:
+            yield json.dumps({
+                "step": "error",
+                "message": f"Text2SQL 분류 실패: {result['message']}"
+            })
+            return
+        
+        yield json.dumps({
+            "step": "classified",
+            "message": f"타겟 테이블: {result['target_table']} (신뢰도: {result['confidence']:.2f})",
+            "target_table": result['target_table'],
+            "confidence": result['confidence']
+        })
+        
+        # 문서 요약 생성
+        yield json.dumps({
+            "step": "summarizing",
+            "message": "문서 요약 생성 중..."
+        })
+        
+        summary = None
+        try:
+            doc_type = f"text2sql_{result['target_table']}"
+            summary = document_summarizer.summarize_table_document(table_data, doc_title, doc_type)
+            if summary:
+                yield json.dumps({
+                    "step": "summarized",
+                    "message": "요약 생성 완료"
+                })
+            else:
+                yield json.dumps({
+                    "step": "summarized",
+                    "message": "요약 생성 실패 (계속 진행)"
+                })
+        except Exception as e:
+            logger.error(f"요약 생성 중 오류: {e}")
+            yield json.dumps({
+                "step": "summarized",
+                "message": "요약 생성 실패 (계속 진행)"
+            })
+        
+        # S3 업로드
+        yield json.dumps({
+            "step": "uploading",
+            "message": "S3에 파일 업로드 중..."
+        })
+        
+        file_path = upload_file(file_bytes, filename, "application/octet-stream")
+        
+        yield json.dumps({
+            "step": "uploaded",
+            "message": "파일 업로드 완료"
+        })
+        
+        # DB 저장
+        yield json.dumps({
+            "step": "saving",
+            "message": "데이터베이스에 메타데이터 저장 중..."
+        })
+        
+        # DocumentModel에 doc_id 추가
+        from app.models.documents import Document as DocumentModel
+        db_doc = DocumentModel(
+            doc_id=doc_id,  # UUID 사용
+            doc_title=doc_title,
+            doc_type=f"text2sql_{result['target_table']}",
+            file_path=file_path,
+            uploader_id=uploader_id,
+            version=version,
+            summary=summary,
+            created_at=datetime.now()
+        )
+        
+        from app.services.utils.db import SessionLocal
+        db = SessionLocal()
+        try:
+            db.add(db_doc)
+            db.commit()
+            db.refresh(db_doc)
+        finally:
+            db.close()
+        
+        # 문서 타입 업데이트
+        try:
+            from app.services.utils.db import create_db_session
+            with create_db_session() as update_session:
+                doc_to_update = get_document_by_id(db_doc.doc_id)
+                if doc_to_update:
+                    await DocumentTypeUpdater.update_after_success(doc_to_update, result, update_session)
+                    update_session.commit()
+            yield json.dumps({
+                "step": "saved",
+                "message": "저장 완료"
+            })
+        except Exception as e:
+            logger.error(f"문서 타입 업데이트 실패: {e}")
+            yield json.dumps({
+                "step": "saved",
+                "message": "저장 완료 (타입 업데이트 실패)"
+            })
+        
+        # 완료
+        yield json.dumps({
+            "step": "completed",
+            "message": "테이블 문서 업로드 완료!",
+            "result": {
+                "doc_id": doc_id,
+                "doc_title": doc_title,
+                "doc_type": f"text2sql_{result['target_table']}",
+                "target_table": result['target_table'],
+                "confidence": result['confidence']
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"테이블 문서 처리 중 오류: {e}")
+        yield json.dumps({
+            "step": "error",
+            "message": f"오류 발생: {str(e)}"
+        })
+
+
+async def process_text_document_sse(
+    file_bytes: bytes,
+    filename: str,
+    doc_title: str,
+    text: str,
+    file_extension: str,
+    uploader_id: int,
+    version: str = None
+) -> AsyncGenerator[str, None]:
+    """
+    텍스트 문서를 처리하면서 진행 상황을 yield합니다.
+    """
+    try:
+        # UUID 생성
+        doc_id = str(uuid.uuid4())
+        
+        # 1. 문서 타입 분석
+        yield json.dumps({
+            "step": "analyzing",
+            "message": "문서 타입 분석 중...",
+            "docType": "text"
+        })
+        
+        analyzed_doc_type = document_analyzer.analyze_document(text, filename)
+        
+        yield json.dumps({
+            "step": "analyzed",
+            "message": f"문서 타입: {analyzed_doc_type}",
+            "doc_subtype": analyzed_doc_type
+        })
+        
+        # 2. 문서 타입별 처리 (chunking 또는 relation_analysis)
+        if file_extension in document_analyzer.supported_extensions["text"]:
+            if analyzed_doc_type in ["regulation", "law"]:
+                # OpenSearch 청킹
+                yield json.dumps({
+                    "step": "chunking",
+                    "message": "검색 최적화를 위한 문서 청킹 중..."
+                })
+                
+                chunking_type = document_analyzer.get_chunking_type(analyzed_doc_type)
+                index_document_chunks(
+                    doc_id=doc_id,
+                    doc_title=doc_title,
+                    file_name=filename,
+                    text=text,
+                    document_type=chunking_type
+                )
+                
+                yield json.dumps({
+                    "step": "chunked",
+                    "message": "문서 청킹 및 인덱싱 완료"
+                })
+                
+            elif analyzed_doc_type == "report":
+                # 문서 관계 분석
+                yield json.dumps({
+                    "step": "relation_analysis",
+                    "message": "다른 문서와의 관계 분석 중..."
+                })
+                
+                relation_result = document_relation_analyzer.analyze_document_relations(
+                    doc_id=doc_id,
+                    text=text,
+                    table_data=None
+                )
+                
+                if relation_result['success']:
+                    yield json.dumps({
+                        "step": "relation_analyzed",
+                        "message": f"관계 분석 완료: {relation_result['relations_created']}개 관계 발견"
+                    })
+                else:
+                    yield json.dumps({
+                        "step": "relation_analyzed",
+                        "message": "관계 분석 실패 (계속 진행)"
+                    })
+        
+        # 3. 문서 요약 생성
+        yield json.dumps({
+            "step": "summarizing",
+            "message": "문서 요약 생성 중..."
+        })
+        
+        summary = None
+        try:
+            summary = document_summarizer.summarize_text_document(text, doc_title, analyzed_doc_type)
+            if summary:
+                yield json.dumps({
+                    "step": "summarized",
+                    "message": "요약 생성 완료"
+                })
+            else:
+                yield json.dumps({
+                    "step": "summarized",
+                    "message": "요약 생성 실패 (계속 진행)"
+                })
+        except Exception as e:
+            logger.error(f"요약 생성 중 오류: {e}")
+            yield json.dumps({
+                "step": "summarized",
+                "message": "요약 생성 실패 (계속 진행)"
+            })
+        
+        # 4. S3 업로드
+        yield json.dumps({
+            "step": "uploading",
+            "message": "S3에 파일 업로드 중..."
+        })
+        
+        file_path = upload_file(file_bytes, filename, "application/octet-stream")
+        
+        yield json.dumps({
+            "step": "uploaded",
+            "message": "파일 업로드 완료"
+        })
+        
+        # 5. DB 저장
+        yield json.dumps({
+            "step": "saving",
+            "message": "데이터베이스에 메타데이터 저장 중..."
+        })
+        
+        # DocumentBase에 doc_id 추가
+        from app.models.documents import Document as DocumentModel
+        db_doc = DocumentModel(
+            doc_id=doc_id,  # UUID 사용
+            doc_title=doc_title,
+            doc_type=analyzed_doc_type,
+            file_path=file_path,
+            uploader_id=uploader_id,
+            version=version,
+            summary=summary,
+            created_at=datetime.now()
+        )
+        
+        from app.services.utils.db import SessionLocal
+        db = SessionLocal()
+        try:
+            db.add(db_doc)
+            db.commit()
+            db.refresh(db_doc)
+        finally:
+            db.close()
+        
+        yield json.dumps({
+            "step": "saved",
+            "message": "메타데이터 저장 완료"
+        })
+        
+        # 완료
+        yield json.dumps({
+            "step": "completed",
+            "message": "텍스트 문서 업로드 완료!",
+            "result": {
+                "doc_id": doc_id,
+                "doc_title": doc_title,
+                "doc_type": analyzed_doc_type
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"텍스트 문서 처리 중 오류: {e}")
+        yield json.dumps({
+            "step": "error",
+            "message": f"오류 발생: {str(e)}"
+        })
+
+
+@router.post("/documents/upload-sse")
+async def upload_document_sse(
+    file: UploadFile = File(...),
+    uploader_id: int = Form(...),
+    version: str = Form(None),
+    user=Depends(get_current_user)
+):
+    """
+    단일 문서를 업로드하면서 실시간으로 진행 상황을 전송합니다.
+    Server-Sent Events를 사용하여 각 처리 단계를 스트리밍합니다.
+    """
+    # 파일을 먼저 메모리에 읽어옴 (파일이 닫히는 것을 방지)
+    file_bytes = await file.read()
+    filename = file.filename
+    
+    async def generate_progress():
+        try:
+            # 파일 검증
+            yield json.dumps({
+                "type": "single",
+                "step": "validating",
+                "message": f"파일 검증 중: {filename}"
+            })
+            
+            # 파일 크기 검증
+            if len(file_bytes) > MAX_FILE_SIZE_MB * 1024 * 1024:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"파일 크기가 너무 큽니다. 최대 {MAX_FILE_SIZE_MB}MB까지 업로드 가능합니다."
+                )
+            
+            yield json.dumps({
+                "type": "single",
+                "step": "validated",
+                "message": "파일 검증 완료"
+            })
+            
+            # 파일 타입 분석
+            yield json.dumps({
+                "type": "single",
+                "step": "detecting",
+                "message": "파일 타입 감지 중..."
+            })
+            
+            file_extension = document_analyzer._get_file_extension(filename)
+            text, table_data, is_table_file = extract_text_and_table(file_bytes, filename)
+            doc_title = extract_doc_title(filename)
+            
+            if is_table_file and table_data:
+                yield json.dumps({
+                    "type": "single",
+                    "step": "detected",
+                    "message": "테이블 문서로 확인됨",
+                    "docType": "table"
+                })
+                
+                # 테이블 문서 처리
+                async for progress in process_table_document_sse(
+                    file_bytes=file_bytes,
+                    filename=filename,
+                    doc_title=doc_title,
+                    table_data=table_data,
+                    uploader_id=uploader_id,
+                    version=version
+                ):
+                    data = json.loads(progress)
+                    data["type"] = "single"
+                    yield json.dumps(data)
+            else:
+                yield json.dumps({
+                    "type": "single",
+                    "step": "detected",
+                    "message": "텍스트 문서로 확인됨",
+                    "docType": "text"
+                })
+                
+                # 텍스트 문서 처리
+                async for progress in process_text_document_sse(
+                    file_bytes=file_bytes,
+                    filename=filename,
+                    doc_title=doc_title,
+                    text=text,
+                    file_extension=file_extension,
+                    uploader_id=uploader_id,
+                    version=version
+                ):
+                    data = json.loads(progress)
+                    data["type"] = "single"
+                    yield json.dumps(data)
+                    
+        except HTTPException as e:
+            yield json.dumps({
+                "type": "single",
+                "step": "error",
+                "message": e.detail
+            })
+        except Exception as e:
+            logger.error(f"SSE 업로드 중 오류: {e}")
+            yield json.dumps({
+                "type": "single",
+                "step": "error",
+                "message": f"오류 발생: {str(e)}"
+            })
+    
+    return EventSourceResponse(generate_progress())
+
+
+@router.post("/documents/upload-batch-sse")
+async def upload_documents_batch_sse(
+    files: List[UploadFile] = File(...),
+    uploader_id: int = Form(...),
+    version: str = Form(None),
+    user=Depends(get_current_user)
+):
+    """
+    여러 문서를 한 번에 업로드하면서 실시간으로 진행 상황을 전송합니다.
+    각 파일의 처리 상태를 Server-Sent Events로 스트리밍합니다.
+    """
+    # 모든 파일을 먼저 메모리에 읽어옴
+    files_data = []
+    for file in files:
+        file_bytes = await file.read()
+        files_data.append({
+            "filename": file.filename,
+            "bytes": file_bytes
+        })
+    
+    async def generate_batch_progress():
+        total_files = len(files_data)
+        successful = 0
+        failed = 0
+        results = []
+        errors = []
+        
+        try:
+            # 배치 시작
+            yield json.dumps({
+                "type": "batch",
+                "step": "batch_start",
+                "message": f"총 {total_files}개 파일 업로드 시작",
+                "total": total_files
+            })
+            
+            for i, file_data in enumerate(files_data, 1):
+                filename = file_data["filename"]
+                file_bytes = file_data["bytes"]
+                
+                try:
+                    # 개별 파일 시작
+                    yield json.dumps({
+                        "type": "batch",
+                        "step": "file_start",
+                        "fileIndex": i,
+                        "fileName": filename,
+                        "message": f"[{i}/{total_files}] {filename} 처리 시작",
+                        "progress": {
+                            "current": i,
+                            "total": total_files,
+                            "successful": successful,
+                            "failed": failed
+                        }
+                    })
+                    
+                    # 파일 검증
+                    yield json.dumps({
+                        "type": "batch",
+                        "step": "validating",
+                        "fileIndex": i,
+                        "fileName": filename,
+                        "message": f"[{i}/{total_files}] 파일 검증 중"
+                    })
+                    
+                    # 파일 크기 검증
+                    if len(file_bytes) > MAX_FILE_SIZE_MB * 1024 * 1024:
+                        raise HTTPException(
+                            status_code=400, 
+                            detail=f"파일 크기가 너무 큽니다. 최대 {MAX_FILE_SIZE_MB}MB까지 업로드 가능합니다."
+                        )
+                    
+                    # 파일 타입 판별
+                    file_extension = document_analyzer._get_file_extension(filename)
+                    text, table_data, is_table_file = extract_text_and_table(file_bytes, filename)
+                    doc_title = extract_doc_title(filename)
+                    
+                    doc_type = "table" if is_table_file else "text"
+                    yield json.dumps({
+                        "type": "batch",
+                        "step": "type_detected",
+                        "fileIndex": i,
+                        "fileName": filename,
+                        "docType": doc_type,
+                        "message": f"[{i}/{total_files}] {doc_type} 문서로 확인"
+                    })
+                    
+                    # 문서 타입별 처리
+                    if is_table_file and table_data:
+                        # 테이블 처리
+                        async for progress in process_table_document_sse(
+                            file_bytes=file_bytes,
+                            filename=filename,
+                            doc_title=doc_title,
+                            table_data=table_data,
+                            uploader_id=uploader_id,
+                            version=version
+                        ):
+                            data = json.loads(progress)
+                            data["type"] = "batch"
+                            data["fileIndex"] = i
+                            data["fileName"] = filename
+                            data["message"] = f"[{i}/{total_files}] " + data.get("message", "")
+                            yield json.dumps(data)
+                            
+                            if data.get("step") == "completed":
+                                results.append(data.get("result"))
+                    else:
+                        # 텍스트 처리
+                        async for progress in process_text_document_sse(
+                            file_bytes=file_bytes,
+                            filename=filename,
+                            doc_title=doc_title,
+                            text=text,
+                            file_extension=file_extension,
+                            uploader_id=uploader_id,
+                            version=version
+                        ):
+                            data = json.loads(progress)
+                            data["type"] = "batch"
+                            data["fileIndex"] = i
+                            data["fileName"] = filename
+                            data["message"] = f"[{i}/{total_files}] " + data.get("message", "")
+                            yield json.dumps(data)
+                            
+                            if data.get("step") == "completed":
+                                results.append(data.get("result"))
+                    
+                    # 개별 파일 완료
+                    successful += 1
+                    yield json.dumps({
+                        "type": "batch",
+                        "step": "file_completed",
+                        "fileIndex": i,
+                        "fileName": filename,
+                        "message": f"[{i}/{total_files}] {filename} 완료",
+                        "progress": {
+                            "current": i,
+                            "total": total_files,
+                            "successful": successful,
+                            "failed": failed
+                        }
+                    })
+                    
+                except Exception as e:
+                    failed += 1
+                    error_msg = str(e)
+                    errors.append({"filename": filename, "error": error_msg})
+                    
+                    yield json.dumps({
+                        "type": "batch",
+                        "step": "file_error",
+                        "fileIndex": i,
+                        "fileName": filename,
+                        "error": error_msg,
+                        "message": f"[{i}/{total_files}] {filename} 실패: {error_msg}",
+                        "progress": {
+                            "current": i,
+                            "total": total_files,
+                            "successful": successful,
+                            "failed": failed
+                        }
+                    })
+            
+            # 배치 완료
+            yield json.dumps({
+                "type": "batch",
+                "step": "batch_completed",
+                "message": f"배치 업로드 완료: 성공 {successful}개, 실패 {failed}개",
+                "summary": {
+                    "total": total_files,
+                    "successful": successful,
+                    "failed": failed,
+                    "results": results,
+                    "errors": errors
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"배치 SSE 업로드 중 오류: {e}")
+            yield json.dumps({
+                "type": "batch",
+                "step": "error",
+                "message": f"배치 처리 중 오류 발생: {str(e)}"
+            })
+    
+    return EventSourceResponse(generate_batch_progress()) 

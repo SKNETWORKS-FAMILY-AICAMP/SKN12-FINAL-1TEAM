@@ -9,7 +9,7 @@ class DocumentRelation(Base):
     relation_id = Column(Integer, primary_key=True, autoincrement=True)  # 관계 고유 ID (자동 증가)
     
     # 관계 정보
-    doc_id = Column(Integer, ForeignKey("documents.doc_id"), nullable=False)  # 문서 ID (외래키, 필수)
+    doc_id = Column(String(36), ForeignKey("documents.doc_id"), nullable=False)  # 문서 ID (외래키, 필수)
     related_entity_type = Column(String, nullable=False)  # 관련 엔티티 타입 (customer, product, employee, document)
     related_entity_id = Column(Integer, nullable=False)  # 관련 엔티티 ID
     confidence_score = Column(Integer, default=100)  # 신뢰도 점수 (0-100)

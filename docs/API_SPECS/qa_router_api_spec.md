@@ -6,7 +6,7 @@
 ## 기본 정보
 - **Base URL**: `/qa`
 - **Content-Type**: `application/json`
-- **인증**: JWT 토큰 기반
+- **인증**: 필요 없음 (공개 엔드포인트)
 
 ## API 엔드포인트
 
@@ -40,7 +40,6 @@ curl -X GET "http://localhost:8010/qa/health"
 
 #### 헤더
 ```
-Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
 
@@ -90,7 +89,6 @@ Content-Type: application/json
 #### 사용 예시
 ```bash
 curl -X POST "http://localhost:8010/qa/question" \
-  -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "question": "회사의 매출 현황은 어떻게 되나요?",
@@ -106,9 +104,7 @@ curl -X POST "http://localhost:8010/qa/question" \
 **POST** `/qa/test`
 
 #### 헤더
-```
-Authorization: Bearer <access_token>
-```
+인증 불필요
 
 #### 응답
 ```json
@@ -139,8 +135,7 @@ Authorization: Bearer <access_token>
 
 #### 사용 예시
 ```bash
-curl -X POST "http://localhost:8010/qa/test" \
-  -H "Authorization: Bearer <access_token>"
+curl -X POST "http://localhost:8010/qa/test"
 ```
 
 #### 기능 설명
@@ -181,13 +176,6 @@ curl -X POST "http://localhost:8010/qa/test" \
 ```json
 {
   "detail": "질문이 너무 깁니다."
-}
-```
-
-### 401 Unauthorized
-```json
-{
-  "detail": "Could not validate credentials"
 }
 ```
 
@@ -243,8 +231,7 @@ curl -X GET "http://localhost:8010/qa/health"
 ### 테스트 실행
 ```bash
 # 테스트 질문으로 시스템 확인
-curl -X POST "http://localhost:8010/qa/test" \
-  -H "Authorization: Bearer <access_token>"
+curl -X POST "http://localhost:8010/qa/test"
 ```
 
 ### 로그 확인

@@ -45,16 +45,8 @@ def init_admin(user: EmployeeCreate, db: Session = Depends(get_db)):
     if existing_user:
         raise HTTPException(status_code=400, detail="이메일이 이미 존재합니다.")
     
-    # 4. 사용자명 중복 체크
-    existing_username = db.query(Employee).filter(
-        Employee.username == user.username,
-        Employee.is_deleted == False
-    ).first()
-    if existing_username:
-        raise HTTPException(status_code=400, detail="사용자명이 이미 존재합니다.")
-    
     try:
-        # 5. 관리자 계정 생성
+        # 4. 관리자 계정 생성
         new_user = create_employee(db, user)
         return EmployeeInfo.from_orm(new_user)
     except IntegrityError as e:
@@ -62,8 +54,6 @@ def init_admin(user: EmployeeCreate, db: Session = Depends(get_db)):
         # 더 구체적인 오류 메시지 제공
         if "email" in str(e).lower():
             raise HTTPException(status_code=400, detail="이메일이 이미 존재합니다.")
-        elif "username" in str(e).lower():
-            raise HTTPException(status_code=400, detail="사용자명이 이미 존재합니다.")
         else:
             raise HTTPException(status_code=400, detail="데이터베이스 제약 조건 위반: " + str(e))
     except Exception as e:

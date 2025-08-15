@@ -23,7 +23,7 @@ class DocumentRelationAnalyzer:
         """
         self.db_session_factory = db_session_factory
     
-    def analyze_document_relations(self, doc_id: int, text: str, table_data: List[Dict] = None) -> Dict[str, Any]:
+    def analyze_document_relations(self, doc_id: str, text: str, table_data: List[Dict] = None) -> Dict[str, Any]:
         """
         문서 내용을 분석하여 관계를 생성
         
@@ -74,7 +74,7 @@ class DocumentRelationAnalyzer:
                 'relations_created': 0
             }
     
-    def _extract_customer_relations(self, doc_id: int, text: str, table_data: List[Dict] = None) -> List[Dict]:
+    def _extract_customer_relations(self, doc_id: str, text: str, table_data: List[Dict] = None) -> List[Dict]:
         """고객명 추출 및 관계 생성"""
         customer_names = []
         
@@ -127,7 +127,7 @@ class DocumentRelationAnalyzer:
         
         return relations
     
-    def _extract_product_relations(self, doc_id: int, text: str, table_data: List[Dict] = None) -> List[Dict]:
+    def _extract_product_relations(self, doc_id: str, text: str, table_data: List[Dict] = None) -> List[Dict]:
         """제품명 추출 및 관계 생성"""
         product_names = []
         
@@ -180,7 +180,7 @@ class DocumentRelationAnalyzer:
         
         return relations
     
-    def _extract_employee_relations(self, doc_id: int, text: str, table_data: List[Dict] = None) -> List[Dict]:
+    def _extract_employee_relations(self, doc_id: str, text: str, table_data: List[Dict] = None) -> List[Dict]:
         """직원명 추출 및 관계 생성"""
         employee_names = []
         
@@ -251,7 +251,7 @@ class DocumentRelationAnalyzer:
         
         return names
     
-    def _find_similar_documents(self, doc_id: int, text: str) -> List[Dict]:
+    def _find_similar_documents(self, doc_id: str, text: str) -> List[Dict]:
         """유사한 문서 찾기"""
         similar_docs = []
         
@@ -312,7 +312,7 @@ class DocumentRelationAnalyzer:
         
         return similar_docs
     
-    def delete_document_relations(self, doc_id: int) -> Dict[str, Any]:
+    def delete_document_relations(self, doc_id: str) -> Dict[str, Any]:
         """특정 문서의 모든 관계 삭제"""
         try:
             with self.db_session_factory() as session:

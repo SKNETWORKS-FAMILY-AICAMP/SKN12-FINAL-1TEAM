@@ -22,7 +22,6 @@ Authorization: Bearer <admin_token>
 ```json
 {
   "email": "newuser@example.com",
-  "username": "newuser",
   "password": "password123",
   "name": "새 사용자",
   "role": "user"
@@ -34,7 +33,6 @@ Authorization: Bearer <admin_token>
 {
   "employee_id": 3,
   "email": "newuser@example.com",
-  "username": "newuser",
   "name": "새 사용자",
   "role": "user",
   "is_active": true,
@@ -49,7 +47,6 @@ curl -X POST "http://localhost:8010/admin/register-employee" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "newuser@example.com",
-    "username": "newuser",
     "password": "password123",
     "name": "새 사용자",
     "role": "user"
@@ -65,7 +62,6 @@ curl -X POST "http://localhost:8010/admin/register-employee" \
 ```json
 {
   "email": "admin@example.com",
-  "username": "admin",
   "password": "admin123",
   "name": "시스템 관리자",
   "role": "admin"
@@ -77,7 +73,6 @@ curl -X POST "http://localhost:8010/admin/register-employee" \
 {
   "employee_id": 1,
   "email": "admin@example.com",
-  "username": "admin",
   "name": "시스템 관리자",
   "role": "admin",
   "is_active": true,
@@ -91,7 +86,6 @@ curl -X POST "http://localhost:8010/admin/init-admin" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "admin@example.com",
-    "username": "admin",
     "password": "admin123",
     "name": "시스템 관리자",
     "role": "admin"
@@ -212,7 +206,6 @@ curl -X POST "http://localhost:8010/admin/init-admin" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "admin@example.com",
-    "username": "admin",
     "password": "admin123",
     "name": "시스템 관리자",
     "role": "admin"
@@ -235,7 +228,6 @@ curl -X POST "http://localhost:8010/admin/register-employee" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "user@example.com",
-    "username": "user",
     "password": "password123",
     "name": "일반 사용자",
     "role": "user"

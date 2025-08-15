@@ -29,3 +29,4 @@ langgraph
 langchain
 langchain-community
 numpy
+sse-starlette

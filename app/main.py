@@ -128,9 +128,9 @@ def root():
     logger.info("루트 엔드포인트 호출됨")
     return {"message": "Welcome to the Database API!"}
 
-@app.get("/ping")
-def ping():
-    logger.info("핑 엔드포인트 호출됨")
-    return {"message": "pong"}
+@app.get("/health")
+def health():
+    logger.info("헬스체크 엔드포인트 호출됨")
+    return {"status": "healthy"}
 
 # Only keep root and ping endpoints here, all others should be in routers 

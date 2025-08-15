@@ -5,7 +5,6 @@ from datetime import datetime
 class EmployeeBase(BaseModel):
     """
     email: unique, required
-    username: unique, required
     password: required (only for creation)
     name: required
     role: required
@@ -13,7 +12,6 @@ class EmployeeBase(BaseModel):
     created_at: optional
     """
     email: EmailStr
-    username: str
     password: Optional[constr(min_length=8)] = None
     name: str
     role: str  # 'admin', 'manager', 'user'

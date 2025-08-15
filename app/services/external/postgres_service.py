@@ -22,14 +22,14 @@ def get_documents() -> List[Document]:
     finally:
         db.close()
 
-def get_document_by_id(doc_id: int) -> Optional[Document]:
+def get_document_by_id(doc_id: str) -> Optional[Document]:
     db = SessionLocal()
     try:
         return db.query(Document).filter(Document.doc_id == doc_id).first()
     finally:
         db.close()
 
-def delete_document_from_postgres(doc_id: int) -> Optional[Document]:
+def delete_document_from_postgres(doc_id: str) -> Optional[Document]:
     db = SessionLocal()
     try:
         doc = db.query(Document).filter(Document.doc_id == doc_id).first()

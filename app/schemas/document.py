@@ -12,7 +12,7 @@ class DocumentBase(BaseModel):
     created_at: Optional[datetime] = None
 
 class DocumentInfo(DocumentBase):
-    doc_id: int
+    doc_id: str
     processing_status: Optional[str] = None
     processed_at: Optional[datetime] = None
     processing_metadata: Optional[Dict[str, Any]] = None

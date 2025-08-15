@@ -78,8 +78,6 @@ def process_hr_data(table_data: List[Dict[str, Any]]) -> int:
                     continue
                 employee_data.setdefault("role", "user")
                 employee_data.setdefault("is_active", True)
-                if employee_data.get("email") and not employee_data.get("username"):
-                    employee_data["username"] = employee_data["email"]
                 existing_employee = db.query(Employee).filter(
                     Employee.name == employee_data["name"],
                     Employee.contact_number == employee_data.get("contact_number")

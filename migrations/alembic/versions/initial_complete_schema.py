@@ -35,7 +35,6 @@ def upgrade() -> None:
     op.create_table('employees',
         sa.Column('employee_id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('email', sa.String(length=100), nullable=False),
-        sa.Column('username', sa.String(length=100), nullable=False),
         sa.Column('password', sa.String(length=255), nullable=False),
         sa.Column('name', sa.String(length=100), nullable=False),
         sa.Column('role', sa.String(length=50), nullable=False),
@@ -44,8 +43,7 @@ def upgrade() -> None:
         sa.Column('deleted_at', sa.DateTime(), nullable=True),
         sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
         sa.PrimaryKeyConstraint('employee_id'),
-        sa.UniqueConstraint('email'),
-        sa.UniqueConstraint('username')
+        sa.UniqueConstraint('email')
     )
     op.create_index(op.f('ix_employees_employee_id'), 'employees', ['employee_id'], unique=False)
     
@@ -111,7 +109,7 @@ def upgrade() -> None:
     
     # documents 테이블 (문서 메타데이터) - 모델과 일치
     op.create_table('documents',
-        sa.Column('doc_id', sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column('doc_id', sa.String(36), nullable=False),
         sa.Column('uploader_id', sa.Integer(), nullable=False),
         sa.Column('doc_title', sa.String(), nullable=False),
         sa.Column('doc_type', sa.String(), nullable=True),
@@ -263,7 +261,7 @@ def upgrade() -> None:
     # document_relations 테이블 (문서 관계) - 모델과 일치
     op.create_table('document_relations',
         sa.Column('relation_id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('doc_id', sa.Integer(), nullable=False),
+        sa.Column('doc_id', sa.String(36), nullable=False),
         sa.Column('related_entity_type', sa.String(), nullable=False),
         sa.Column('related_entity_id', sa.Integer(), nullable=False),
         sa.Column('confidence_score', sa.Integer(), nullable=True),

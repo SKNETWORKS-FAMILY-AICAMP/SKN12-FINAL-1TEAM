@@ -15,7 +15,6 @@ def create_employee(db: Session, user: EmployeeCreate):
     hashed_password = pwd_context.hash(user.password)
     db_user = Employee(
         email=user.email,
-        username=user.username,
         password=hashed_password,
         name=user.name,
         role=user.role

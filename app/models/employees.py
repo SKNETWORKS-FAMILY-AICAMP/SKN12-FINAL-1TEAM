@@ -10,7 +10,6 @@ class Employee(Base):
     # 기본 식별 정보
     employee_id = Column(Integer, primary_key=True, autoincrement=True)  # 직원 고유 ID (자동 증가)
     email = Column(String, unique=True, nullable=False)  # 직원 이메일 주소 (고유값, 필수)
-    username = Column(String, unique=True, nullable=False)  # 로그인용 사용자명 (고유값, 필수)
     password = Column(String, nullable=False)  # 로그인 비밀번호 (해시화된 값, 필수)
     name = Column(String, nullable=False)  # 직원 실명 (필수)
     

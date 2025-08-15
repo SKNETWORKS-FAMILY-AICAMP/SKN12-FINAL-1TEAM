@@ -3,15 +3,6 @@ set -e
 
 echo "🚀 애플리케이션 시작 중..."
 
-# pip 업그레이드 및 라이브러리 설치 (pip 캐시 활용)
-echo "📦 pip 업그레이드 중..."
-pip install --upgrade pip
-echo "📦 기본 라이브러리 설치 중..."
-pip install -r /app/requirements/requirements-base.txt --progress-bar on
-echo "📦 ML 라이브러리 설치 확인 중..."
-pip install -r /app/requirements/requirements-ml.txt --progress-bar on
-echo "✅ 모든 라이브러리 설치 완료"
-
 # PostgreSQL 연결 대기
 echo "⏳ PostgreSQL 연결 대기 중..."
 echo "🔍 Docker 환경 확인:"
