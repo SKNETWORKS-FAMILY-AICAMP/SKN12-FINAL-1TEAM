@@ -22,7 +22,7 @@ class EmployeeDBManager:
         POSTGRES_USER = os.getenv("POSTGRES_USER", "myuser")
         POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "mypassword")
         POSTGRES_DB = os.getenv("POSTGRES_DB", "mydatabase")
-        POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+        POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
         POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
         
         self.DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
@@ -91,8 +91,17 @@ class EmployeeDBManager:
                 employee_id = emp_result.employee_info_id
                 
                 # 기간 변환
-                start_date = f"{start_period[:4]}-{start_period[4:6]}-01"
-                end_date = f"{end_period[:4]}-{end_period[4:6]}-31"
+                from calendar import monthrange
+                start_year = int(start_period[:4])
+                start_month = int(start_period[4:6])
+                end_year = int(end_period[:4])
+                end_month = int(end_period[4:6])
+                
+                # 해당 월의 마지막 날 계산
+                last_day = monthrange(end_year, end_month)[1]
+                
+                start_date = f"{start_year:04d}-{start_month:02d}-01"
+                end_date = f"{end_year:04d}-{end_month:02d}-{last_day:02d}"
                 
                 # 월별 실적 조회
                 monthly_query = text("""
@@ -101,8 +110,8 @@ class EmployeeDBManager:
                         SUM(sale_amount) as amount
                     FROM sales_records
                     WHERE employee_id = :employee_id
-                        AND sale_date >= :start_date::date
-                        AND sale_date <= :end_date::date
+                        AND sale_date >= CAST(:start_date AS date)
+                        AND sale_date <= CAST(:end_date AS date)
                     GROUP BY TO_CHAR(sale_date, 'YYYYMM')
                     ORDER BY month
                 """)
@@ -132,8 +141,8 @@ class EmployeeDBManager:
                     FROM sales_records sr
                     JOIN products p ON sr.product_id = p.product_id
                     WHERE sr.employee_id = :employee_id
-                        AND sr.sale_date >= :start_date::date
-                        AND sr.sale_date <= :end_date::date
+                        AND sr.sale_date >= CAST(:start_date AS date)
+                        AND sr.sale_date <= CAST(:end_date AS date)
                     GROUP BY p.product_name
                     ORDER BY amount DESC
                 """)
@@ -159,8 +168,8 @@ class EmployeeDBManager:
                     FROM sales_records sr
                     JOIN customers c ON sr.customer_id = c.customer_id
                     WHERE sr.employee_id = :employee_id
-                        AND sr.sale_date >= :start_date::date
-                        AND sr.sale_date <= :end_date::date
+                        AND sr.sale_date >= CAST(:start_date AS date)
+                        AND sr.sale_date <= CAST(:end_date AS date)
                     GROUP BY c.customer_name
                     ORDER BY amount DESC
                 """)
@@ -219,8 +228,8 @@ class EmployeeDBManager:
                             target_amount as target
                         FROM employee_performance
                         WHERE employee_id = :employee_id
-                            AND year_month >= :start_date::date
-                            AND year_month <= :end_date::date
+                            AND year_month >= CAST(:start_date AS date)
+                            AND year_month <= CAST(:end_date AS date)
                     ),
                     monthly_actuals AS (
                         SELECT 
@@ -228,8 +237,8 @@ class EmployeeDBManager:
                             SUM(sale_amount) as actual
                         FROM sales_records
                         WHERE employee_id = :employee_id
-                            AND sale_date >= :start_date::date
-                            AND sale_date <= :end_date::date
+                            AND sale_date >= CAST(:start_date AS date)
+                            AND sale_date <= CAST(:end_date AS date)
                         GROUP BY TO_CHAR(sale_date, 'YYYYMM')
                     )
                     SELECT 
@@ -296,6 +305,127 @@ class EmployeeDBManager:
             except Exception as e:
                 logger.error(f"목표 데이터 조회 오류: {e}")
                 return None
+    
+    def get_performance_summary(self, employee_name: str, start_period: str, end_period: str) -> Dict[str, Any]:
+        """직원의 실적 요약 데이터를 반환합니다."""
+        performance_data = self.get_employee_performance(employee_name, start_period, end_period)
+        
+        if not performance_data:
+            return {
+                "total_performance": 0,
+                "monthly_breakdown": [],
+                "product_breakdown": [],
+                "client_breakdown": []
+            }
+        
+        return {
+            "total_performance": performance_data.get("total_performance", 0),
+            "monthly_breakdown": performance_data.get("monthly_breakdown", []),
+            "product_breakdown": performance_data.get("product_breakdown", []),
+            "client_breakdown": performance_data.get("client_breakdown", [])
+        }
+    
+    def get_target_vs_performance(self, employee_name: str, start_period: str, end_period: str) -> Dict[str, Any]:
+        """목표 대비 실적 데이터를 반환합니다."""
+        target_data = self.get_employee_targets(employee_name, start_period, end_period)
+        
+        if not target_data:
+            return {
+                "total_target": 0,
+                "total_performance": 0,
+                "achievement_rate": 0,
+                "evaluation": "데이터 없음",
+                "grade": "N/A",
+                "gap_amount": 0,
+                "monthly_targets": []
+            }
+        
+        total_target = sum(m.get("target", 0) for m in target_data.get("monthly_targets", []))
+        total_actual = sum(m.get("actual", 0) for m in target_data.get("monthly_targets", []))
+        achievement_rate = (total_actual / total_target * 100) if total_target > 0 else 0
+        
+        # 평가 등급 결정
+        if achievement_rate >= 120:
+            evaluation = "매우 우수"
+            grade = "S"
+        elif achievement_rate >= 100:
+            evaluation = "우수"
+            grade = "A"
+        elif achievement_rate >= 80:
+            evaluation = "양호"
+            grade = "B"
+        elif achievement_rate >= 60:
+            evaluation = "보통"
+            grade = "C"
+        else:
+            evaluation = "개선 필요"
+            grade = "D"
+        
+        return {
+            "total_target": total_target,
+            "total_performance": total_actual,
+            "achievement_rate": achievement_rate,
+            "evaluation": evaluation,
+            "grade": grade,
+            "gap_amount": total_actual - total_target,
+            "monthly_targets": target_data.get("monthly_targets", [])
+        }
+    
+    def analyze_performance_trend(self, employee_name: str, start_period: str, end_period: str) -> Dict[str, Any]:
+        """실적 추세를 분석합니다."""
+        performance_data = self.get_employee_performance(employee_name, start_period, end_period)
+        
+        if not performance_data or not performance_data.get("monthly_breakdown"):
+            return {
+                "trend": "데이터 부족",
+                "growth_rate": 0,
+                "stability": "분석 불가"
+            }
+        
+        monthly_amounts = [m["amount"] for m in performance_data["monthly_breakdown"]]
+        
+        if len(monthly_amounts) < 2:
+            return {
+                "trend": "데이터 부족",
+                "growth_rate": 0,
+                "stability": "분석 불가"
+            }
+        
+        # 성장률 계산
+        growth_rate = ((monthly_amounts[-1] - monthly_amounts[0]) / monthly_amounts[0] * 100) if monthly_amounts[0] > 0 else 0
+        
+        # 추세 분석
+        if growth_rate > 20:
+            trend = "강한 성장"
+        elif growth_rate > 5:
+            trend = "성장"
+        elif growth_rate > -5:
+            trend = "안정"
+        elif growth_rate > -20:
+            trend = "하락"
+        else:
+            trend = "급락"
+        
+        # 안정성 분석 (변동 계수)
+        import numpy as np
+        cv = np.std(monthly_amounts) / np.mean(monthly_amounts) * 100 if np.mean(monthly_amounts) > 0 else 0
+        
+        if cv < 10:
+            stability = "매우 안정"
+        elif cv < 20:
+            stability = "안정"
+        elif cv < 30:
+            stability = "보통"
+        elif cv < 40:
+            stability = "불안정"
+        else:
+            stability = "매우 불안정"
+        
+        return {
+            "trend": trend,
+            "growth_rate": growth_rate,
+            "stability": stability
+        }
     
     def get_employee_performance_data(self, employee_name: str = None,
                                      start_period: str = None,

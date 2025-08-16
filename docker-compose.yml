@@ -39,6 +39,8 @@ services:
     environment:
       - REACT_APP_API_URL=http://backend:8000  # API URL 설정
       - WDS_SOCKET_PORT=3000  # WebSocket 포트 설정
+      - WATCHPACK_POLLING=true  # 파일 변경 감지 활성화
+      - CHOKIDAR_USEPOLLING=true  # Windows에서 파일 변경 감지
     depends_on:
       - backend
     networks:

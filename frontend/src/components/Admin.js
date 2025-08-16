@@ -174,6 +174,58 @@ const Admin = ({ currentUser }) => {
     }
   };
   
+  // 목표 데이터 전용 업로드 핸들러
+  const handleTargetDataUpload = async () => {
+    if (selectedFiles.length === 0) {
+      setMessage('❌ 목표 데이터 파일을 선택해주세요.');
+      return;
+    }
+    
+    const file = selectedFiles[0];
+    const docTitle = `목표 데이터 - ${file.name.replace(/\.[^/.]+$/, '')}`;
+    
+    setIsLoading(true);
+    setMessage('');
+    setShowProcessBar(true);
+    setIsUploadCompleted(false);
+    
+    try {
+      // 목표 데이터 전용 API 엔드포인트 사용
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('title', docTitle);
+      
+      // /api/v1/employee/upload-targets 엔드포인트 호출 (예시)
+      const response = await fetch('http://localhost:8000/api/v1/employee/upload-targets', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: formData
+      });
+      
+      if (response.ok) {
+        setIsUploadCompleted(true);
+        setMessage('✅ 목표 데이터가 성공적으로 업로드되었습니다.');
+        // 파일 input 초기화
+        const targetInput = document.getElementById('target-file-upload');
+        if (targetInput) targetInput.value = '';
+        // 문서 목록 새로고침
+        fetchDocuments();
+      } else {
+        const error = await response.json();
+        throw new Error(error.detail || '업로드 실패');
+      }
+    } catch (error) {
+      console.error('목표 데이터 업로드 실패:', error);
+      setMessage(`❌ 목표 데이터 업로드 실패: ${error.message}`);
+      setShowProcessBar(false);
+    } finally {
+      setIsLoading(false);
+      setSelectedFiles([]);
+    }
+  };
+  
   // 프로세스 바 확인 버튼 핸들러
   const handleConfirmUpload = () => {
     setShowProcessBar(false);
@@ -721,14 +773,24 @@ const Admin = ({ currentUser }) => {
               disabled={isLoading}
             />
             <label htmlFor="file-upload" className={`upload-btn ${isLoading ? 'disabled' : ''}`}>
-              {isLoading ? '업로드 중...' : '📁 파일 선택하여 업로드'}
+              {isLoading ? '업로드 중...' : '📁 파일 선택'}
             </label>
             <button 
               onClick={handleUpload} 
               className="upload-btn"
               disabled={isLoading || selectedFiles.length === 0}
             >
-              {isLoading ? '업로드 중...' : '파일 업로드'}
+              {isLoading ? '업로드 중...' : '일반 문서 업로드'}
+            </button>
+            
+            {/* 목표 데이터 업로드 버튼 - 같은 파일 선택 사용 */}
+            <button 
+              onClick={handleTargetDataUpload} 
+              className="upload-btn"
+              style={{ backgroundColor: '#28a745' }}
+              disabled={isLoading || selectedFiles.length === 0}
+            >
+              {isLoading ? '업로드 중...' : '📊 목표 데이터 업로드'}
             </button>
           </div>
           <p className="upload-hint">PDF, DOC, DOCX, TXT, XLSX, XLS, CSV 파일만 업로드 가능합니다. (최대 10MB)</p>

@@ -452,4 +452,30 @@ export const analyzeEmployeePerformance = async (params) => {
     method: 'POST',
     body: JSON.stringify(requestBody),
   });
+};
+
+// 대시보드 통계 데이터 조회
+export const getDashboardStats = async () => {
+  return await apiRequest('/api/employee/dashboard-stats', {
+    method: 'GET',
+  });
+};
+
+// 거래처 분석 요청
+export const analyzeClient = async (params) => {
+  return await apiRequest('/api/v1/client/analyze', {
+    method: 'POST',
+    body: JSON.stringify({
+      query: params.query,
+      generate_docs: params.generate_docs !== false, // 기본값 true
+      output_dir: params.output_dir || null
+    }),
+  });
+};
+
+// 거래처 분석 헬스 체크
+export const getClientHealthCheck = async () => {
+  return await apiRequest('/api/v1/client/health', {
+    method: 'GET',
+  });
 }; 
