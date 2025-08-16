@@ -113,6 +113,18 @@ async def chat(request: ChatRequest) -> ChatResponse:
         logger.info(f"[CHAT] Router requires_interrupt: {result.get('requires_interrupt')}, next_node: {result.get('next_node')}, doc_type: {result.get('doc_type')}")
         logger.info(f"[CHAT] Router has response: {result.get('response') is not None}")
         
+        # 종료 조건 체크 (위반 및 사용자 종료 포함)
+        if result.get("end_process") or result.get("error_type") == "user_terminated":
+            # 위반인지 사용자 종료인지 구분
+            violation_text = result.get("violation") or (sub_result.get("violation") if sub_result else None)
+            if violation_text and violation_text != "OK":
+                response.response = f"🚫 **규정 위반으로 문서 생성이 중단되었습니다.**\n\n{violation_text}\n\n문서 작성을 계속하려면 위반 사항을 수정해 주세요."
+            else:
+                response.response = "👋 문서 작성이 종료되었습니다. 새로운 작업을 시작해주세요."
+            response.success = False
+            response.data = {"terminated": True, "end_process": True}
+            return response
+        
         # help_message 처리 (router에서 직접 반환하는 경우)
         if result.get("response"):
             logger.info(f"[CHAT] Returning help message from router")
@@ -190,7 +202,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
                     response.response = "추가 정보가 필요합니다."
                     response.data["interrupt_type"] = "unknown"
                 
-        elif sub_result and sub_result.get("success"):
+        elif sub_result and (sub_result.get("success") or (result.get("agent_type") == "client_agent" and "report_state" in sub_result)):
             # 성공적인 결과
             agent_type = result.get("agent_type")
             
@@ -211,8 +223,29 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 }
             elif agent_type == "client_agent":
                 # client_agent 결과 처리
-                response.response = sub_result.get("response", "") or sub_result.get("report", "") or sub_result.get("analysis_result", "") or sub_result.get("result", "") or str(sub_result)
-                response.data = sub_result if isinstance(sub_result, dict) else {"result": sub_result}
+                # client_agent의 복잡한 응답 구조 처리
+                if isinstance(sub_result, dict) and "report_state" in sub_result:
+                    report_state = sub_result["report_state"]
+                    # final_report가 있으면 사용, 없으면 다른 보고서들 중 하나 사용
+                    final_report = report_state.get("final_report", "")
+                    if not final_report:
+                        # 다른 보고서들 중 하나 사용
+                        final_report = (report_state.get("grade_report", "") or 
+                                      report_state.get("same_grade_report", "") or 
+                                      report_state.get("growth_report", "") or
+                                      report_state.get("strategy_report", ""))
+                    
+                    response.response = final_report or "거래처 분석이 완료되었습니다."
+                    response.data = {
+                        "report_state": report_state,
+                        "documents": sub_result.get("documents", {}),
+                        "company_name": report_state.get("company_name", ""),
+                        "analysis_period": f"{report_state.get('start_month', '')}-{report_state.get('end_month', '')}"
+                    }
+                else:
+                    # 기존 방식으로 폴백
+                    response.response = sub_result.get("response", "") or sub_result.get("report", "") or sub_result.get("analysis_result", "") or sub_result.get("result", "") or str(sub_result)
+                    response.data = sub_result if isinstance(sub_result, dict) else {"result": sub_result}
             elif agent_type == "search_agent":
                 # search_agent 결과 처리
                 response.response = sub_result.get("search_result", "") or sub_result.get("result", "") or str(sub_result)
@@ -307,6 +340,45 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
                 "success": False,
                 "error": "세션 처리 중 오류가 발생했습니다."
             }
+        
+        # 종료 조건 체크 (위반 및 사용자 종료 포함)
+        if result.get("end_process") or result.get("error_type") == "user_terminated":
+            # 위반인지 사용자 종료인지 구분
+            violation_text = result.get("violation")
+            inner_result = result.get("result", {})
+            if not violation_text and isinstance(inner_result, dict):
+                violation_text = inner_result.get("violation")
+                
+            if violation_text and violation_text != "OK":
+                response = ChatResponse(
+                    success=False,
+                    session_id=session_id,
+                    response=f"🚫 **규정 위반으로 문서 생성이 중단되었습니다.**\n\n{violation_text}\n\n문서 작성을 계속하려면 위반 사항을 수정해 주세요.",
+                    data={"terminated": True, "end_process": True, "violation": violation_text}
+                )
+            else:
+                response = ChatResponse(
+                    success=False,
+                    session_id=session_id,
+                    response="👋 문서 작성이 종료되었습니다. 새로운 작업을 시작해주세요.",
+                    data={"terminated": True, "end_process": True}
+                )
+            
+            # AI 응답을 채팅 히스토리에 저장
+            try:
+                save_result = save_message_sync(
+                    session_id=session_id,
+                    role="assistant",
+                    message=response.response
+                )
+                if save_result:
+                    logger.info(f"[RESUME] 위반/종료 메시지 저장 성공: {session_id}")
+                else:
+                    logger.warning(f"[RESUME] 위반/종료 메시지 저장 실패: {session_id}")
+            except Exception as e:
+                logger.error(f"[RESUME] 위반/종료 메시지 저장 오류: {e}")
+            
+            return response
         
         # 응답 구성
         response = ChatResponse(
@@ -450,11 +522,11 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
             if result.get("error"):
                 error_msg = f"오류 발생: {result['error']}"
             elif result.get("violation"):
-                error_msg = "규정 위반으로 문서 생성이 중단되었습니다."
                 violation_text = result.get("violation")
+                error_msg = f"🚫 **규정 위반으로 문서 생성이 중단되었습니다.**\n\n{violation_text}\n\n문서 작성을 계속하려면 위반 사항을 수정해 주세요."
             elif result.get("error_type") == "policy_violation":
-                error_msg = "규정 위반으로 문서 생성이 중단되었습니다."
                 violation_text = result.get("violation")
+                error_msg = f"🚫 **규정 위반으로 문서 생성이 중단되었습니다.**\n\n{violation_text}\n\n문서 작성을 계속하려면 위반 사항을 수정해 주세요."
             elif result.get("result") is None:
                 error_msg = "문서 생성 실패: 결과가 없습니다."
             

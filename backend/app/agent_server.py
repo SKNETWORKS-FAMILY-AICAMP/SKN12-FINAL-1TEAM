@@ -82,6 +82,14 @@ try:
 except Exception as e:
     print(f"[ERROR] Failed to import employee_agent_api: {e}")
 
+# Client Agent API 임포트
+try:
+    from app.api.client_agent_api import router as client_agent_router
+    app.include_router(client_agent_router, prefix="/api/v1")
+    print("[OK] Client agent API registered at /api/v1/client")
+except Exception as e:
+    print(f"[ERROR] Failed to import client_agent_api: {e}")
+
 # 헬스 체크
 @app.get("/health")
 def health():
