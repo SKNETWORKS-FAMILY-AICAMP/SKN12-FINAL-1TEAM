@@ -47,17 +47,6 @@ class Text2SQLTableClassifier:
                 mapping = t.get('column_mapping', {}) or {}
                 metrics = t.get('metrics', {})
                 
-                # employee_performance 테이블 특별 처리
-                if table_name == 'employee_performance':
-                    # 월별 목표 패턴 컬럼이 있는지 확인
-                    has_monthly_target = any('_목표' in str(col) for col in uploaded_columns)
-                    if has_monthly_target:
-                        # 컬럼 매핑 검증 스킵, 빈 매핑으로 처리
-                        t['column_mapping'] = {}
-                        validated.append(t)
-                        logger.info(f"✅ {table_name} 검증 통과: 월별 목표 컬럼 자동 인식")
-                        continue
-                
                 # sales_records 테이블 특별 처리
                 if table_name == 'sales_records':
                     # products 테이블이 함께 선택되었고 product_name 매핑이 있는지 확인

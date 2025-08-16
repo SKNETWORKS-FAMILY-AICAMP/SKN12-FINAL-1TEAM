@@ -41,12 +41,6 @@
     "required_columns": ["employee_id", "customer_id"],
     "sample_data": ["1", "1"]
   },
-  "employee_performance": {
-    "description": "직원 실적 목표 테이블. 직원별 월간 목표를 관리합니다. 목표, 계획, 예산 데이터가 포함된 문서에서 자동으로 추출됩니다. YYYYMM 형식의 월별 컬럼이나 목표 관련 키워드가 있는 데이터에 최적화되어 있습니다. employee_info 테이블에 의존합니다. 주요 컬럼: employee_id(직원 ID), year_month(목표 년월), target_amount(목표 금액), notes(비고). 월별 컬럼 패턴이나 목표/계획 관련 컬럼이 있으면 자동으로 인식됩니다.",
-    "columns": ["employee_id", "year_month", "target_amount", "notes"],
-    "required_columns": [],
-    "sample_data": ["1", "2024-01-01", "10000000", "1월 목표"]
-  },
   "customer_monthly_status": {
     "description": "거래처별 월간 상태 관리 테이블. 거래처(병원/약국)의 월별 환자수와 사용 예산을 통합 관리합니다. 월별 환자수, 방문자수, 사용 예산 데이터가 포함된 문서에서 자동으로 추출됩니다. YYYYMM 형식의 월별 컬럼이나 환자수/예산 관련 키워드가 있는 데이터에 최적화되어 있습니다. customers 테이블에 의존합니다. 주요 컬럼: customer_id(거래처 ID, customers 테이블 참조), year_month(년월, YYYY-MM 형식), patient_count(월간 환자수), used_budget(월간 사용 예산). 월별 환자수 패턴이나 방문자수, 예산 관련 컬럼이 있으면 자동으로 인식됩니다. 필수 컬럼: customer_id, year_month.",
     "columns": ["customer_id", "year_month", "patient_count", "used_budget"],

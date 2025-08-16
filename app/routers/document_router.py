@@ -13,6 +13,7 @@ from app.services.core.document_relation_analyzer import document_relation_analy
 
 from app.services.core.document_analyzer import document_analyzer
 from app.services.core.text2sql_classifier import text2sql_classifier
+from app.services.core.employee_target_processor import employee_target_processor
 from app.services.processors.document_type_updater import DocumentTypeUpdater
 from app.services.core.document_summarizer import document_summarizer
 from app.routers.user_router import get_current_user, get_current_admin_user
@@ -57,6 +58,15 @@ class TableUploadResult(BaseModel):
     created_at: datetime
     message: str
     analysis: Optional[Dict] = None
+
+class EmployeeTargetUploadResult(BaseModel):
+    success: bool
+    message: str
+    created_count: int = 0
+    updated_count: int = 0
+    skipped_count: int = 0
+    total_processed: int = 0
+    error_details: Optional[List[str]] = None
 
 class BatchUploadResult(BaseModel):
     total_files: int
@@ -529,6 +539,88 @@ async def upload_document(file: UploadFile = File(...), doc_title: str = Form(No
     except Exception as e:
         logger.error(f"문서 업로드 실패: {e}")
         raise HTTPException(status_code=500, detail=f"문서 업로드 중 오류가 발생했습니다: {str(e)}")
+
+@router.post("/documents/upload/employee-targets", response_model=EmployeeTargetUploadResult)
+async def upload_employee_targets(
+    file: UploadFile = File(...), 
+    doc_title: str = Form(None), 
+    uploader_id: int = Form(...), 
+    document_id: Optional[int] = Form(None),
+    user=Depends(get_current_user)
+):
+    """
+    직원 월간 목표 실적 데이터를 업로드합니다.
+    
+    사번 컬럼과 YYYYMM 형식의 월별 목표 컬럼을 자동으로 인식하여
+    employee_performance 테이블에 저장합니다.
+    
+    Args:
+        file: 업로드할 엑셀/CSV 파일
+        doc_title: 문서 제목 (선택사항)
+        uploader_id: 업로더 ID
+        document_id: 문서 ID (선택사항)
+        user: 현재 인증된 사용자
+        
+    Returns:
+        EmployeeTargetUploadResult: 업로드 처리 결과
+        
+    Raises:
+        HTTPException: 파일 처리 오류
+    """
+    try:
+        # 파일 크기 검증
+        file_bytes = validate_file_size(file)
+        
+        # 파일 분석
+        file_extension = document_analyzer._get_file_extension(file.filename)
+        
+        # 테이블 파일인지 확인
+        if file_extension not in document_analyzer.supported_extensions["table"]:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"지원하지 않는 파일 형식입니다. Excel(.xlsx, .xls) 또는 CSV(.csv) 파일만 가능합니다."
+            )
+        
+        # 테이블 데이터 추출
+        text, table_data, is_table_file = extract_text_and_table(file_bytes, file.filename)
+        
+        if not table_data:
+            raise HTTPException(
+                status_code=400,
+                detail="파일에서 테이블 데이터를 추출할 수 없습니다."
+            )
+        
+        # 문서 제목 설정
+        if not doc_title:
+            doc_title = extract_doc_title(file.filename)
+        
+        logger.info(f"직원 목표 데이터 업로드 시작: {file.filename}")
+        logger.info(f"  - 행 수: {len(table_data)}")
+        logger.info(f"  - 컬럼: {list(table_data[0].keys()) if table_data else []}")
+        
+        # employee_target_processor로 처리
+        result = await employee_target_processor.analyze_and_process_targets(
+            table_data=table_data,
+            table_description=doc_title,
+            document_id=document_id,
+            uploader_id=uploader_id
+        )
+        
+        if result['success']:
+            logger.info(f"직원 목표 데이터 업로드 완료: {result['message']}")
+        else:
+            logger.warning(f"직원 목표 데이터 업로드 실패: {result['message']}")
+        
+        return EmployeeTargetUploadResult(**result)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"직원 목표 데이터 업로드 중 오류: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"직원 목표 데이터 처리 중 오류가 발생했습니다: {str(e)}"
+        )
 
 @router.post("/documents/upload/batch", response_model=BatchUploadResult)
 async def upload_documents_batch(files: List[UploadFile] = File(...), uploader_id: int = Form(...), version: str = Form(None), user=Depends(get_current_user)):

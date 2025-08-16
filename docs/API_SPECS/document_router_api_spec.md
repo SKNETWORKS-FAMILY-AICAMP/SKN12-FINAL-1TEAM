@@ -153,7 +153,152 @@ curl -X POST "http://localhost:8010/documents/upload/batch" \
 
 ---
 
-### 3. 문서 목록 조회
+### 3. 직원 월간 목표 데이터 업로드
+**POST** `/documents/upload/employee-targets`
+
+#### 설명
+직원 월간 목표 실적 데이터를 업로드합니다. 사번 컬럼과 YYYYMM 형식의 월별 목표 컬럼을 자동으로 인식하여 employee_performance 테이블에 저장합니다.
+
+#### 헤더
+```
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+#### 요청 본문 (Form Data)
+```
+file: File (Excel 또는 CSV 파일)
+doc_title: string (선택사항, 문서 제목)
+uploader_id: integer (업로더 ID)
+document_id: integer (선택사항, 관련 문서 ID)
+```
+
+#### 지원 파일 형식
+- **Excel**: .xlsx, .xls
+- **CSV**: .csv
+
+#### 예상 파일 구조
+파일은 다음과 같은 구조를 가져야 합니다:
+- 사번 컬럼 (필수): "사번", "직원번호", "employee_number", "emp_no" 등
+- 직원명 컬럼 (선택): "이름", "성명", "직원명", "담당자" 등
+- YYYYMM 형식 컬럼들 (필수, 2개 이상): "202401", "202402", "202403" 등
+
+예시:
+| 사번 | 이름 | 202401 | 202402 | 202403 | 202404 |
+|------|------|--------|--------|--------|--------|
+| E001 | 홍길동 | 5000000 | 5500000 | 6000000 | 6000000 |
+| E002 | 김철수 | 4000000 | 4500000 | 4500000 | 5000000 |
+
+#### 응답
+```json
+{
+  "success": true,
+  "message": "직원 목표 데이터 처리 완료: 120개 생성, 30개 업데이트",
+  "created_count": 120,
+  "updated_count": 30,
+  "skipped_count": 5,
+  "total_processed": 155,
+  "error_details": [
+    "행 10: 직원을 찾을 수 없음 - 사번: E999",
+    "행 15: 직원을 찾을 수 없음 - 사번: E888, 이름: 테스트"
+  ]
+}
+```
+
+#### 응답 필드 설명
+- `success`: 처리 성공 여부
+- `message`: 처리 결과 요약 메시지
+- `created_count`: 새로 생성된 목표 레코드 수
+- `updated_count`: 업데이트된 목표 레코드 수
+- `skipped_count`: 건너뛴 행 수 (사번 없음, 직원 미존재 등)
+- `total_processed`: 전체 처리된 레코드 수
+- `error_details`: 처리 중 발생한 오류 상세 (최대 10개)
+
+#### 처리 로직
+1. **LLM 기반 컬럼 인식**: GPT-4를 사용하여 사번 및 YYYYMM 형식 컬럼 자동 탐지
+2. **직원 확인**: 사번으로 employee_info 테이블에서 직원 ID 조회
+3. **Upsert 처리**: 동일 직원-년월 조합이 있으면 업데이트, 없으면 신규 생성
+4. **MV 갱신**: 처리 완료 후 employee_performance_mv 자동 갱신
+
+#### 사용 예시
+```bash
+curl -X POST "http://localhost:8010/documents/upload/employee-targets" \
+  -H "Authorization: Bearer <access_token>" \
+  -F "file=@employee_targets_202401.xlsx" \
+  -F "doc_title=2024년 1분기 직원 목표" \
+  -F "uploader_id=1"
+```
+
+#### Python 클라이언트 예시
+```python
+import requests
+
+# 파일 업로드
+with open('employee_targets.xlsx', 'rb') as f:
+    files = {'file': f}
+    data = {
+        'doc_title': '2024년 직원 목표',
+        'uploader_id': 1
+    }
+    headers = {'Authorization': f'Bearer {access_token}'}
+    
+    response = requests.post(
+        'http://localhost:8010/documents/upload/employee-targets',
+        files=files,
+        data=data,
+        headers=headers
+    )
+    
+    result = response.json()
+    if result['success']:
+        print(f"✅ 성공: {result['message']}")
+        print(f"  - 생성: {result['created_count']}건")
+        print(f"  - 업데이트: {result['updated_count']}건")
+        print(f"  - 건너뜀: {result['skipped_count']}건")
+    else:
+        print(f"❌ 실패: {result['message']}")
+        if result.get('error_details'):
+            for error in result['error_details']:
+                print(f"  - {error}")
+```
+
+#### 에러 응답
+**400 Bad Request** - 파일 형식 오류
+```json
+{
+  "detail": "지원하지 않는 파일 형식입니다. Excel(.xlsx, .xls) 또는 CSV(.csv) 파일만 가능합니다."
+}
+```
+
+**400 Bad Request** - 데이터 형식 오류
+```json
+{
+  "success": false,
+  "message": "직원 목표 데이터 형식이 아닙니다. 사번 컬럼과 YYYYMM 형식의 월별 컬럼이 필요합니다.",
+  "created_count": 0,
+  "updated_count": 0,
+  "skipped_count": 0,
+  "total_processed": 0
+}
+```
+
+**500 Internal Server Error**
+```json
+{
+  "detail": "직원 목표 데이터 처리 중 오류가 발생했습니다: [오류 메시지]"
+}
+```
+
+#### 주의사항
+1. **사번 필수**: 모든 행에 유효한 사번이 있어야 처리 가능
+2. **직원 사전 등록**: employee_info 테이블에 직원이 먼저 등록되어 있어야 함
+3. **YYYYMM 형식**: 월별 컬럼은 반드시 6자리 숫자 형식 (202401, 202402 등)
+4. **금액 형식**: 목표 금액은 숫자여야 하며, 콤마(,) 포함 가능
+5. **부분 성공**: 일부 행 처리 실패 시에도 나머지는 정상 처리됨
+
+---
+
+### 4. 문서 목록 조회
 **GET** `/documents/`
 
 #### 헤더
@@ -253,7 +398,7 @@ curl -X GET "http://localhost:8010/documents/1/download?expiration_hours=2" \
 
 ---
 
-### 6. 문서 업로드 with SSE (실시간 진행상황)
+### 7. 문서 업로드 with SSE (실시간 진행상황)
 **POST** `/documents/upload-sse`
 
 #### 설명
@@ -355,7 +500,7 @@ eventSource.onerror = (error) => {
 
 ---
 
-### 7. 배치 문서 업로드 with SSE (실시간 진행상황)
+### 8. 배치 문서 업로드 with SSE (실시간 진행상황)
 **POST** `/documents/upload-batch-sse`
 
 #### 설명
@@ -491,7 +636,7 @@ class BatchUploadHandler {
 
 ---
 
-### 6. 문서 삭제 (관리자만)
+### 9. 문서 삭제 (관리자만)
 **DELETE** `/documents/{doc_id}`
 
 #### 헤더

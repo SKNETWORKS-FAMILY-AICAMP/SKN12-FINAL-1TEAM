@@ -62,10 +62,6 @@ class PromptTemplates:
 - 상호작용 유형: 방문유형, 미팅타입, 활동종류 → interaction_type
 - 요약: 요약, 내용, 설명, 상세내용 → summary
 
-### 목표/성과 관련 (employee_performance)
-- 목표액: 목표, 목표액, 계획, 타겟 → target_amount
-- 년월: 년월, 기간, 대상월 → year_month
-
 ### 월별 상태 관련 (customer_monthly_status)
 - 거래처명: 거래처ID, 거래처명, 고객명, 병원명, 약국명 → customer_name (customer_id 조회용)
 - 년월: 년월, YYYYMM, 월별, 기간, 월 → year_month
@@ -183,28 +179,6 @@ class PromptTemplates:
 - 지점/지점명/지사 → branch_name
 - 본부/사업부 → headquarters
 - 부서/팀 → department
-""",
-
-        'employee_performance': """
-### employee_performance 테이블:
-- 직원별 월간 목표 관리
-- 목표/계획/예산 데이터 저장
-- 월별 목표 데이터 자동 처리
-
-인식 조건:
-1. 202401_목표, 202402_목표 같은 YYYYMM_목표 패턴 컬럼
-2. "목표", "계획", "예산" 키워드가 컬럼에 포함
-3. 월별 데이터 구조
-
-매핑 규칙:
-- column_mapping은 비워두거나 최소한만 지정
-- 월별 목표 컬럼(YYYYMM_목표)은 자동으로 인식되므로 매핑 불필요
-- 담당자, 사번 컬럼도 위치로 자동 인식
-
-**중요**: 
-- column_mapping에 "YYYYMM_목표" 같은 패턴을 넣지 마세요
-- 실제 컬럼명을 매핑하거나, 빈 객체 {} 를 사용하세요
-- 처리기가 자동으로 월별 목표를 추출합니다
 """
     }
 
@@ -316,7 +290,6 @@ sales_records 완전한 매핑 예시:
             'products': 1,
             'employee_info': 2,
             'customer_monthly_status': 2,
-            'employee_performance': 3,
             'sales_records': 3,
             'interaction_logs': 3,
             'assignment_map': 3,
