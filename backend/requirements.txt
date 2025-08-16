@@ -38,3 +38,5 @@ pydantic-settings
 python-dateutil
 tenacity
 tqdm
+jinja2
+tabulate

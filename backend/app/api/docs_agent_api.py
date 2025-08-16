@@ -107,6 +107,25 @@ async def chat(request: ChatRequest) -> ChatResponse:
         # docs_agent 실행
         result = docs_agent.run(user_input=request.message)
         
+        # 종료 조건 체크 (위반 및 사용자 종료 포함)
+        if result.get("end_process") or result.get("error_type") == "user_terminated":
+            # 위반인지 사용자 종료인지 구분
+            violation_text = result.get("violation")
+            if violation_text and violation_text != "OK":
+                return ChatResponse(
+                    success=False,
+                    session_id=session_id,
+                    response=f"🚫 **규정 위반으로 문서 생성이 중단되었습니다.**\n\n{violation_text}\n\n문서 작성을 계속하려면 위반 사항을 수정해 주세요.",
+                    data={"terminated": True, "end_process": True, "violation": violation_text}
+                )
+            else:
+                return ChatResponse(
+                    success=False,
+                    session_id=session_id,
+                    response="👋 문서 작성이 종료되었습니다. 새로운 작업을 시작해주세요.",
+                    data={"terminated": True, "end_process": True}
+                )
+        
         # 응답 구성
         response = ChatResponse(
             success=result.get("success", False),
@@ -245,6 +264,29 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
             user_reply=request.user_reply,
             input_type=request.reply_type
         )
+        
+        # 종료 조건 체크 (위반 및 사용자 종료 포함)
+        if result.get("end_process") or result.get("error_type") == "user_terminated":
+            # 위반인지 사용자 종료인지 구분
+            violation_text = result.get("violation")
+            inner_result = result.get("result", {})
+            if not violation_text and isinstance(inner_result, dict):
+                violation_text = inner_result.get("violation")
+                
+            if violation_text and violation_text != "OK":
+                return ChatResponse(
+                    success=False,
+                    session_id=session_id,
+                    response=f"🚫 **규정 위반으로 문서 생성이 중단되었습니다.**\n\n{violation_text}\n\n문서 작성을 계속하려면 위반 사항을 수정해 주세요.",
+                    data={"terminated": True, "end_process": True, "violation": violation_text}
+                )
+            else:
+                return ChatResponse(
+                    success=False,
+                    session_id=session_id,
+                    response="👋 문서 작성이 종료되었습니다. 새로운 작업을 시작해주세요.",
+                    data={"terminated": True, "end_process": True}
+                )
         
         # 응답 구성
         response = ChatResponse(

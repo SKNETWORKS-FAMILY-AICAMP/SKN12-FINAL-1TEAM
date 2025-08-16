@@ -210,10 +210,11 @@ const Docs = () => {
           setDocumentOptions(data.data.options);
         }
       } else {
-        // 오류 발생
+        // 오류 발생 또는 위반 메시지
+        const displayMessage = data.response || data.error || '오류가 발생했습니다.';
         setMessages(prev => [...prev, 
           { type: 'user', content: message },
-          { type: 'ai', content: data.error || '오류가 발생했습니다.', error: true }
+          { type: 'ai', content: displayMessage, error: !data.response }
         ]);
       }
     } catch (error) {
@@ -340,9 +341,10 @@ const Docs = () => {
           setDocumentOptions(data.data.options);
         }
       } else {
-        // 오류 (사용자 메시지는 이미 추가했으므로 AI 응답만 추가)
+        // 오류 또는 위반 메시지 (사용자 메시지는 이미 추가했으므로 AI 응답만 추가)
+        const displayMessage = data.response || data.error || '오류가 발생했습니다.';
         setMessages(prev => [...prev, 
-          { type: 'ai', content: data.error || '오류가 발생했습니다.', error: true }
+          { type: 'ai', content: displayMessage, error: !data.response }
         ]);
       }
     } catch (error) {

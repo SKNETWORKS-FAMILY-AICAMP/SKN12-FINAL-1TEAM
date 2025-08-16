@@ -235,7 +235,7 @@ class RouterAgent:
             elif agent_name == "client_agent":
                 # client_agent는 async 함수
                 logger.info(f"[EXECUTE_AGENT] Running client_agent with query: {query[:50]}...")
-                result = asyncio.run(client_agent.run(query, session_id or "default"))
+                result = asyncio.run(client_agent.run(query, session_id=session_id or "default"))
                 
                 current_state["agent_type"] = agent_name
                 return result
