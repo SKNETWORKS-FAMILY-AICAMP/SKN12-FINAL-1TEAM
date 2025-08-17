@@ -6,11 +6,15 @@ Create Date: 2025-01-10 08:00:00.000000
 
 """
 from typing import Sequence, Union
+import logging
 
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.dialects.postgresql import ENUM
 from pgvector.sqlalchemy import VECTOR
+
+logger = logging.getLogger(__name__)
 
 # revision identifiers, used by Alembic.
 revision: str = 'initial_complete_schema'
@@ -28,7 +32,26 @@ def upgrade() -> None:
     op.execute('CREATE EXTENSION IF NOT EXISTS vector')
     
     # ========================================
-    # 2. Base Tables (No Foreign Keys)
+    # 2. Enum Types
+    # ========================================
+    
+    # NewsType enum for news table - 존재 확인 후 생성
+    connection = op.get_bind()
+    result = connection.execute(
+        sa.text("SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'newstype')")
+    ).scalar()
+    
+    if not result:
+        try:
+            op.execute("CREATE TYPE newstype AS ENUM ('general', 'pharmaceutical')")
+            logger.info("NewsType enum created successfully")
+        except Exception as e:
+            logger.warning(f"Failed to create NewsType enum: {e}")
+    else:
+        logger.info("NewsType enum already exists, skipping creation")
+    
+    # ========================================
+    # 3. Base Tables (No Foreign Keys)
     # ========================================
     
     # employees 테이블 (계정 정보)
@@ -142,8 +165,57 @@ def upgrade() -> None:
     # 벡터 인덱스 생성
     op.execute('CREATE INDEX idx_table_descriptions_embedding ON table_descriptions USING ivfflat (embedding vector_cosine_ops)')
     
+    # news 테이블 (뉴스 정보) - 테이블 존재 여부 체크
+    inspector = sa.inspect(connection)
+    existing_tables = inspector.get_table_names()
+    
+    if 'news' not in existing_tables:
+        try:
+            op.create_table('news',
+                sa.Column('news_id', sa.Integer(), autoincrement=True, nullable=False),
+                sa.Column('title', sa.String(length=1000), nullable=False),
+                sa.Column('content', sa.Text(), nullable=True),
+                sa.Column('news_type', ENUM('general', 'pharmaceutical', name='newstype', create_type=False), nullable=False),
+                sa.Column('source', sa.String(length=200), nullable=True),
+                sa.Column('author', sa.String(length=100), nullable=True),
+                sa.Column('published_date', sa.Date(), nullable=True),
+                sa.Column('url', sa.String(length=1500), nullable=True),
+                sa.Column('tags', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+                sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+                sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+                sa.PrimaryKeyConstraint('news_id'),
+                sa.UniqueConstraint('url')
+            )
+            op.create_index(op.f('ix_news_news_id'), 'news', ['news_id'], unique=False)
+            op.create_index(op.f('ix_news_news_type'), 'news', ['news_type'], unique=False)
+            op.create_index(op.f('ix_news_published_date'), 'news', ['published_date'], unique=False)
+            logger.info("News table created successfully")
+        except Exception as e:
+            logger.warning(f"Failed to create news table: {e}")
+    
+    # laws 테이블 (법령 정보)
+    if 'laws' not in existing_tables:
+        try:
+            op.create_table('laws',
+                sa.Column('law_id', sa.Integer(), autoincrement=True, nullable=False),
+                sa.Column('title', sa.String(length=1000), nullable=False),
+                sa.Column('law_number', sa.String(length=100), nullable=True),
+                sa.Column('content', sa.Text(), nullable=True),
+                sa.Column('article', sa.String(length=100), nullable=True),
+                sa.Column('url', sa.String(length=1000), nullable=True),
+                sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+                sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+                sa.PrimaryKeyConstraint('law_id'),
+                sa.UniqueConstraint('law_number', 'article', name='uq_law_number_article')
+            )
+            op.create_index(op.f('ix_laws_law_id'), 'laws', ['law_id'], unique=False)
+            op.create_index(op.f('ix_laws_article'), 'laws', ['article'], unique=False)
+            logger.info("Laws table created successfully")
+        except Exception as e:
+            logger.warning(f"Failed to create laws table: {e}")
+    
     # ========================================
-    # 3. Dependent Tables (With Foreign Keys)
+    # 4. Dependent Tables (With Foreign Keys)
     # ========================================
     
     # employee_info 테이블 (인사 정보) - 모델과 일치
@@ -312,6 +384,72 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('trace_id')
     )
     
+    # insurance_recognition_criteria 테이블 (보험 인정기준)
+    if 'insurance_recognition_criteria' not in existing_tables:
+        try:
+            op.create_table('insurance_recognition_criteria',
+                sa.Column('criteria_id', sa.Integer(), autoincrement=True, nullable=False),
+                sa.Column('product_id', sa.Integer(), nullable=True),
+                sa.Column('criteria_code', sa.String(length=50), nullable=True),
+                sa.Column('criteria_name', sa.String(length=200), nullable=False),
+                sa.Column('description', sa.Text(), nullable=True),
+                sa.Column('requirements', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+                sa.Column('coverage_amount', sa.Numeric(15, 2), nullable=True),
+                sa.Column('effective_from', sa.Date(), nullable=True),
+                sa.Column('effective_to', sa.Date(), nullable=True),
+                sa.Column('status', sa.String(length=50), server_default=sa.text("'active'"), nullable=True),
+                sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+                sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+                sa.ForeignKeyConstraint(['product_id'], ['products.product_id'], ),
+                sa.PrimaryKeyConstraint('criteria_id'),
+                sa.UniqueConstraint('criteria_code', 'criteria_name', name='uq_criteria_code_name')
+            )
+            op.create_index(op.f('ix_insurance_recognition_criteria_criteria_id'), 'insurance_recognition_criteria', ['criteria_id'], unique=False)
+            op.create_index(op.f('ix_insurance_recognition_criteria_product_id'), 'insurance_recognition_criteria', ['product_id'], unique=False)
+            op.create_index(op.f('ix_insurance_recognition_criteria_status'), 'insurance_recognition_criteria', ['status'], unique=False)
+            logger.info("Insurance recognition criteria table created successfully")
+        except Exception as e:
+            logger.warning(f"Failed to create insurance_recognition_criteria table: {e}")
+    
+    # news_strategy_reports 테이블 (뉴스 전략 보고서)
+    if 'news_strategy_reports' not in existing_tables:
+        try:
+            op.create_table('news_strategy_reports',
+                sa.Column('report_id', sa.Integer(), autoincrement=True, nullable=False),
+                sa.Column('title', sa.String(length=500), nullable=False),
+                sa.Column('content', sa.Text(), nullable=True),
+                sa.Column('created_by', sa.Integer(), nullable=True),
+                sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+                sa.ForeignKeyConstraint(['created_by'], ['employees.employee_id'], ),
+                sa.PrimaryKeyConstraint('report_id')
+            )
+            op.create_index(op.f('ix_news_strategy_reports_report_id'), 'news_strategy_reports', ['report_id'], unique=False)
+            op.create_index(op.f('ix_news_strategy_reports_created_by'), 'news_strategy_reports', ['created_by'], unique=False)
+            logger.info("News strategy reports table created successfully")
+        except Exception as e:
+            logger.warning(f"Failed to create news_strategy_reports table: {e}")
+    
+    # news_strategy_report_references 테이블 (뉴스-전략보고서 연결 테이블)
+    if 'news_strategy_report_references' not in existing_tables:
+        try:
+            op.create_table('news_strategy_report_references',
+                sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+                sa.Column('report_id', sa.Integer(), nullable=False),
+                sa.Column('news_id', sa.Integer(), nullable=False),
+                sa.Column('reference_type', sa.String(length=50), nullable=True),
+                sa.Column('notes', sa.Text(), nullable=True),
+                sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+                sa.ForeignKeyConstraint(['report_id'], ['news_strategy_reports.report_id'], ondelete='CASCADE'),
+                sa.ForeignKeyConstraint(['news_id'], ['news.news_id'], ondelete='CASCADE'),
+                sa.PrimaryKeyConstraint('id'),
+                sa.UniqueConstraint('report_id', 'news_id', name='uq_report_news')
+            )
+            op.create_index(op.f('ix_news_strategy_report_references_report_id'), 'news_strategy_report_references', ['report_id'], unique=False)
+            op.create_index(op.f('ix_news_strategy_report_references_news_id'), 'news_strategy_report_references', ['news_id'], unique=False)
+            logger.info("News strategy report references table created successfully")
+        except Exception as e:
+            logger.warning(f"Failed to create news_strategy_report_references table: {e}")
+    
     # ========================================
     # 5. Materialized Views
     # ========================================
@@ -414,6 +552,23 @@ def downgrade() -> None:
     op.execute("DROP MATERIALIZED VIEW IF EXISTS employee_performance_mv")
     
     # Drop dependent tables first (reverse order)
+    # Drop news strategy report references first (depends on both news and reports)
+    op.drop_index(op.f('ix_news_strategy_report_references_news_id'), table_name='news_strategy_report_references')
+    op.drop_index(op.f('ix_news_strategy_report_references_report_id'), table_name='news_strategy_report_references')
+    op.drop_table('news_strategy_report_references')
+    
+    # Drop news strategy reports
+    op.drop_index(op.f('ix_news_strategy_reports_created_by'), table_name='news_strategy_reports')
+    op.drop_index(op.f('ix_news_strategy_reports_report_id'), table_name='news_strategy_reports')
+    op.drop_table('news_strategy_reports')
+    
+    # Drop insurance recognition criteria
+    op.drop_index(op.f('ix_insurance_recognition_criteria_status'), table_name='insurance_recognition_criteria')
+    op.drop_index(op.f('ix_insurance_recognition_criteria_product_id'), table_name='insurance_recognition_criteria')
+    op.drop_index(op.f('ix_insurance_recognition_criteria_criteria_id'), table_name='insurance_recognition_criteria')
+    op.drop_table('insurance_recognition_criteria')
+    
+    # Continue with existing dependent tables
     op.drop_index(op.f('ix_document_relations_relation_id'), table_name='document_relations')
     op.drop_index(op.f('ix_document_relations_related_entity_type'), table_name='document_relations')
     op.drop_index(op.f('ix_document_relations_related_entity_id'), table_name='document_relations')
@@ -470,3 +625,22 @@ def downgrade() -> None:
     
     op.drop_index(op.f('ix_employees_employee_id'), table_name='employees')
     op.drop_table('employees')
+    
+    # Drop new base tables
+    op.drop_index(op.f('ix_laws_article'), table_name='laws')
+    op.drop_index(op.f('ix_laws_law_id'), table_name='laws')
+    op.drop_table('laws')
+    
+    op.drop_index(op.f('ix_news_published_date'), table_name='news')
+    op.drop_index(op.f('ix_news_news_type'), table_name='news')
+    op.drop_index(op.f('ix_news_news_id'), table_name='news')
+    op.drop_table('news')
+    
+    # Drop enum types - 존재하는 경우에만 삭제
+    connection = op.get_bind()
+    result = connection.execute(
+        sa.text("SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'newstype')")
+    ).scalar()
+    
+    if result:
+        connection.execute(sa.text("DROP TYPE IF EXISTS newstype CASCADE"))

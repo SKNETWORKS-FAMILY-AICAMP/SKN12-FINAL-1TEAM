@@ -18,3 +18,8 @@ from .document_relations import DocumentRelation
 from .branches import Branch
 from .employee_performance import EmployeePerformance
 from .employee_performance_mv import EmployeePerformanceMV
+from .news import News, NewsType
+from .laws import Law
+from .insurance_recognition_criteria import InsuranceRecognitionCriteria
+from .news_strategy_reports import NewsStrategyReport
+from .news_strategy_report_references import NewsStrategyReportReference

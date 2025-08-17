@@ -14,6 +14,7 @@ from app.routers.approval_router import router as approval_router
 from app.routers.employee_performance_router import router as employee_performance_router
 from app.routers.customer_router import router as customer_router
 from app.routers.employee_info_router import router as employee_info_router
+from app.routers.data_upload_router import router as data_upload_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.external.opensearch_service import initialize_search_pipeline
@@ -122,6 +123,7 @@ app.include_router(approval_router, prefix="/approval", tags=["Approval"])
 app.include_router(employee_performance_router, prefix="", tags=["Employee Performance"])
 app.include_router(customer_router, prefix="", tags=["Customer"])
 app.include_router(employee_info_router, prefix="", tags=["Employee Info"])
+app.include_router(data_upload_router, prefix="/data", tags=["Data Upload"])
 
 @app.get("/")
 def root():
