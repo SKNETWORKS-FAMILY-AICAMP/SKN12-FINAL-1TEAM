@@ -118,7 +118,7 @@ def _perform_hybrid_search(query: str, limit: int) -> HybridSearchResponse:
         logger.error(f"하이브리드 검색 중 오류: {e}")
         raise HTTPException(status_code=500, detail=f"검색 중 오류가 발생했습니다: {str(e)}")
 
-@router.get("/search/hybrid", response_model=HybridSearchResponse)
+@router.get("/hybrid", response_model=HybridSearchResponse)
 def hybrid_search(
     query: str = Query(..., description="검색 쿼리"),
     limit: Optional[int] = Query(20, description="결과 개수 제한"),
@@ -137,7 +137,7 @@ def hybrid_search(
     """
     return _perform_hybrid_search(query, limit)
 
-@router.get("/search/hybrid/stats")
+@router.get("/hybrid/stats")
 def get_hybrid_search_stats(user=Depends(get_current_user)):
     """
     하이브리드 검색 통계 정보를 조회합니다.

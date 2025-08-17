@@ -34,7 +34,7 @@ class CustomerInfo(BaseModel):
     class Config:
         from_attributes = True
 
-@router.get("/customer/{customer_id}/performance")
+@router.get("/{customer_id}/performance")
 def get_customer_performance(
     customer_id: int,
     start_month: str = Query(..., description="시작 월 (YYYYMM 형식)", regex="^\\d{6}$"),
@@ -148,7 +148,7 @@ def get_customer_performance(
             detail=f"거래처 성과 조회 중 오류가 발생했습니다: {str(e)}"
         )
 
-@router.get("/customers/performance")
+@router.get("/performance")
 def get_multiple_customers_performance(
     customer_ids: str = Query(..., description="거래처 ID 목록 (쉼표 구분)", example="1,2,3"),
     start_month: str = Query(..., description="시작 월 (YYYYMM 형식)", regex="^\\d{6}$"),
@@ -248,7 +248,7 @@ def get_multiple_customers_performance(
             detail=f"다중 거래처 성과 조회 중 오류가 발생했습니다: {str(e)}"
         )
 
-@router.get("/customer/{customer_id}/performance/comparison")
+@router.get("/{customer_id}/performance/comparison")
 def compare_customer_performance(
     customer_id: int,
     period1_start: str = Query(..., description="첫 번째 기간 시작 월 (YYYYMM)", regex="^\\d{6}$"),
@@ -335,7 +335,7 @@ def compare_customer_performance(
             detail=f"거래처 성과 비교 중 오류가 발생했습니다: {str(e)}"
         )
 
-@router.get("/customers", response_model=List[CustomerInfo])
+@router.get("/", response_model=List[CustomerInfo])
 def get_all_customers(
     skip: int = Query(0, description="건너뛸 항목 수"),
     limit: int = Query(100, description="조회할 최대 항목 수"),
@@ -371,7 +371,7 @@ def get_all_customers(
             detail=f"거래처 목록 조회 중 오류가 발생했습니다: {str(e)}"
         )
 
-@router.get("/customer/search", response_model=Dict[str, Any])
+@router.get("/search", response_model=Dict[str, Any])
 def search_customer_by_name(
     name: str = Query(..., description="검색할 거래처명"),
     db: Session = Depends(get_db),
@@ -439,7 +439,7 @@ def search_customer_by_name(
             detail=f"거래처명 검색 중 오류가 발생했습니다: {str(e)}"
         )
 
-@router.get("/customer/{customer_id}", response_model=CustomerInfo)
+@router.get("/{customer_id}", response_model=CustomerInfo)
 def get_customer_detail(
     customer_id: int,
     db: Session = Depends(get_db),

@@ -516,7 +516,7 @@ async def process_single_document(file: UploadFile, uploader_id: int, version: s
     return await process_single_document_with_session(file, uploader_id, version, None)
 
 
-@router.post("/documents/upload", response_model=Union[DocumentInfo, TableUploadResult])
+@router.post("/upload", response_model=Union[DocumentInfo, TableUploadResult])
 async def upload_document(file: UploadFile = File(...), doc_title: str = Form(None), uploader_id: int = Form(...), version: str = Form(None), user=Depends(get_current_user)):
     """
     문서를 업로드하고 자동으로 타입을 분석하여 저장합니다.
@@ -540,7 +540,7 @@ async def upload_document(file: UploadFile = File(...), doc_title: str = Form(No
         logger.error(f"문서 업로드 실패: {e}")
         raise HTTPException(status_code=500, detail=f"문서 업로드 중 오류가 발생했습니다: {str(e)}")
 
-@router.post("/documents/upload/employee-targets", response_model=EmployeeTargetUploadResult)
+@router.post("/upload/employee-targets", response_model=EmployeeTargetUploadResult)
 async def upload_employee_targets(
     file: UploadFile = File(...), 
     doc_title: str = Form(None), 
@@ -622,7 +622,7 @@ async def upload_employee_targets(
             detail=f"직원 목표 데이터 처리 중 오류가 발생했습니다: {str(e)}"
         )
 
-@router.post("/documents/upload/batch", response_model=BatchUploadResult)
+@router.post("/upload/batch", response_model=BatchUploadResult)
 async def upload_documents_batch(files: List[UploadFile] = File(...), uploader_id: int = Form(...), version: str = Form(None), user=Depends(get_current_user)):
     """
     여러 문서를 한 번에 업로드합니다.
@@ -741,7 +741,7 @@ async def process_single_document_with_session(file: UploadFile, uploader_id: in
             session=session
         )
 
-@router.get("/documents/", response_model=List[DocumentInfo])
+@router.get("/", response_model=List[DocumentInfo])
 def list_documents(user=Depends(get_current_user)):
     """
     모든 문서 목록을 조회합니다.
@@ -755,7 +755,7 @@ def list_documents(user=Depends(get_current_user)):
     docs = get_documents()
     return [DocumentInfo.model_validate(doc) for doc in docs]
 
-@router.get("/documents/{doc_id}")
+@router.get("/{doc_id}")
 def get_document(doc_id: str, user=Depends(get_current_user)):
     """
     특정 문서를 조회합니다. 다운로드 링크를 포함합니다.
@@ -791,7 +791,7 @@ def get_document(doc_id: str, user=Depends(get_current_user)):
     
     return doc_info
 
-@router.get("/documents/{doc_id}/download")
+@router.get("/{doc_id}/download")
 def get_document_download_link(doc_id: str, expiration_hours: int = 1, user=Depends(get_current_user)):
     """
     문서의 다운로드 링크를 생성합니다.
@@ -838,7 +838,7 @@ def get_document_download_link(doc_id: str, expiration_hours: int = 1, user=Depe
         "generated_at": datetime.now().isoformat()
     }
 
-@router.delete("/documents/{doc_id}", response_model=DocumentInfo)
+@router.delete("/{doc_id}", response_model=DocumentInfo)
 def delete_document(doc_id: str, admin=Depends(get_current_admin_user)):
     """
     문서를 삭제합니다. (관리자만 가능)
@@ -1214,7 +1214,7 @@ async def process_text_document_sse(
         })
 
 
-@router.post("/documents/upload-sse")
+@router.post("/upload-sse")
 async def upload_document_sse(
     file: UploadFile = File(...),
     uploader_id: int = Form(...),
@@ -1321,7 +1321,7 @@ async def upload_document_sse(
     return EventSourceResponse(generate_progress())
 
 
-@router.post("/documents/upload-batch-sse")
+@router.post("/upload-batch-sse")
 async def upload_documents_batch_sse(
     files: List[UploadFile] = File(...),
     uploader_id: int = Form(...),

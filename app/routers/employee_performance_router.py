@@ -14,7 +14,7 @@ import os
 from app.services.core.employee_performance_service import employee_performance_service
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/employee", tags=["Employee Performance Data"])
+router = APIRouter(tags=["Employee Performance Data"])
 
 # Request/Response Models for Agent
 class AnalyzeRequest(BaseModel):
@@ -186,7 +186,7 @@ def get_employees(
         logger.error(f"직원 목록 조회 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/performance/{employee_id}", response_model=List[PerformanceData])
+@router.get("/{employee_id}", response_model=List[PerformanceData])
 def get_employee_performance(
     employee_id: int,
     start_period: str = Query(..., description="시작 기간 (YYYYMM)"),
@@ -231,7 +231,7 @@ def get_employee_performance(
         logger.error(f"실적 조회 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/performance/{employee_id}/summary")
+@router.get("/{employee_id}/summary")
 def get_performance_summary(
     employee_id: int,
     start_period: str = Query(..., description="시작 기간 (YYYYMM)"),
@@ -271,7 +271,7 @@ def get_performance_summary(
         logger.error(f"요약 조회 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/performance/{employee_id}/products", response_model=List[ProductPerformance])
+@router.get("/{employee_id}/products", response_model=List[ProductPerformance])
 def get_product_performance(
     employee_id: int,
     start_period: str = Query(..., description="시작 기간 (YYYYMM)"),
@@ -315,7 +315,7 @@ def get_product_performance(
         logger.error(f"제품별 실적 조회 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/performance/{employee_id}/customers", response_model=List[CustomerPerformance])
+@router.get("/{employee_id}/customers", response_model=List[CustomerPerformance])
 def get_customer_performance(
     employee_id: int,
     start_period: str = Query(..., description="시작 기간 (YYYYMM)"),

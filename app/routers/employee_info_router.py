@@ -19,7 +19,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/employee-info", response_model=List[EmployeeInfoWithBranch])
+@router.get("/", response_model=List[EmployeeInfoWithBranch])
 def get_employee_info_list(
     skip: int = Query(0, description="페이지네이션 오프셋"),
     limit: int = Query(100, description="페이지 크기"),
@@ -96,7 +96,7 @@ def get_employee_info_list(
         raise HTTPException(status_code=500, detail=f"직원 정보 조회 중 오류가 발생했습니다: {str(e)}")
 
 
-@router.get("/employee-info/{employee_info_id}", response_model=EmployeeInfoWithBranch)
+@router.get("/{employee_info_id}", response_model=EmployeeInfoWithBranch)
 def get_employee_info_detail(
     employee_info_id: int,
     db: Session = Depends(get_db),
@@ -159,7 +159,7 @@ def get_employee_info_detail(
         raise HTTPException(status_code=500, detail=f"직원 정보 조회 중 오류가 발생했습니다: {str(e)}")
 
 
-@router.get("/employee-info/by-employee/{employee_id}", response_model=Optional[EmployeeInfoWithBranch])
+@router.get("/by-employee/{employee_id}", response_model=Optional[EmployeeInfoWithBranch])
 def get_employee_info_by_employee_id(
     employee_id: int,
     db: Session = Depends(get_db),
@@ -222,7 +222,7 @@ def get_employee_info_by_employee_id(
         raise HTTPException(status_code=500, detail=f"직원 정보 조회 중 오류가 발생했습니다: {str(e)}")
 
 
-@router.get("/employee-info/search/by-name", response_model=List[EmployeeInfoWithBranch])
+@router.get("/search/by-name", response_model=List[EmployeeInfoWithBranch])
 def search_employee_by_name(
     name: str = Query(..., description="검색할 직원 이름"),
     db: Session = Depends(get_db),

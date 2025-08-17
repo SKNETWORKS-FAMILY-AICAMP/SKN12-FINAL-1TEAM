@@ -70,6 +70,14 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_employees_employee_id'), 'employees', ['employee_id'], unique=False)
     
+    # ScheduleType, ScheduleStatus enum types for schedules table
+    try:
+        op.execute("CREATE TYPE scheduletype AS ENUM ('방문', '회의', '교육', '기타')")
+        op.execute("CREATE TYPE schedulestatus AS ENUM ('예정', '진행중', '완료', '취소')")
+        logger.info("Schedule enum types created successfully")
+    except Exception as e:
+        logger.warning(f"Failed to create Schedule enum types: {e}")
+    
     # branches 테이블 (지점 정보) - 모델과 일치
     op.create_table('branches',
         sa.Column('branch_id', sa.Integer(), autoincrement=True, nullable=False),
@@ -213,6 +221,29 @@ def upgrade() -> None:
             logger.info("Laws table created successfully")
         except Exception as e:
             logger.warning(f"Failed to create laws table: {e}")
+    
+    # schedules 테이블 (직원 일정) - employees 테이블 생성 후에 추가
+    op.create_table('schedules',
+        sa.Column('schedule_id', sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column('employee_id', sa.Integer(), nullable=False),
+        sa.Column('title', sa.String(length=200), nullable=False),
+        sa.Column('location', sa.String(length=200), nullable=False),
+        sa.Column('contact_person', sa.String(length=100), nullable=False),
+        sa.Column('schedule_date', sa.Date(), nullable=False),
+        sa.Column('schedule_time', sa.Time(), nullable=False),
+        sa.Column('duration', sa.String(length=50), nullable=True),
+        sa.Column('schedule_type', ENUM('방문', '회의', '교육', '기타', name='scheduletype', create_type=False), nullable=False),
+        sa.Column('status', ENUM('예정', '진행중', '완료', '취소', name='schedulestatus', create_type=False), nullable=False),
+        sa.Column('memo', sa.Text(), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(['employee_id'], ['employees.employee_id'], ),
+        sa.PrimaryKeyConstraint('schedule_id')
+    )
+    op.create_index(op.f('ix_schedules_schedule_id'), 'schedules', ['schedule_id'], unique=False)
+    op.create_index(op.f('ix_schedules_employee_id'), 'schedules', ['employee_id'], unique=False)
+    op.create_index(op.f('ix_schedules_schedule_date'), 'schedules', ['schedule_date'], unique=False)
+    op.create_index(op.f('ix_schedules_status'), 'schedules', ['status'], unique=False)
     
     # ========================================
     # 4. Dependent Tables (With Foreign Keys)
@@ -552,6 +583,13 @@ def downgrade() -> None:
     op.execute("DROP MATERIALIZED VIEW IF EXISTS employee_performance_mv")
     
     # Drop dependent tables first (reverse order)
+    # Drop schedules table and indexes
+    op.drop_index(op.f('ix_schedules_status'), table_name='schedules')
+    op.drop_index(op.f('ix_schedules_schedule_date'), table_name='schedules')
+    op.drop_index(op.f('ix_schedules_employee_id'), table_name='schedules')
+    op.drop_index(op.f('ix_schedules_schedule_id'), table_name='schedules')
+    op.drop_table('schedules')
+    
     # Drop news strategy report references first (depends on both news and reports)
     op.drop_index(op.f('ix_news_strategy_report_references_news_id'), table_name='news_strategy_report_references')
     op.drop_index(op.f('ix_news_strategy_report_references_report_id'), table_name='news_strategy_report_references')
@@ -644,3 +682,7 @@ def downgrade() -> None:
     
     if result:
         connection.execute(sa.text("DROP TYPE IF EXISTS newstype CASCADE"))
+    
+    # Drop schedule enum types
+    connection.execute(sa.text("DROP TYPE IF EXISTS scheduletype CASCADE"))
+    connection.execute(sa.text("DROP TYPE IF EXISTS schedulestatus CASCADE"))

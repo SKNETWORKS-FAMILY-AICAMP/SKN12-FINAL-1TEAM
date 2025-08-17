@@ -23,3 +23,4 @@ from .laws import Law
 from .insurance_recognition_criteria import InsuranceRecognitionCriteria
 from .news_strategy_reports import NewsStrategyReport
 from .news_strategy_report_references import NewsStrategyReportReference
+from .schedules import Schedule, ScheduleType, ScheduleStatus

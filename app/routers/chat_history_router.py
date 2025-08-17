@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/chat-history", tags=["Chat History"])
+router = APIRouter(tags=["Chat History"])
 
 # 요청 모델
 class SaveMessageRequest(BaseModel):

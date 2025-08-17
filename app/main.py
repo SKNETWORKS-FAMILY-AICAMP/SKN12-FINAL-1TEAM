@@ -15,6 +15,8 @@ from app.routers.employee_performance_router import router as employee_performan
 from app.routers.customer_router import router as customer_router
 from app.routers.employee_info_router import router as employee_info_router
 from app.routers.data_upload_router import router as data_upload_router
+from app.routers.news_router import router as news_router
+from app.routers.schedule_router import router as schedule_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.external.opensearch_service import initialize_search_pipeline
@@ -112,18 +114,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(document_router, prefix="", tags=["Documents"])
+app.include_router(document_router, prefix="/documents", tags=["Documents"])
 app.include_router(user_router, prefix="/user", tags=["User"])
 app.include_router(admin_router, prefix="/admin", tags=["Admin"])
 app.include_router(qa_router, prefix="/qa", tags=["QA"])
-app.include_router(hybrid_search_router, prefix="", tags=["Hybrid Search"])
-app.include_router(chat_history_router, prefix="", tags=["Chat History"])
+app.include_router(hybrid_search_router, prefix="/search", tags=["Hybrid Search"])
+app.include_router(chat_history_router, prefix="/chat", tags=["Chat History"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
 app.include_router(approval_router, prefix="/approval", tags=["Approval"])
-app.include_router(employee_performance_router, prefix="", tags=["Employee Performance"])
-app.include_router(customer_router, prefix="", tags=["Customer"])
-app.include_router(employee_info_router, prefix="", tags=["Employee Info"])
+app.include_router(employee_performance_router, prefix="/performance", tags=["Employee Performance"])
+app.include_router(customer_router, prefix="/customers", tags=["Customer"])
+app.include_router(employee_info_router, prefix="/employee-info", tags=["Employee Info"])
 app.include_router(data_upload_router, prefix="/data", tags=["Data Upload"])
+app.include_router(news_router, prefix="/news", tags=["News"])
+app.include_router(schedule_router, prefix="/schedules", tags=["Schedules"])
 
 @app.get("/")
 def root():
