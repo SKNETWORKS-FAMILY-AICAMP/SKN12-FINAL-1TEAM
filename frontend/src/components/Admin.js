@@ -20,6 +20,7 @@ const Admin = ({ currentUser }) => {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [accountCreationMessage, setAccountCreationMessage] = useState(''); // 계정 생성 모달 전용 메시지
   const [documentTitle, setDocumentTitle] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState({});
@@ -72,33 +73,50 @@ const Admin = ({ currentUser }) => {
 
   const fetchEmployees = async () => {
     try {
-      const employeeData = await getEmployees();  // /user/employees/all API 사용
-      console.log('직원 데이터:', employeeData); // 디버깅용
+      // 두 API를 병렬로 호출
+      const [accountData, employeeInfoData] = await Promise.all([
+        getEmployees(),  // /user/employees/all - 계정 정보
+        getEmployeeInfo()  // /employee-info - 인사 정보
+      ]);
+      
+      console.log('계정 데이터:', accountData); // 디버깅용
+      console.log('인사 정보 데이터:', employeeInfoData); // 디버깅용
       
       // 데이터가 배열인지 확인
-      const employees = Array.isArray(employeeData) ? employeeData : [];
+      const accounts = Array.isArray(accountData) ? accountData : [];
+      const employeeInfos = Array.isArray(employeeInfoData) ? employeeInfoData : [];
       
-      const formattedEmployees = employees.map(emp => ({
-        id: emp.employee_id || emp.id,
-        name: emp.name,
-        email: emp.email || '-',
-        position: emp.position || '-',
-        branch_name: emp.branch_name || '-',
-        headquarters: emp.headquarters || '-',
-        department: emp.department || '-',
-        hasAccount: '✓',  // /user/employees/all에서 가져온 데이터는 모두 계정이 있음
-        // 상세 정보
-        employee_number: emp.employee_number || '-',
-        contact_number: emp.contact_number || '-',
-        base_salary: emp.base_salary || 0,
-        incentive_pay: emp.incentive_pay || 0,
-        latest_evaluation: emp.latest_evaluation || '-',
-        responsibilities: emp.responsibilities || '-',
-        approval_status: emp.approval_status || 'approved',
-        created_at: emp.created_at,
-        role: emp.role || 'user',
-        is_active: emp.is_active
-      }));
+      // 계정 정보와 인사 정보를 합치기
+      const formattedEmployees = employeeInfos.map(info => {
+        // 해당 직원의 계정 정보 찾기 - employee_id로만 매칭
+        const account = info.employee_id ? 
+          accounts.find(acc => acc.employee_id === info.employee_id) : 
+          null;
+        
+        return {
+          id: info.employee_info_id || info.id,
+          name: info.name,
+          email: account?.email || '-',
+          position: info.position || '-',
+          branch_name: info.branch_name || '-',
+          headquarters: info.headquarters || '-',
+          department: info.department || '-',
+          hasAccount: account ? '✓' : '✗',
+          // 상세 정보
+          employee_id: info.employee_id,
+          employee_number: info.employee_number || '-',
+          contact_number: info.contact_number || '-',
+          base_salary: info.base_salary || 0,
+          incentive_pay: info.incentive_pay || 0,
+          latest_evaluation: info.latest_evaluation || '-',
+          responsibilities: info.responsibilities || '-',
+          approval_status: info.approval_status || 'approved',
+          created_at: account?.created_at || info.created_at,
+          role: account?.role || 'user',
+          is_active: account?.is_active || false
+        };
+      });
+      
       setEmployees(formattedEmployees);
     } catch (error) {
       console.error('직원 정보 조회 실패:', error);
@@ -108,27 +126,29 @@ const Admin = ({ currentUser }) => {
 
   // 계정 생성 핸들러
   const handleCreateAccount = async () => {
+    // 입력값 검증
     if (!accountFormData.email || !accountFormData.password) {
-      setMessage('❌ 모든 필드를 입력해주세요.');
+      setAccountCreationMessage('❌ 모든 필드를 입력해주세요.');
       return;
     }
 
     if (accountFormData.password !== accountFormData.confirmPassword) {
-      setMessage('❌ 비밀번호가 일치하지 않습니다.');
+      setAccountCreationMessage('❌ 비밀번호가 일치하지 않습니다.');
       return;
     }
 
     if (accountFormData.password.length < 8) {
-      setMessage('❌ 비밀번호는 8자 이상이어야 합니다.');
+      setAccountCreationMessage('❌ 비밀번호는 8자 이상이어야 합니다.');
       return;
     }
 
     setIsLoading(true);
-    setMessage('');
+    setAccountCreationMessage('');
 
     try {
       const employeeData = {
         name: selectedEmployee.name,
+        employee_number: selectedEmployee.employee_number,
         email: accountFormData.email,
         password: accountFormData.password,
         role: 'user'
@@ -136,17 +156,57 @@ const Admin = ({ currentUser }) => {
 
       await registerEmployee(employeeData);
       
-      // 폼 초기화
-      setAccountFormData({ email: '', password: '', confirmPassword: '' });
-      setShowAccountCreateModal(false);
+      // 성공 시에만 모달 닫기
+      setAccountCreationMessage('✅ 계정이 성공적으로 생성되었습니다.');
       
       // 직원 리스트 새로고침
       await fetchEmployees();
       
-      setMessage('✅ 계정이 성공적으로 생성되었습니다.');
+      // 업데이트된 직원 정보로 selectedEmployee 갱신
+      const updatedEmployees = await getEmployeeInfo();
+      const updatedEmployee = updatedEmployees.find(emp => 
+        emp.employee_info_id === selectedEmployee.id
+      );
+      
+      if (updatedEmployee) {
+        // 계정 정보를 포함한 업데이트된 직원 정보 설정
+        const accounts = await getEmployees();
+        const account = updatedEmployee.employee_id ? 
+          accounts.find(acc => acc.employee_id === updatedEmployee.employee_id) : 
+          null;
+          
+        setSelectedEmployee({
+          ...selectedEmployee,
+          ...updatedEmployee,
+          hasAccount: account ? '✓' : '✗',
+          email: account?.email || '-',
+          role: account?.role || 'user',
+          is_active: account?.is_active || false
+        });
+      }
+      
+      // 2초 후 모달 닫기
+      setTimeout(() => {
+        setAccountFormData({ email: '', password: '', confirmPassword: '' });
+        setShowAccountCreateModal(false);
+        setAccountCreationMessage('');
+        setMessage('✅ 계정이 성공적으로 생성되었습니다.');
+        // 배경 스크롤 복원
+        document.body.style.overflow = 'unset';
+      }, 2000);
+      
     } catch (error) {
       console.error('계정 생성 실패:', error);
-      setMessage(`❌ 계정 생성에 실패했습니다: ${error.message || '알 수 없는 오류'}`);
+      // 오류 메시지를 모달에 표시
+      let errorMessage = '계정 생성에 실패했습니다';
+      
+      if (error.response && error.response.data) {
+        errorMessage = error.response.data.detail || error.response.data.message || errorMessage;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setAccountCreationMessage(`❌ ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -165,6 +225,8 @@ const Admin = ({ currentUser }) => {
       if (account) {
         setAccountInfo(account);
         setShowAccountInfoModal(true);
+        // 배경 스크롤 방지
+        document.body.style.overflow = 'hidden';
       } else {
         setMessage('❌ 계정 정보를 찾을 수 없습니다.');
       }
@@ -281,11 +343,15 @@ const Admin = ({ currentUser }) => {
   const handleEmployeeClick = (employee) => {
     setSelectedEmployee(employee);
     setShowEmployeeModal(true);
+    // 배경 스크롤 방지
+    document.body.style.overflow = 'hidden';
   };
 
   const closeEmployeeModal = () => {
     setShowEmployeeModal(false);
     setSelectedEmployee(null);
+    // 배경 스크롤 복원
+    document.body.style.overflow = 'unset';
   };
 
   const handleUpload = async () => {
@@ -639,7 +705,10 @@ const Admin = ({ currentUser }) => {
                     password: '',
                     confirmPassword: ''
                   });
+                  setAccountCreationMessage(''); // 메시지 초기화
                   setShowAccountCreateModal(true);
+                  // 배경 스크롤 방지
+                  document.body.style.overflow = 'hidden';
                 }}>
                   계정 생성
                 </button>
@@ -652,11 +721,21 @@ const Admin = ({ currentUser }) => {
 
       {/* 계정 생성 모달 */}
       {showAccountCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowAccountCreateModal(false)}>
+        <div className="modal-overlay" onClick={() => {
+          setShowAccountCreateModal(false);
+          setAccountCreationMessage('');
+          // 배경 스크롤 복원
+          document.body.style.overflow = 'unset';
+        }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>계정 생성</h2>
-              <button className="modal-close" onClick={() => setShowAccountCreateModal(false)}>✕</button>
+              <button className="modal-close" onClick={() => {
+                setShowAccountCreateModal(false);
+                setAccountCreationMessage('');
+                // 배경 스크롤 복원
+                document.body.style.overflow = 'unset';
+              }}>✕</button>
             </div>
             <div className="modal-body">
               <div className="detail-section">
@@ -701,6 +780,13 @@ const Admin = ({ currentUser }) => {
                   />
                 </div>
               </div>
+              
+              {/* 메시지 표시 영역 - 하단에 위치 */}
+              {accountCreationMessage && (
+                <div className={`message ${accountCreationMessage.includes('✅') ? 'success' : 'error'}`} style={{ marginTop: '15px', marginBottom: '0' }}>
+                  {accountCreationMessage}
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button 
@@ -718,11 +804,19 @@ const Admin = ({ currentUser }) => {
 
       {/* 계정 정보 조회 모달 */}
       {showAccountInfoModal && accountInfo && (
-        <div className="modal-overlay" onClick={() => setShowAccountInfoModal(false)}>
+        <div className="modal-overlay" onClick={() => {
+          setShowAccountInfoModal(false);
+          // 배경 스크롤 복원
+          document.body.style.overflow = 'unset';
+        }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>계정 정보</h2>
-              <button className="modal-close" onClick={() => setShowAccountInfoModal(false)}>✕</button>
+              <button className="modal-close" onClick={() => {
+                setShowAccountInfoModal(false);
+                // 배경 스크롤 복원
+                document.body.style.overflow = 'unset';
+              }}>✕</button>
             </div>
             <div className="modal-body">
               <div className="detail-section">
@@ -757,7 +851,11 @@ const Admin = ({ currentUser }) => {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn-close" onClick={() => setShowAccountInfoModal(false)}>닫기</button>
+              <button className="btn-close" onClick={() => {
+                setShowAccountInfoModal(false);
+                // 배경 스크롤 복원
+                document.body.style.overflow = 'unset';
+              }}>닫기</button>
             </div>
           </div>
         </div>
