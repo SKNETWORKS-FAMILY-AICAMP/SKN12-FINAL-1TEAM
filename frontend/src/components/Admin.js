@@ -41,16 +41,26 @@ const Admin = ({ currentUser }) => {
   const fetchDocuments = async () => {
     try {
       const documents = await getDocuments();
+      
+      // documents가 배열인지 확인
+      if (!Array.isArray(documents)) {
+        console.warn('문서 목록이 비어있거나 형식이 올바르지 않습니다');
+        setUploadedFiles([]);
+        return;
+      }
+      
       // 문서 데이터를 표시용 형식으로 변환
       const formattedDocs = documents.map(doc => ({
-        id: doc.doc_id,
+        id: String(doc.doc_id || ''), // doc_id를 문자열로 변환
         name: doc.doc_title || doc.file_path?.split('/').pop() || 'Untitled',
         size: doc.file_size ? `${(doc.file_size / 1024 / 1024).toFixed(2)}MB` : 'N/A',
-        uploadDate: new Date(doc.upload_date || doc.created_at).toLocaleDateString('ko-KR')
+        uploadDate: doc.upload_date || doc.created_at ? 
+          new Date(doc.upload_date || doc.created_at).toLocaleDateString('ko-KR') : 'N/A'
       }));
       setUploadedFiles(formattedDocs);
     } catch (error) {
       console.error('문서 목록 조회 실패:', error);
+      setUploadedFiles([]); // 오류 시 빈 배열 설정
     }
   };
 
@@ -62,29 +72,33 @@ const Admin = ({ currentUser }) => {
 
   const fetchEmployees = async () => {
     try {
-      const employeeInfoData = await getEmployeeInfo();
-      console.log('직원 정보 데이터:', employeeInfoData); // 디버깅용
+      const employeeData = await getEmployees();  // /user/employees/all API 사용
+      console.log('직원 데이터:', employeeData); // 디버깅용
       
-      // 관리자는 모든 정보를 볼 수 있으므로 필터 제거
-      const formattedEmployees = employeeInfoData
-        .map(emp => ({
-          id: emp.employee_info_id,
-          name: emp.name,
-          position: emp.position || '-',
-          branch_name: emp.branch_name || '-',
-          headquarters: emp.headquarters || '-',
-          department: emp.department || '-',
-          hasAccount: emp.employee_id ? '✓' : '✗',  // 계정 유무
-          // 상세 정보도 저장
-          employee_number: emp.employee_number || '-',
-          contact_number: emp.contact_number || '-',
-          base_salary: emp.base_salary || 0,
-          incentive_pay: emp.incentive_pay || 0,
-          latest_evaluation: emp.latest_evaluation || '-',
-          responsibilities: emp.responsibilities || '-',
-          approval_status: emp.approval_status,
-          created_at: emp.created_at
-        }));
+      // 데이터가 배열인지 확인
+      const employees = Array.isArray(employeeData) ? employeeData : [];
+      
+      const formattedEmployees = employees.map(emp => ({
+        id: emp.employee_id || emp.id,
+        name: emp.name,
+        email: emp.email || '-',
+        position: emp.position || '-',
+        branch_name: emp.branch_name || '-',
+        headquarters: emp.headquarters || '-',
+        department: emp.department || '-',
+        hasAccount: '✓',  // /user/employees/all에서 가져온 데이터는 모두 계정이 있음
+        // 상세 정보
+        employee_number: emp.employee_number || '-',
+        contact_number: emp.contact_number || '-',
+        base_salary: emp.base_salary || 0,
+        incentive_pay: emp.incentive_pay || 0,
+        latest_evaluation: emp.latest_evaluation || '-',
+        responsibilities: emp.responsibilities || '-',
+        approval_status: emp.approval_status || 'approved',
+        created_at: emp.created_at,
+        role: emp.role || 'user',
+        is_active: emp.is_active
+      }));
       setEmployees(formattedEmployees);
     } catch (error) {
       console.error('직원 정보 조회 실패:', error);
@@ -182,47 +196,59 @@ const Admin = ({ currentUser }) => {
     }
     
     const file = selectedFiles[0];
-    const docTitle = `목표 데이터 - ${file.name.replace(/\.[^/.]+$/, '')}`;
+    const docTitle = documentTitle.trim() || `목표 데이터 - ${file.name.replace(/\.[^/.]+$/, '')}`;
     
     setIsLoading(true);
-    setMessage('');
-    setShowProcessBar(true);
-    setIsUploadCompleted(false);
+    setMessage('⏳ 목표 데이터 업로드 중...');
     
     try {
       // 목표 데이터 전용 API 엔드포인트 사용
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('title', docTitle);
+      formData.append('doc_title', docTitle);
+      formData.append('uploader_id', currentUser?.employee_id || '1'); // 현재 사용자 ID
       
-      // /api/v1/employee/upload-targets 엔드포인트 호출 (예시)
-      const response = await fetch('http://localhost:8000/api/v1/employee/upload-targets', {
+      // /documents/upload/employee-targets 엔드포인트 호출 (Database 백엔드 8010 포트)
+      const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
+      const response = await fetch('http://localhost:8010/documents/upload/employee-targets', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: formData
       });
       
-      if (response.ok) {
-        setIsUploadCompleted(true);
-        setMessage('✅ 목표 데이터가 성공적으로 업로드되었습니다.');
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        setMessage(
+          `✅ ${result.message}\n` +
+          `  • 생성: ${result.created_count}건\n` +
+          `  • 업데이트: ${result.updated_count}건\n` +
+          `  • 건너뜀: ${result.skipped_count}건`
+        );
+        
+        // 오류 상세 표시 (있는 경우)
+        if (result.error_details && result.error_details.length > 0) {
+          console.warn('목표 데이터 처리 중 일부 오류:', result.error_details);
+        }
+        
         // 파일 input 초기화
-        const targetInput = document.getElementById('target-file-upload');
-        if (targetInput) targetInput.value = '';
+        const fileInput = document.getElementById('file-upload');
+        if (fileInput) fileInput.value = '';
+        setSelectedFiles([]);
+        setDocumentTitle('');
+        
         // 문서 목록 새로고침
         fetchDocuments();
       } else {
-        const error = await response.json();
-        throw new Error(error.detail || '업로드 실패');
+        throw new Error(result.message || result.detail || '업로드 실패');
       }
     } catch (error) {
       console.error('목표 데이터 업로드 실패:', error);
       setMessage(`❌ 목표 데이터 업로드 실패: ${error.message}`);
-      setShowProcessBar(false);
     } finally {
       setIsLoading(false);
-      setSelectedFiles([]);
     }
   };
   

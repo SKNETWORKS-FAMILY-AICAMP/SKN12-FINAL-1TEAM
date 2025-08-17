@@ -22,9 +22,9 @@ const Main = ({ currentUser, schedules = [] }) => {
 
   // 관리자용 요약 카드
   const adminSummaryCards = [
-    { title: '전체 사용자 수', value: '24명', color: '#6f42c1' },
-    { title: '오늘 로그인 사용자', value: '18명', color: '#28a745' },
-    { title: '시스템 알림', value: '2건', color: '#dc3545' },
+    { title: '전체 사용자 수', value: '0명', color: '#6f42c1' },
+    { title: '오늘 로그인 사용자', value: '0명', color: '#28a745' },
+    { title: '시스템 알림', value: '0건', color: '#dc3545' },
   ];
 
   // 일반 사용자용 요약 카드
@@ -44,11 +44,22 @@ const Main = ({ currentUser, schedules = [] }) => {
 
   // AI 제안 내용
   const aiSuggestion = isAdmin 
-    ? "사용자 활동이 증가하고 있습니다. 서버 리소스 모니터링을 권장합니다."
-    : "B 병원 방문 시, 최근 발표된 경쟁사 논문 자료를 준비하세요";
+    ? "서버 리소스 모니터링을 권장합니다."
+    : "오늘 일정을 확인하고 계획을 세워보세요.";
 
   const scheduleTitle = isAdmin ? "관리 업무 일정" : "나의 일일 계획";
   const scheduleIcon = isAdmin ? "⚙️" : "💼";
+
+  // 제약 관련 뉴스 (더미 데이터 - 추후 API 연동)
+  const pharmaNews = [
+    {
+      id: 1,
+      title: "AI 제약: B 형간 방문 시, 최근 발표된 경쟁사 논문 자료를 준비하세요",
+      category: "AI 제안",
+      date: "오늘 10:00",
+      image: null
+    }
+  ];
 
   return (
     <div className="dashboard">
@@ -82,39 +93,69 @@ const Main = ({ currentUser, schedules = [] }) => {
         ))}
       </div>
 
-      {/* AI 제안 섹션 */}
-      <div className="ai-suggestion">
-        <div className="ai-suggestion-content">
-          <h3>{isAdmin ? "시스템 AI 제안" : "AI 제안"}</h3>
-          <p>{aiSuggestion}</p>
-        </div>
-        <div className="ai-suggestion-bg"></div>
-      </div>
-
-      {/* 일일 계획 섹션 */}
-      <div className="daily-plan">
-        <h3>{scheduleTitle}</h3>
-        <div className="schedule-list">
-          {dailySchedule.length > 0 ? (
-            dailySchedule.map((schedule, index) => (
-              <div key={index} className="schedule-item">
-                <div className="schedule-icon">{scheduleIcon}</div>
-                <div className="schedule-details">
-                  <div className="schedule-time">{schedule.time}</div>
-                  <div className="schedule-location">{schedule.location}</div>
+      {/* 제약 뉴스 섹션 - 관리자/직원 공통 */}
+      <div className="pharma-news-section">
+        <h3>
+          <span style={{ marginRight: '8px' }}>💊</span>
+          제약 업계 뉴스
+        </h3>
+        <div className="news-list">
+          {pharmaNews.length > 0 ? (
+            pharmaNews.map((news) => (
+              <div key={news.id} className="news-item">
+                <div className="news-content">
+                  <div className="news-header">
+                    {news.category && (
+                      <span className="news-category">{news.category}</span>
+                    )}
+                    <span className="news-date">{news.date}</span>
+                  </div>
+                  <div className="news-title">{news.title}</div>
                 </div>
-                {index < dailySchedule.length - 1 && <div className="schedule-connector"></div>}
+                {news.image && (
+                  <div className="news-image">
+                    <img src={news.image} alt="뉴스 이미지" />
+                  </div>
+                )}
               </div>
             ))
           ) : (
-            <div className="no-schedule">
+            <div className="no-news">
               <p style={{ color: '#999', textAlign: 'center', padding: '20px' }}>
-                등록된 일정이 없습니다. 일정 관리 페이지에서 일정을 추가해주세요.
+                새로운 뉴스를 불러오는 중입니다...
               </p>
             </div>
           )}
         </div>
       </div>
+
+      {/* 일일 계획 섹션 - 일반 사용자만 */}
+      {!isAdmin && (
+        <div className="daily-plan">
+          <h3>{scheduleTitle}</h3>
+          <div className="schedule-list">
+            {dailySchedule.length > 0 ? (
+              dailySchedule.map((schedule, index) => (
+                <div key={index} className="schedule-item">
+                  <div className="schedule-icon">{scheduleIcon}</div>
+                  <div className="schedule-details">
+                    <div className="schedule-time">{schedule.time}</div>
+                    <div className="schedule-location">{schedule.location}</div>
+                  </div>
+                  {index < dailySchedule.length - 1 && <div className="schedule-connector"></div>}
+                </div>
+              ))
+            ) : (
+              <div className="no-schedule">
+                <p style={{ color: '#999', textAlign: 'center', padding: '20px' }}>
+                  등록된 일정이 없습니다. 일정 관리 페이지에서 일정을 추가해주세요.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
 
       {/* 최근 활동 섹션 */}
       <div className="recent-activities">

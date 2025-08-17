@@ -24,26 +24,27 @@ const Schedule = ({ schedules, setSchedules }) => {
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [showAddForm, setShowAddForm] = useState(false);
   const [newSchedule, setNewSchedule] = useState({
+    employee_id: '',
     title: '',
-    type: '방문',
-    date: getTodayDate(),
-    time: getCurrentTime(),
-    duration: '1시간',
     location: '',
-    contact: '',
+    contact_person: '',
+    schedule_date: getTodayDate(),
+    schedule_time: getCurrentTime(),
+    duration: '1시간',
+    schedule_type: '방문',
     status: '예정',
-    notes: '',
+    memo: '',
   });
 
   // 날짜가 변경될 때마다 새 일정의 날짜도 업데이트
   useEffect(() => {
-    setNewSchedule(prev => ({ ...prev, date: selectedDate }));
+    setNewSchedule(prev => ({ ...prev, schedule_date: selectedDate }));
   }, [selectedDate]);
 
-  const filteredSchedules = schedules.filter(schedule => schedule.date === selectedDate);
+  const filteredSchedules = schedules.filter(schedule => schedule.schedule_date === selectedDate);
 
   // 오늘 일정만 필터링
-  const todaySchedules = schedules.filter(schedule => schedule.date === getTodayDate());
+  const todaySchedules = schedules.filter(schedule => schedule.schedule_date === getTodayDate());
 
   // 이번 주 일정 계산
   const getWeekSchedules = () => {
@@ -55,7 +56,7 @@ const Schedule = ({ schedules, setSchedules }) => {
     endOfWeek.setDate(today.getDate() + (6 - today.getDay()));
     
     return schedules.filter(schedule => {
-      const scheduleDate = new Date(schedule.date);
+      const scheduleDate = new Date(schedule.schedule_date);
       return scheduleDate >= startOfWeek && scheduleDate <= endOfWeek;
     });
   };
@@ -76,28 +77,31 @@ const Schedule = ({ schedules, setSchedules }) => {
 
   // 새 일정 추가
   const handleAddSchedule = () => {
-    if (!newSchedule.title || !newSchedule.location || !newSchedule.contact) {
+    if (!newSchedule.title || !newSchedule.location || !newSchedule.contact_person) {
       alert('제목, 거래처(위치), 담당자는 필수 입력 항목입니다.');
       return;
     }
 
+    // 현재 로그인한 사용자의 employee_id 설정 (실제로는 props나 context에서 가져와야 함)
     const schedule = {
       ...newSchedule,
       id: Date.now(),
+      employee_id: 'EMP001', // TODO: 실제 로그인한 사용자 ID로 변경 필요
     };
 
     setSchedules([...schedules, schedule]);
     setShowAddForm(false);
     setNewSchedule({
+      employee_id: '',
       title: '',
-      type: '방문',
-      date: selectedDate,
-      time: getCurrentTime(),
-      duration: '1시간',
       location: '',
-      contact: '',
+      contact_person: '',
+      schedule_date: selectedDate,
+      schedule_time: getCurrentTime(),
+      duration: '1시간',
+      schedule_type: '방문',
       status: '예정',
-      notes: '',
+      memo: '',
     });
   };
 
@@ -212,8 +216,8 @@ const Schedule = ({ schedules, setSchedules }) => {
                   <label>담당자 *</label>
                   <input
                     type="text"
-                    value={newSchedule.contact}
-                    onChange={(e) => setNewSchedule({...newSchedule, contact: e.target.value})}
+                    value={newSchedule.contact_person}
+                    onChange={(e) => setNewSchedule({...newSchedule, contact_person: e.target.value})}
                     placeholder="예: 김의사, 이약사"
                   />
                 </div>
@@ -224,8 +228,8 @@ const Schedule = ({ schedules, setSchedules }) => {
                   <label>날짜</label>
                   <input
                     type="date"
-                    value={newSchedule.date}
-                    onChange={(e) => setNewSchedule({...newSchedule, date: e.target.value})}
+                    value={newSchedule.schedule_date}
+                    onChange={(e) => setNewSchedule({...newSchedule, schedule_date: e.target.value})}
                   />
                 </div>
 
@@ -233,8 +237,8 @@ const Schedule = ({ schedules, setSchedules }) => {
                   <label>시간</label>
                   <input
                     type="time"
-                    value={newSchedule.time}
-                    onChange={(e) => setNewSchedule({...newSchedule, time: e.target.value})}
+                    value={newSchedule.schedule_time}
+                    onChange={(e) => setNewSchedule({...newSchedule, schedule_time: e.target.value})}
                   />
                 </div>
 
@@ -260,8 +264,8 @@ const Schedule = ({ schedules, setSchedules }) => {
                 <div className="form-group">
                   <label>일정 유형</label>
                   <select
-                    value={newSchedule.type}
-                    onChange={(e) => setNewSchedule({...newSchedule, type: e.target.value})}
+                    value={newSchedule.schedule_type}
+                    onChange={(e) => setNewSchedule({...newSchedule, schedule_type: e.target.value})}
                   >
                     {scheduleTypes.map(type => (
                       <option key={type.id} value={type.id}>{type.name}</option>
@@ -286,8 +290,8 @@ const Schedule = ({ schedules, setSchedules }) => {
               <div className="form-group">
                 <label>메모</label>
                 <textarea
-                  value={newSchedule.notes}
-                  onChange={(e) => setNewSchedule({...newSchedule, notes: e.target.value})}
+                  value={newSchedule.memo}
+                  onChange={(e) => setNewSchedule({...newSchedule, memo: e.target.value})}
                   placeholder="일정에 대한 메모를 입력하세요"
                   rows="3"
                 />
@@ -332,11 +336,11 @@ const Schedule = ({ schedules, setSchedules }) => {
           ) : (
             <div className="schedule-items">
               {filteredSchedules
-                .sort((a, b) => a.time.localeCompare(b.time))
+                .sort((a, b) => a.schedule_time.localeCompare(b.schedule_time))
                 .map(schedule => (
                 <div key={schedule.id} className="schedule-item">
                   <div className="schedule-time">
-                    <div className="time">{schedule.time}</div>
+                    <div className="time">{schedule.schedule_time}</div>
                     <div className="duration">{schedule.duration}</div>
                   </div>
                   
@@ -346,11 +350,11 @@ const Schedule = ({ schedules, setSchedules }) => {
                       <span 
                         className="schedule-type"
                         style={{ 
-                          backgroundColor: scheduleTypes.find(t => t.id === schedule.type)?.color + '20', 
-                          color: scheduleTypes.find(t => t.id === schedule.type)?.color 
+                          backgroundColor: scheduleTypes.find(t => t.id === schedule.schedule_type)?.color + '20', 
+                          color: scheduleTypes.find(t => t.id === schedule.schedule_type)?.color 
                         }}
                       >
-                        {schedule.type}
+                        {schedule.schedule_type}
                       </span>
                     </div>
                     
@@ -361,12 +365,12 @@ const Schedule = ({ schedules, setSchedules }) => {
                       </div>
                       <div className="detail-item">
                         <span className="detail-label">👤</span>
-                        <span>{schedule.contact}</span>
+                        <span>{schedule.contact_person}</span>
                       </div>
-                      {schedule.notes && (
+                      {schedule.memo && (
                         <div className="detail-item">
                           <span className="detail-label">📝</span>
-                          <span>{schedule.notes}</span>
+                          <span>{schedule.memo}</span>
                         </div>
                       )}
                     </div>

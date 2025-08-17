@@ -23,9 +23,17 @@ module.exports = function(app) {
     selfHandleResponse: false
   });
   
-  // 일반 API 프록시
+  // 일반 API 프록시 (백엔드 에이전트 서버)
   const apiProxy = createProxyMiddleware({
     target: 'http://backend:8000',
+    changeOrigin: true,
+    logLevel: 'debug',
+    ws: false
+  });
+  
+  // Database API 프록시 (8010 포트)
+  const dbApiProxy = createProxyMiddleware({
+    target: 'http://fastapi-app:8000',  // Docker 내부에서는 서비스명:내부포트 사용
     changeOrigin: true,
     logLevel: 'debug',
     ws: false
@@ -40,10 +48,14 @@ module.exports = function(app) {
       return sseProxy(req, res, next);
     }
     
-    // 일반 API 경로는 일반 프록시 사용
+    // documents 경로는 Database 프록시 사용 (8010)
+    if (path.startsWith('/documents')) {
+      return dbApiProxy(req, res, next);
+    }
+    
+    // 그 외 API 경로는 백엔드 프록시 사용 (8000)
     if (path.startsWith('/user') || 
         path.startsWith('/admin') || 
-        path.startsWith('/documents') || 
         path.startsWith('/employee-info') || 
         path.startsWith('/api')) {
       return apiProxy(req, res, next);

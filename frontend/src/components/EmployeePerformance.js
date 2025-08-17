@@ -27,6 +27,14 @@ const EmployeePerformance = ({ currentUser }) => {
   
   const isAdmin = currentUser?.role === 'admin';
 
+  // 사용자별 localStorage 키 생성 함수
+  const getUserHistoryKey = () => {
+    if (!currentUser) return 'employeeAnalysisHistory_guest';
+    // 사용자 ID나 이메일을 기반으로 고유 키 생성
+    const userId = currentUser.employee_id || currentUser.email || currentUser.username || 'unknown';
+    return `employeeAnalysisHistory_${userId}`;
+  };
+
   // 컴포넌트 마운트 시 직원 목록 가져오기 (관리자만)
   useEffect(() => {
     console.log('EmployeePerformance - Current User:', currentUser);
@@ -42,14 +50,20 @@ const EmployeePerformance = ({ currentUser }) => {
     // 대시보드 통계 가져오기
     fetchDashboardStats();
     
-    // localStorage에서 분석 히스토리 불러오기
-    const savedHistory = localStorage.getItem('employeeAnalysisHistory');
-    if (savedHistory) {
-      try {
-        const parsed = JSON.parse(savedHistory);
-        setAnalysisHistory(parsed);
-      } catch (error) {
-        console.error('분석 히스토리 불러오기 실패:', error);
+    // localStorage에서 사용자별 분석 히스토리 불러오기
+    if (currentUser) {
+      const userHistoryKey = getUserHistoryKey();
+      const savedHistory = localStorage.getItem(userHistoryKey);
+      if (savedHistory) {
+        try {
+          const parsed = JSON.parse(savedHistory);
+          setAnalysisHistory(parsed);
+        } catch (error) {
+          console.error('분석 히스토리 불러오기 실패:', error);
+        }
+      } else {
+        // 새 사용자의 경우 빈 히스토리로 초기화
+        setAnalysisHistory([]);
       }
     }
   }, [isAdmin, currentUser]);
@@ -182,8 +196,9 @@ const EmployeePerformance = ({ currentUser }) => {
       setAnalysisHistory(updatedHistory);
       setActiveHistoryId(newHistoryItem.id);
       
-      // localStorage에 저장
-      localStorage.setItem('employeeAnalysisHistory', JSON.stringify(updatedHistory));
+      // 사용자별 localStorage에 저장
+      const userHistoryKey = getUserHistoryKey();
+      localStorage.setItem(userHistoryKey, JSON.stringify(updatedHistory));
       
     } catch (error) {
       console.error('분석 실패:', error);
@@ -221,7 +236,8 @@ const EmployeePerformance = ({ currentUser }) => {
   const deleteHistory = (historyId) => {
     const updatedHistory = analysisHistory.filter(item => item.id !== historyId);
     setAnalysisHistory(updatedHistory);
-    localStorage.setItem('employeeAnalysisHistory', JSON.stringify(updatedHistory));
+    const userHistoryKey = getUserHistoryKey();
+    localStorage.setItem(userHistoryKey, JSON.stringify(updatedHistory));
     
     if (activeHistoryId === historyId) {
       startNewAnalysis();

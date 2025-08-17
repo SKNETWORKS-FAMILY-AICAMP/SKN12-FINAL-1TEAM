@@ -2,8 +2,7 @@
   padding: 30px;
   background-color: #fff;
   min-height: 100vh;
-  max-width: 1600px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .schedule-header {
@@ -376,19 +375,21 @@
   }
 }
 
-.modal-header {
+.add-schedule-modal .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 20px 26px;
   border-bottom: 1px solid #e9ecef;
   flex-shrink: 0;
+  background-color: white !important;
+  background: white !important;
 }
 
-.modal-header h3 {
+.add-schedule-modal .modal-header h3 {
   margin: 0;
   font-size: 1.35rem;
-  color: #333;
+  color: #333 !important;
   font-weight: 600;
 }
 

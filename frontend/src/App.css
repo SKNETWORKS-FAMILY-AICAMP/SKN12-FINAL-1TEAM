@@ -21,22 +21,19 @@ body {
   flex-direction: column;
 }
 
-/* 메인 컨텐츠 영역 - 사이드바가 보일 때 */
+/* 메인 컨텐츠 영역 */
 .main-content {
-  flex: 1;
   background-color: #fff;
   min-height: 100vh;
   padding-top: 50px; /* 헤더 높이 */
-  margin-left: 250px; /* 사이드바 너비만큼 마진 */
-  width: calc(100% - 250px); /* 사이드바 너비를 뺀 나머지 너비 */
-  transition: all 0.3s ease;
+  margin-left: 250px !important; /* 사이드바 너비만큼 마진 */
+  transition: margin-left 0.3s ease;
   position: relative;
 }
 
 /* 사이드바가 숨겨졌을 때 */
 .main-content.sidebar-hidden {
-  margin-left: 0;
-  width: 100%; /* 전체 너비 사용 */
+  margin-left: 0 !important;
 }
 
 /* 로딩 화면 스타일 */
