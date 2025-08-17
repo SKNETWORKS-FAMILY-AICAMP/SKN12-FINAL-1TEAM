@@ -1,29 +1,81 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   getEmployeeList, 
-  getEmployeePerformance, 
-  getEmployeeTarget,
-  analyzeEmployeePerformance 
+  analyzeEmployeePerformance,
+  getDashboardStats 
 } from '../services/api';
 import './EmployeePerformance.css';
 
-const EmployeePerformance = () => {
+const EmployeePerformance = ({ currentUser }) => {
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState('');
-  const [startPeriod, setStartPeriod] = useState('202401');
-  const [endPeriod, setEndPeriod] = useState('202409');
-  const [performanceData, setPerformanceData] = useState(null);
-  const [targetData, setTargetData] = useState(null);
   const [analysisQuery, setAnalysisQuery] = useState('');
-  const [analysisResult, setAnalysisResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('performance');
+  
+  // 분석 히스토리 관련 상태
+  const [analysisHistory, setAnalysisHistory] = useState([]);
+  const [currentAnalysis, setCurrentAnalysis] = useState(null);
+  const [activeHistoryId, setActiveHistoryId] = useState(null);
+  
+  // 채팅 형식의 메시지 관련 상태
+  const [messages, setMessages] = useState([]);
+  const messagesEndRef = useRef(null);
+  
+  // 대시보드 통계 상태
+  const [dashboardStats, setDashboardStats] = useState(null);
+  
+  const isAdmin = currentUser?.role === 'admin';
 
-  // 컴포넌트 마운트 시 직원 목록 가져오기
+  // 사용자별 localStorage 키 생성 함수
+  const getUserHistoryKey = () => {
+    if (!currentUser) return 'employeeAnalysisHistory_guest';
+    // 사용자 ID나 이메일을 기반으로 고유 키 생성
+    const userId = currentUser.employee_id || currentUser.email || currentUser.username || 'unknown';
+    return `employeeAnalysisHistory_${userId}`;
+  };
+
+  // 컴포넌트 마운트 시 직원 목록 가져오기 (관리자만)
   useEffect(() => {
-    fetchEmployeeList();
-  }, []);
+    console.log('EmployeePerformance - Current User:', currentUser);
+    console.log('EmployeePerformance - Is Admin:', isAdmin);
+    
+    if (isAdmin) {
+      fetchEmployeeList();
+    } else if (currentUser) {
+      setSelectedEmployee(currentUser.name || currentUser.username || currentUser.email);
+      console.log('Set selected employee to:', currentUser.name || currentUser.username || currentUser.email);
+    }
+    
+    // 대시보드 통계 가져오기
+    fetchDashboardStats();
+    
+    // localStorage에서 사용자별 분석 히스토리 불러오기
+    if (currentUser) {
+      const userHistoryKey = getUserHistoryKey();
+      const savedHistory = localStorage.getItem(userHistoryKey);
+      if (savedHistory) {
+        try {
+          const parsed = JSON.parse(savedHistory);
+          setAnalysisHistory(parsed);
+        } catch (error) {
+          console.error('분석 히스토리 불러오기 실패:', error);
+        }
+      } else {
+        // 새 사용자의 경우 빈 히스토리로 초기화
+        setAnalysisHistory([]);
+      }
+    }
+  }, [isAdmin, currentUser]);
+
+  // 메시지 변경 시 자동 스크롤
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   const fetchEmployeeList = async () => {
     try {
@@ -38,45 +90,39 @@ const EmployeePerformance = () => {
     }
   };
 
-  const handlePerformanceSearch = async () => {
-    if (!selectedEmployee) {
-      setError('직원을 선택해주세요.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    
+  const fetchDashboardStats = async () => {
     try {
-      const perfData = await getEmployeePerformance(selectedEmployee, startPeriod, endPeriod);
-      setPerformanceData(perfData);
-      setActiveTab('performance');
+      const data = await getDashboardStats();
+      console.log('Dashboard stats:', data);
+      setDashboardStats(data);
     } catch (error) {
-      console.error('실적 조회 실패:', error);
-      setError('실적 조회에 실패했습니다.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleTargetSearch = async () => {
-    if (!selectedEmployee) {
-      setError('직원을 선택해주세요.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    
-    try {
-      const targetData = await getEmployeeTarget(selectedEmployee, startPeriod, endPeriod);
-      setTargetData(targetData);
-      setActiveTab('target');
-    } catch (error) {
-      console.error('목표 조회 실패:', error);
-      setError('목표 조회에 실패했습니다.');
-    } finally {
-      setLoading(false);
+      console.error('대시보드 통계 조회 실패:', error);
+      // 실패해도 기본값으로 표시
+      setDashboardStats({
+        stats: [
+          {
+            title: "목표 달성률",
+            value: "0%",
+            change: "0%",
+            trend: "neutral",
+            period: "이번 달"
+          },
+          {
+            title: "매출 증감률",
+            value: "0%",
+            change: "₩0",
+            trend: "neutral",
+            period: "전월 대비"
+          },
+          {
+            title: "분기 총 실적",
+            value: "₩0",
+            change: "0개 거래처",
+            trend: "neutral",
+            period: "최근 3개월"
+          }
+        ]
+      });
     }
   };
 
@@ -89,18 +135,112 @@ const EmployeePerformance = () => {
     setLoading(true);
     setError('');
     
+    // 디버깅용 로그
+    console.log('Current User:', currentUser);
+    console.log('Is Admin:', isAdmin);
+    console.log('Selected Employee:', selectedEmployee);
+    
+    // 사용자 메시지 추가
+    const userMessage = {
+      id: Date.now(),
+      type: 'user',
+      content: analysisQuery,
+      timestamp: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, userMessage]);
+    
     try {
-      const result = await analyzeEmployeePerformance({
+      console.log('Current User:', currentUser);
+      console.log('Is Admin:', isAdmin);
+      console.log('Original Query:', analysisQuery);
+      
+      // 관리자인 경우에만 직원명 전달, 일반 사용자는 백엔드에서 자동 처리
+      let requestData = {
+        query: analysisQuery
+      };
+      
+      // 관리자가 특정 직원을 선택한 경우에만 employee_name 추가
+      if (isAdmin && selectedEmployee) {
+        requestData.employee_name = selectedEmployee;
+        console.log('Admin selected employee:', selectedEmployee);
+      }
+      
+      console.log('Request data:', requestData);
+      
+      const result = await analyzeEmployeePerformance(requestData);
+      
+      // AI 응답 메시지 추가
+      const aiMessage = {
+        id: Date.now() + 1,
+        type: 'ai',
+        content: result.report || JSON.stringify(result, null, 2),
+        data: result,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, aiMessage]);
+      
+      // 현재 분석 결과 저장
+      setCurrentAnalysis(result);
+      
+      // 히스토리에 추가
+      const newHistoryItem = {
+        id: Date.now(),
+        title: `${isAdmin ? selectedEmployee : currentUser?.name} - ${new Date().toLocaleString('ko-KR')}`,
         query: analysisQuery,
-        employee_name: selectedEmployee || null
-      });
-      setAnalysisResult(result);
-      setActiveTab('analysis');
+        result: result,
+        messages: [...messages, userMessage, aiMessage],
+        timestamp: new Date().toISOString()
+      };
+      
+      const updatedHistory = [...analysisHistory, newHistoryItem];
+      setAnalysisHistory(updatedHistory);
+      setActiveHistoryId(newHistoryItem.id);
+      
+      // 사용자별 localStorage에 저장
+      const userHistoryKey = getUserHistoryKey();
+      localStorage.setItem(userHistoryKey, JSON.stringify(updatedHistory));
+      
     } catch (error) {
       console.error('분석 실패:', error);
       setError('분석에 실패했습니다.');
+      
+      // 에러 메시지 추가
+      const errorMessage = {
+        id: Date.now() + 1,
+        type: 'error',
+        content: '분석 중 오류가 발생했습니다.',
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setLoading(false);
+      setAnalysisQuery('');
+    }
+  };
+
+  // 히스토리 항목 선택
+  const selectHistory = (historyItem) => {
+    setActiveHistoryId(historyItem.id);
+    setMessages(historyItem.messages || []);
+    setCurrentAnalysis(historyItem.result);
+  };
+
+  // 새 분석 시작
+  const startNewAnalysis = () => {
+    setActiveHistoryId(null);
+    setMessages([]);
+    setCurrentAnalysis(null);
+  };
+
+  // 히스토리 삭제
+  const deleteHistory = (historyId) => {
+    const updatedHistory = analysisHistory.filter(item => item.id !== historyId);
+    setAnalysisHistory(updatedHistory);
+    const userHistoryKey = getUserHistoryKey();
+    localStorage.setItem(userHistoryKey, JSON.stringify(updatedHistory));
+    
+    if (activeHistoryId === historyId) {
+      startNewAnalysis();
     }
   };
 
@@ -113,272 +253,175 @@ const EmployeePerformance = () => {
 
   return (
     <div className="employee-performance">
-      <h1>직원 실적 관리</h1>
-
-      <div className="search-section">
-        <div className="search-controls">
-          <div className="control-group">
-            <label>직원 선택</label>
-            <select 
-              value={selectedEmployee} 
-              onChange={(e) => setSelectedEmployee(e.target.value)}
-              className="employee-select"
-            >
-              <option value="">직원을 선택하세요</option>
-              {employees.map((emp) => (
-                <option key={emp.employee_id} value={emp.name}>
-                  {emp.name} (사번: {emp.사번})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="control-group">
-            <label>시작 기간</label>
-            <input
-              type="text"
-              value={startPeriod}
-              onChange={(e) => setStartPeriod(e.target.value)}
-              placeholder="YYYYMM"
-              className="period-input"
-            />
-          </div>
-
-          <div className="control-group">
-            <label>종료 기간</label>
-            <input
-              type="text"
-              value={endPeriod}
-              onChange={(e) => setEndPeriod(e.target.value)}
-              placeholder="YYYYMM"
-              className="period-input"
-            />
-          </div>
-
-          <div className="button-group">
-            <button onClick={handlePerformanceSearch} className="search-btn">
-              실적 조회
-            </button>
-            <button onClick={handleTargetSearch} className="search-btn">
-              목표 대비 조회
-            </button>
-          </div>
-        </div>
-
-        <div className="analysis-controls">
-          <div className="control-group full-width">
-            <label>자연어 분석</label>
-            <input
-              type="text"
-              value={analysisQuery}
-              onChange={(e) => setAnalysisQuery(e.target.value)}
-              placeholder="예: 최수아의 2024년 3분기 실적을 분석해주세요"
-              className="analysis-input"
-            />
-          </div>
-          <button onClick={handleAnalysis} className="analysis-btn">
-            분석하기
-          </button>
-        </div>
+      <div className="performance-header">
+        <h1>직원 실적 관리</h1>
+        {!isAdmin && currentUser && (
+          <p className="current-employee">현재 직원: {currentUser.name}</p>
+        )}
       </div>
 
-      {error && (
-        <div className="error-message">
-          {error}
-        </div>
-      )}
-
-      {loading && (
-        <div className="loading-message">
-          데이터를 불러오는 중...
-        </div>
-      )}
-
-      <div className="tabs">
-        <button 
-          className={`tab ${activeTab === 'performance' ? 'active' : ''}`}
-          onClick={() => setActiveTab('performance')}
-        >
-          실적 데이터
-        </button>
-        <button 
-          className={`tab ${activeTab === 'target' ? 'active' : ''}`}
-          onClick={() => setActiveTab('target')}
-        >
-          목표 대비
-        </button>
-        <button 
-          className={`tab ${activeTab === 'analysis' ? 'active' : ''}`}
-          onClick={() => setActiveTab('analysis')}
-        >
-          분석 결과
-        </button>
-      </div>
-
-      <div className="results-section">
-        {activeTab === 'performance' && performanceData && (
-          <div className="performance-results">
-            <div className="summary-card">
-              <h3>실적 요약</h3>
-              <div className="summary-grid">
-                <div className="summary-item">
-                  <span className="label">총 실적</span>
-                  <span className="value">{formatCurrency(performanceData.summary.total_amount)}</span>
-                </div>
-                <div className="summary-item">
-                  <span className="label">평균 실적</span>
-                  <span className="value">{formatCurrency(performanceData.summary.average_amount)}</span>
-                </div>
-                <div className="summary-item">
-                  <span className="label">데이터 개수</span>
-                  <span className="value">{performanceData.summary.total_count}개월</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="detail-grid">
-              <div className="monthly-data">
-                <h3>월별 실적</h3>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>월</th>
-                      <th>실적</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {performanceData.monthly_data.slice(0, 5).map((item, index) => (
-                      <tr key={index}>
-                        <td>{item.month}</td>
-                        <td>{formatCurrency(item.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="product-data">
-                <h3>제품별 실적</h3>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>제품</th>
-                      <th>실적</th>
-                      <th>비율</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {performanceData.product_data.map((item, index) => (
-                      <tr key={index}>
-                        <td>{item.product}</td>
-                        <td>{formatCurrency(item.amount)}</td>
-                        <td>{item.percentage}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+      <div className="performance-layout">
+        {/* 왼쪽: 메모리 세션 (히스토리) */}
+        <div className="history-sidebar">
+          <div className="sidebar-header">
+            <h3>분석 히스토리</h3>
+            <button className="new-analysis-btn" onClick={startNewAnalysis}>
+              + 새 분석
+            </button>
           </div>
-        )}
-
-        {activeTab === 'target' && targetData && (
-          <div className="target-results">
-            <div className="summary-card">
-              <h3>목표 달성 요약</h3>
-              <div className="summary-grid">
-                <div className="summary-item">
-                  <span className="label">총 목표</span>
-                  <span className="value">{formatCurrency(targetData.summary.total_target)}</span>
-                </div>
-                <div className="summary-item">
-                  <span className="label">총 실적</span>
-                  <span className="value">{formatCurrency(targetData.summary.total_actual)}</span>
-                </div>
-                <div className="summary-item">
-                  <span className="label">달성률</span>
-                  <span className="value achievement">{targetData.summary.overall_achievement}%</span>
-                </div>
-                <div className="summary-item">
-                  <span className="label">평가 등급</span>
-                  <span className="value grade">{targetData.summary.grade}</span>
-                </div>
+          <div className="history-list">
+            {analysisHistory.length === 0 ? (
+              <div className="empty-history">
+                아직 분석 기록이 없습니다
               </div>
-            </div>
-
-            <div className="monthly-target">
-              <h3>월별 목표 대비 실적</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>월</th>
-                    <th>목표</th>
-                    <th>실적</th>
-                    <th>달성률</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {targetData.target_data.map((item, index) => (
-                    <tr key={index}>
-                      <td>{item.month}</td>
-                      <td>{formatCurrency(item.target)}</td>
-                      <td>{formatCurrency(item.actual)}</td>
-                      <td className={item.achievement_rate >= 100 ? 'achieved' : 'not-achieved'}>
-                        {item.achievement_rate}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'analysis' && analysisResult && (
-          <div className="analysis-results">
-            <div className="analysis-header">
-              <h3>실적 분석 결과</h3>
-              <div className="analysis-summary">
-                <span className="employee-name">{analysisResult.employee_name}</span>
-                <span className="period">{analysisResult.period}</span>
-                <span className={`grade grade-${analysisResult.summary.grade}`}>
-                  {analysisResult.summary.grade}등급
-                </span>
-              </div>
-            </div>
-
-            <div className="analysis-report">
-              <h4>상세 분석 보고서</h4>
-              <div className="report-content">
-                {analysisResult.report.split('\n').map((paragraph, index) => (
-                  <p key={index}>{paragraph}</p>
-                ))}
-              </div>
-            </div>
-
-            {analysisResult.analysis_results && (
-              <div className="analysis-details">
-                <div className="detail-card">
-                  <h4>종합 평가</h4>
-                  <div className="evaluation">
-                    <div className="eval-item">
-                      <span>총점</span>
-                      <strong>{analysisResult.analysis_results.comprehensive_evaluation.total_score}점</strong>
-                    </div>
-                    <div className="eval-item">
-                      <span>등급</span>
-                      <strong>{analysisResult.analysis_results.comprehensive_evaluation.grade}</strong>
-                    </div>
-                    <div className="eval-item">
-                      <span>평가</span>
-                      <strong>{analysisResult.analysis_results.comprehensive_evaluation.grade_description}</strong>
-                    </div>
+            ) : (
+              analysisHistory.map(item => (
+                <div 
+                  key={item.id}
+                  className={`history-item ${activeHistoryId === item.id ? 'active' : ''}`}
+                  onClick={() => selectHistory(item)}
+                >
+                  <div className="history-title">{item.title}</div>
+                  <div className="history-date">
+                    {new Date(item.timestamp).toLocaleDateString('ko-KR')}
                   </div>
+                  <button 
+                    className="delete-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteHistory(item.id);
+                    }}
+                  >
+                    ×
+                  </button>
                 </div>
-              </div>
+              ))
             )}
           </div>
-        )}
+        </div>
+
+        {/* 가운데: 메인 콘텐츠 */}
+        <div className="main-content">
+          <div className="search-section">
+            {isAdmin && (
+              <div className="control-group">
+                <label>직원 선택</label>
+                <select 
+                  value={selectedEmployee} 
+                  onChange={(e) => setSelectedEmployee(e.target.value)}
+                  className="employee-select"
+                >
+                  <option value="">직원을 선택하세요</option>
+                  {employees.map((emp) => (
+                    <option key={emp.employee_id} value={emp.name}>
+                      {emp.name} (사번: {emp.사번})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="analysis-controls">
+              <div className="control-group full-width">
+                <label>실적 분석 쿼리</label>
+                <input
+                  type="text"
+                  value={analysisQuery}
+                  onChange={(e) => setAnalysisQuery(e.target.value)}
+                  placeholder="예: 2024년 3분기 실적을 분석해주세요"
+                  className="analysis-input"
+                  onKeyPress={(e) => e.key === 'Enter' && handleAnalysis()}
+                />
+              </div>
+              <button onClick={handleAnalysis} className="analysis-btn" disabled={loading}>
+                {loading ? '분석 중...' : '분석하기'}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <div className="error-message">
+              {error}
+            </div>
+          )}
+
+          {/* 실적 요약 카드 - 항상 표시 (대시보드 통계 사용) */}
+          {dashboardStats && dashboardStats.stats && (
+            <div className="performance-summary-cards">
+              {dashboardStats.stats.map((stat, index) => (
+                <div key={index} className="summary-card">
+                  <div className="card-title">{stat.title}</div>
+                  <div className="card-value">
+                    {stat.value}
+                  </div>
+                  <div className={`card-change ${stat.trend === 'up' ? 'positive' : stat.trend === 'down' ? 'negative' : ''}`}>
+                    {stat.change}
+                  </div>
+                  <div className="card-period">
+                    {stat.period}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {loading && (
+            <div className="loading-message">
+              데이터를 분석하는 중...
+            </div>
+          )}
+        </div>
+
+        {/* 오른쪽: 채팅창 형식의 분석 결과 */}
+        <div className="chat-sidebar">
+          <div className="chat-header">
+            <h3>분석 대화</h3>
+          </div>
+          <div className="chat-messages">
+            {messages.length === 0 ? (
+              <div className="empty-chat">
+                분석 쿼리를 입력하여 대화를 시작하세요
+              </div>
+            ) : (
+              messages.map(message => (
+                <div key={message.id} className={`message ${message.type}`}>
+                  <div className="message-header">
+                    <span className="message-sender">
+                      {message.type === 'user' ? '사용자' : message.type === 'ai' ? 'AI 분석' : '시스템'}
+                    </span>
+                    <span className="message-time">
+                      {new Date(message.timestamp).toLocaleTimeString('ko-KR')}
+                    </span>
+                  </div>
+                  <div className="message-content">
+                    {message.type === 'ai' && message.data ? (
+                      <div className="analysis-result-content">
+                        {message.data.report ? (
+                          <div className="report-text">
+                            {message.data.report.split('\n').map((paragraph, index) => (
+                              paragraph.trim() && <p key={index}>{paragraph}</p>
+                            ))}
+                          </div>
+                        ) : (
+                          <pre>{JSON.stringify(message.data, null, 2)}</pre>
+                        )}
+                        
+                        {message.data.summary?.grade && (
+                          <div className="grade-badge">
+                            등급: {message.data.summary.grade}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p>{message.content}</p>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
       </div>
     </div>
   );

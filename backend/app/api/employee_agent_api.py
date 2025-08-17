@@ -1,3 +1,4 @@
+
 """
 Employee Agent API Router
 직원 실적 분석을 위한 Agent 호출 API
@@ -5,6 +6,7 @@ Employee Agent API Router
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
+
 from datetime import datetime
 import logging
 import os
@@ -25,6 +27,7 @@ router = APIRouter(tags=["Employee Performance"])
 class AnalyzeRequest(BaseModel):
     """실적 분석 요청"""
     query: str
+    employee_name: Optional[str] = None  # 직원명 추가
 
 class PerformanceRequest(BaseModel):
     """실적 데이터 조회 요청"""
@@ -43,7 +46,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 
 security = HTTPBearer()
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
+# 데이터베이스 서버와 동일한 JWT_SECRET_KEY 사용
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "n!CnQ1>(DOcrbITm4]2bUxt[yTF+9,Gu^5s8Duo&27ZK8yCah5Qc-vNd=#.?w(*Ks")
 JWT_ALGORITHM = "HS256"
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -54,22 +58,38 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         
         user_email = payload.get("sub")
         user_role = payload.get("role", "user")
+        user_name = payload.get("name", user_email)  # name이 payload에 있으면 사용
         
         if not user_email:
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        # 데이터베이스에서 직원 이름 조회
-        with next(get_db()) as db:
-            query = text("""
-                SELECT name FROM employees 
-                WHERE email = :email AND is_deleted = false
-            """)
-            result = db.execute(query, {"email": user_email}).fetchone()
+        # employees 테이블에서 실제 이름 조회
+        employee_name = user_name  # 기본값
+        
+        try:
+            from sqlalchemy import create_engine, text
+            POSTGRES_USER = os.getenv("POSTGRES_USER", "myuser")
+            POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "mypassword")
+            POSTGRES_DB = os.getenv("POSTGRES_DB", "mydatabase")
+            POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
+            POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
             
-            if result:
-                employee_name = result.name
-            else:
-                employee_name = user_email
+            DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+            engine = create_engine(DATABASE_URL)
+            
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text("SELECT name FROM employees WHERE email = :email"),
+                    {"email": user_email}
+                )
+                row = result.fetchone()
+                if row:
+                    employee_name = row[0]
+                    logger.info(f"Found employee name from DB: {employee_name}")
+        except Exception as e:
+            logger.warning(f"Failed to get employee name from DB: {e}")
+        
+        logger.info(f"Token decoded - email: {user_email}, role: {user_role}, employee_name: {employee_name}")
         
         return {
             "email": user_email,
@@ -96,12 +116,26 @@ async def analyze_employee_performance(
     권한: 모든 사용자 (본인 데이터만 조회 가능)
     """
     try:
+        # 디버깅 로그
+        logger.info(f"Current user: {current_user}")
+        logger.info(f"Request query: {request.query}")
+        logger.info(f"Request employee_name: {request.employee_name}")
+        
+        # 일반 사용자인 경우 쿼리에 본인 이름 자동 추가
+        query = request.query
+        if current_user["role"] != "admin":
+            # 쿼리에 직원명이 없으면 현재 사용자의 이름을 추가
+            current_employee = current_user.get("employee_name", "")
+            if current_employee and current_employee not in query:
+                # "실적 분석" 같은 쿼리를 "조시현의 실적 분석"으로 변경
+                query = f"{current_employee}의 {query}"
+                logger.info(f"Query modified for user: {query}")
         
         # Agent 실행 (session_id 추가)
         import uuid
         session_id = str(uuid.uuid4())
         agent = EnhancedEmployeeAgent()
-        result = await agent.run(request.query, session_id, messages=[])
+        result = await agent.run(query, session_id, messages=[])
         
         if result.get("error"):
             raise HTTPException(
@@ -111,12 +145,27 @@ async def analyze_employee_performance(
         
         # 권한 체크: 일반 사용자는 본인 데이터만
         if current_user["role"] != "admin":
-            employee_name = result.get("employee_name")
-            if employee_name and employee_name != current_user["employee_name"]:
-                raise HTTPException(
-                    status_code=403,
-                    detail="본인의 실적만 조회할 수 있습니다."
-                )
+            employee_name = result.get("employee_name", "")
+            current_employee_name = current_user.get("employee_name", "")
+            
+            logger.info(f"권한 체크 - 요청된 직원: '{employee_name}', 현재 사용자: '{current_employee_name}', role: {current_user['role']}")
+            
+            # 두 이름이 모두 있고 다른 경우에만 차단
+            if employee_name and current_employee_name:
+                # 이름 정규화 (공백 제거, 소문자 변환)
+                normalized_employee = employee_name.strip().lower()
+                normalized_current = current_employee_name.strip().lower()
+                
+                if normalized_employee == normalized_current:
+                    logger.info(f"본인 데이터 조회 허용: {employee_name}")
+                else:
+                    logger.warning(f"타인 데이터 조회 시도 차단: {employee_name} != {current_employee_name}")
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"본인의 실적만 조회할 수 있습니다."
+                    )
+            else:
+                logger.info(f"권한 체크 스킵 (정보 부족): employee_name={employee_name}, current={current_employee_name}")
         
         # API 명세에 맞는 응답 형식으로 변환
         response = {
@@ -284,19 +333,20 @@ async def get_target_achievement(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    목표 달성률 데이터 조회 (관리자 전용)
+    목표 달성률 데이터 조회
     특정 직원의 기간별 목표 달성률을 조회합니다.
     
-    권한: 관리자만
+    권한: 모든 사용자 (본인 데이터만 조회 가능)
     """
     try:
         
-        # 권한 체크
+        # 권한 체크: 일반 사용자는 본인 데이터만
         if current_user["role"] != "admin":
-            raise HTTPException(
-                status_code=403,
-                detail="관리자만 목표 달성률을 조회할 수 있습니다."
-            )
+            if request.employee_name != current_user["employee_name"]:
+                raise HTTPException(
+                    status_code=403,
+                    detail="본인의 목표 달성률만 조회할 수 있습니다."
+                )
         
         # DB Manager로 목표 데이터 조회
         db_manager = EmployeeDBManager()
@@ -379,3 +429,152 @@ async def get_target_achievement(
             status_code=500,
             detail=f"목표 데이터 조회 중 오류가 발생했습니다: {str(e)}"
         )
+
+@router.get("/dashboard-stats")
+async def get_dashboard_stats(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    대시보드 통계 데이터 조회
+    직원의 주요 성과 지표를 조회합니다.
+    
+    권한: 모든 사용자 (본인 데이터만 조회)
+    """
+    try:
+        db_manager = EmployeeDBManager()
+        
+        # 현재 월과 이전 월 계산
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        current_month = now.strftime("%Y%m")
+        
+        # 이전 월 계산
+        first_day_current = now.replace(day=1)
+        last_month_date = first_day_current - timedelta(days=1)
+        last_month = last_month_date.strftime("%Y%m")
+        
+        # 현재 분기 계산 (최근 3개월)
+        quarter_start_date = now - timedelta(days=90)
+        quarter_start = quarter_start_date.strftime("%Y%m")
+        
+        employee_name = current_user["employee_name"]
+        
+        # 1. 목표 달성률 (현재 월)
+        target_data = db_manager.get_employee_targets(
+            employee_name=employee_name,
+            start_period=current_month,
+            end_period=current_month
+        )
+        
+        achievement_rate = 0
+        achievement_change = 0
+        
+        if target_data and target_data.get("monthly_targets"):
+            current_target = target_data["monthly_targets"][0]
+            achievement_rate = round((current_target["actual"] / current_target["target"] * 100) if current_target["target"] > 0 else 0, 1)
+        
+        # 이전 월 달성률과 비교
+        last_target_data = db_manager.get_employee_targets(
+            employee_name=employee_name,
+            start_period=last_month,
+            end_period=last_month
+        )
+        
+        if last_target_data and last_target_data.get("monthly_targets"):
+            last_target = last_target_data["monthly_targets"][0]
+            last_achievement = (last_target["actual"] / last_target["target"] * 100) if last_target["target"] > 0 else 0
+            achievement_change = round(achievement_rate - last_achievement, 1)
+        
+        # 2. 매출 증감률 (전월 대비)
+        current_performance = db_manager.get_employee_performance(
+            employee_name=employee_name,
+            start_period=current_month,
+            end_period=current_month
+        )
+        
+        last_performance = db_manager.get_employee_performance(
+            employee_name=employee_name,
+            start_period=last_month,
+            end_period=last_month
+        )
+        
+        current_sales = current_performance.get("total_performance", 0) if current_performance else 0
+        last_sales = last_performance.get("total_performance", 0) if last_performance else 0
+        
+        sales_growth = 0
+        if last_sales > 0:
+            sales_growth = round((current_sales - last_sales) / last_sales * 100, 1)
+        
+        # 3. 분기 총 실적
+        quarter_performance = db_manager.get_employee_performance(
+            employee_name=employee_name,
+            start_period=quarter_start,
+            end_period=current_month
+        )
+        
+        quarter_total = quarter_performance.get("total_performance", 0) if quarter_performance else 0
+        
+        # 4. 거래처 수 (활성 거래처)
+        client_count = 0
+        if quarter_performance and quarter_performance.get("client_breakdown"):
+            client_count = len(quarter_performance["client_breakdown"])
+        
+        return {
+            "stats": [
+                {
+                    "title": "목표 달성률",
+                    "value": f"{achievement_rate}%",
+                    "change": f"{'+' if achievement_change >= 0 else ''}{achievement_change}%",
+                    "trend": "up" if achievement_change > 0 else "down" if achievement_change < 0 else "neutral",
+                    "period": "이번 달"
+                },
+                {
+                    "title": "매출 증감률",
+                    "value": f"{'+' if sales_growth >= 0 else ''}{sales_growth}%",
+                    "change": f"₩{current_sales:,.0f}",
+                    "trend": "up" if sales_growth > 0 else "down" if sales_growth < 0 else "neutral",
+                    "period": "전월 대비"
+                },
+                {
+                    "title": "분기 총 실적",
+                    "value": f"₩{quarter_total:,.0f}",
+                    "change": f"{client_count}개 거래처",
+                    "trend": "neutral",
+                    "period": "최근 3개월"
+                }
+            ],
+            "period": {
+                "current": current_month,
+                "last": last_month,
+                "quarter_start": quarter_start
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get dashboard stats: {e}")
+        # 오류 시 기본값 반환
+        return {
+            "stats": [
+                {
+                    "title": "목표 달성률",
+                    "value": "0%",
+                    "change": "0%",
+                    "trend": "neutral",
+                    "period": "이번 달"
+                },
+                {
+                    "title": "매출 증감률",
+                    "value": "0%",
+                    "change": "₩0",
+                    "trend": "neutral",
+                    "period": "전월 대비"
+                },
+                {
+                    "title": "분기 총 실적",
+                    "value": "₩0",
+                    "change": "0개 거래처",
+                    "trend": "neutral",
+                    "period": "최근 3개월"
+                }
+            ]
+        }

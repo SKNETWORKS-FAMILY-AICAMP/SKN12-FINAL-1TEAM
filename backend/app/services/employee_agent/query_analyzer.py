@@ -40,7 +40,7 @@ class EmployeeQueryAnalyzer:
 요청: "{query}"
 
 추출해야 할 정보:
-1. employee_name: null (직원명은 세션에서 처리하므로 항상 null)
+1. employee_name: 직원 이름 (쿼리에 포함된 경우 추출, 없으면 null)
 2. start_period: 시작 기간 (YYYYMM 형식, 예: "202312")
 3. end_period: 종료 기간 (YYYYMM 형식, 예: "202403")
 
@@ -56,21 +56,21 @@ class EmployeeQueryAnalyzer:
 
 응답은 다음 JSON 형식으로만 해주세요:
 {{
-    "employee_name": null,
+    "employee_name": "홍길동",  // 쿼리에 직원명이 있으면 추출, 없으면 null
     "start_period": "202312",
     "end_period": "202403"
 }}
 
 주의사항:
-- employee_name은 항상 null (직원명은 API에서 별도 처리)
+- 쿼리에서 직원명을 찾으면 추출, 없으면 null
 - 기간이 명시되지 않으면 최근 3개월로 설정
-- 쿼리에 직원명이 포함되어도 무시하고 기간만 추출
+- "~의" 패턴으로 직원명 추출 (예: "조시현의 실적" → "조시현")
 """
             
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "당신은 기간 정보를 추출하는 전문가입니다. 직원명은 무시하고 기간 정보만 추출하세요. 항상 유효한 JSON 형식으로만 응답하세요."},
+                    {"role": "system", "content": "당신은 직원명과 기간 정보를 추출하는 전문가입니다. 쿼리에서 직원명과 기간 정보를 모두 추출하세요. 항상 유효한 JSON 형식으로만 응답하세요."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=800,
@@ -92,7 +92,7 @@ class EmployeeQueryAnalyzer:
         """LLM 분석 결과를 검증하고 정규화합니다."""
         # 필수 필드 확인 및 기본값 설정
         validated_result = {
-            "employee_name": None,  # 항상 None (직원명은 API에서 처리)
+            "employee_name": result.get("employee_name"),  # LLM이 추출한 직원명 사용
             "start_period": result.get("start_period"),
             "end_period": result.get("end_period")
         }
@@ -111,8 +111,8 @@ class EmployeeQueryAnalyzer:
     
     def _set_defaults(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
         """기본값을 설정합니다."""
-        # 직원명은 항상 None (API에서 처리)
-        analysis_result["employee_name"] = None
+        # 직원명은 LLM이 추출한 값 유지, 없으면 None
+        # analysis_result["employee_name"]은 그대로 유지
         
         # 기간이 없으면 None으로 설정 (오류 처리로 넘김)
         if not analysis_result.get("start_period"):

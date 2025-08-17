@@ -3,7 +3,7 @@ const API_BASE_URL = '';
 // API 요청을 위한 기본 설정
 const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
-  const token = localStorage.getItem('narutalk_token');
+  const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
   
   console.log('🌐 API 요청:', {
     url: url,
@@ -94,11 +94,28 @@ export const registerEmployee = async (employeeData) => {
   });
 };
 
-// 직원 리스트 조회 (계정 정보)
+// 직원 리스트 조회 (계정 정보) - 8010 포트 직접 호출
 export const getEmployees = async () => {
-  return await apiRequest('/user/employees/all', {
-    method: 'GET',
-  });
+  const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
+  
+  try {
+    const response = await fetch('http://localhost:8010/user/employees/all', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('직원 리스트 조회 실패:', error);
+    return [];
+  }
 };
 
 // 직원 정보 리스트 조회 (인사 정보)
@@ -451,5 +468,31 @@ export const analyzeEmployeePerformance = async (params) => {
   return await apiRequest('/api/employee/analyze', {
     method: 'POST',
     body: JSON.stringify(requestBody),
+  });
+};
+
+// 대시보드 통계 데이터 조회
+export const getDashboardStats = async () => {
+  return await apiRequest('/api/employee/dashboard-stats', {
+    method: 'GET',
+  });
+};
+
+// 거래처 분석 요청
+export const analyzeClient = async (params) => {
+  return await apiRequest('/api/v1/client/analyze', {
+    method: 'POST',
+    body: JSON.stringify({
+      query: params.query,
+      generate_docs: params.generate_docs !== false, // 기본값 true
+      output_dir: params.output_dir || null
+    }),
+  });
+};
+
+// 거래처 분석 헬스 체크
+export const getClientHealthCheck = async () => {
+  return await apiRequest('/api/v1/client/health', {
+    method: 'GET',
   });
 }; 

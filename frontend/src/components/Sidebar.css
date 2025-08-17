@@ -108,7 +108,7 @@
 /* Sidebar */
 .sidebar {
   width: 250px;
-  height: 100vh;
+  height: calc(100vh - 50px); /* 헤더 높이를 뺀 전체 높이 */
   background-color: white;
   border-right: 1px solid #e9ecef;
   display: flex;
@@ -116,18 +116,16 @@
   position: fixed;
   left: 0;
   top: 50px;
-  transition: transform 0.3s ease, opacity 0.3s ease;
+  transition: left 0.3s ease;
   z-index: 999;
 }
 
 .sidebar.visible {
-  transform: translateX(0);
-  opacity: 1;
+  left: 0;
 }
 
 .sidebar.hidden {
-  transform: translateX(-100%);
-  opacity: 0;
+  left: -250px;
 }
 
 .sidebar-nav {
@@ -195,16 +193,7 @@
   padding: 0 20px;
 }
 
-/* Main Content Area Adjustment */
-.main-content {
-  margin-left: 250px;
-  margin-top: 50px;
-  transition: margin-left 0.3s ease;
-}
-
-.main-content.sidebar-hidden {
-  margin-left: 0;
-}
+/* Main Content Area Adjustment은 App.css에서 처리 */
 
 /* 반응형 디자인 */
 @media (max-width: 768px) {
@@ -212,9 +201,6 @@
     width: 220px;
   }
   
-  .main-content {
-    margin-left: 220px;
-  }
   
   .main-header {
     padding: 6px 15px;
@@ -235,9 +221,6 @@
     width: 200px;
   }
   
-  .main-content {
-    margin-left: 200px;
-  }
   
   .header-actions {
     gap: 8px;
