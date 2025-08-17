@@ -29,4 +29,12 @@ class EmployeeInfo(EmployeeBase):
     employee_id: int
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
+
+class EmployeeRegisterRequest(BaseModel):
+    """직원 계정 등록 요청 스키마"""
+    name: str  # 직원 이름
+    employee_number: str  # 사번
+    email: EmailStr  # 이메일
+    password: constr(min_length=8)  # 패스워드
+    role: str = "user"  # 기본 역할 (user, manager, admin) 

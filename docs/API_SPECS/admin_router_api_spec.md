@@ -13,6 +13,9 @@
 ### 1. 직원 등록 (관리자만)
 **POST** `/admin/register-employee`
 
+#### 설명
+employee_info 테이블에 등록된 직원에 대해서만 계정을 생성합니다. 이름과 사번으로 직원을 확인하고, 검증 후 계정을 생성하여 employee_info와 연결합니다.
+
 #### 헤더
 ```
 Authorization: Bearer <admin_token>
@@ -21,24 +24,48 @@ Authorization: Bearer <admin_token>
 #### 요청 본문
 ```json
 {
-  "email": "newuser@example.com",
+  "name": "홍길동",
+  "employee_number": "EMP001",
+  "email": "hong@example.com",
   "password": "password123",
-  "name": "새 사용자",
   "role": "user"
 }
 ```
+
+#### 요청 필드
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| name | string | Y | 직원 이름 (employee_info 테이블과 일치해야 함) |
+| employee_number | string | Y | 사번 (employee_info 테이블과 일치해야 함) |
+| email | string | Y | 이메일 주소 (유니크해야 함) |
+| password | string | Y | 패스워드 (최소 8자) |
+| role | string | N | 역할 (user/manager/admin, 기본값: user) |
 
 #### 응답
 ```json
 {
   "employee_id": 3,
-  "email": "newuser@example.com",
-  "name": "새 사용자",
+  "email": "hong@example.com",
+  "name": "홍길동",
   "role": "user",
   "is_active": true,
   "created_at": "2024-01-01T12:00:00Z"
 }
 ```
+
+#### 프로세스
+1. employee_info 테이블에서 이름과 사번으로 직원 조회
+2. 직원이 존재하는지 확인
+3. 이미 계정이 있는지 확인 (employee_id가 설정되어 있는지)
+4. 이메일 중복 확인
+5. 계정 생성 (employees 테이블)
+6. employee_info 테이블의 employee_id 필드 업데이트
+
+#### 에러 응답
+- **404**: 등록되지 않은 직원입니다. 인사 정보를 먼저 등록해주세요.
+- **400**: 해당 직원은 이미 계정이 존재합니다.
+- **400**: 이메일이 이미 사용중입니다.
+- **500**: 계정 생성 중 오류가 발생했습니다.
 
 #### 사용 예시
 ```bash
@@ -46,9 +73,10 @@ curl -X POST "http://localhost:8010/admin/register-employee" \
   -H "Authorization: Bearer <admin_token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "newuser@example.com",
+    "name": "홍길동",
+    "employee_number": "EMP001",
+    "email": "hong@example.com",
     "password": "password123",
-    "name": "새 사용자",
     "role": "user"
   }'
 ```
@@ -141,7 +169,13 @@ curl -X DELETE "http://localhost:8010/admin/cleanup-corrupted-documents" \
 ### 400 Bad Request
 ```json
 {
-  "detail": "Email already registered"
+  "detail": "해당 직원은 이미 계정이 존재합니다."
+}
+```
+
+```json
+{
+  "detail": "이메일이 이미 사용중입니다."
 }
 ```
 
@@ -154,6 +188,13 @@ curl -X DELETE "http://localhost:8010/admin/cleanup-corrupted-documents" \
 ```json
 {
   "detail": "role은 반드시 'admin'이어야 합니다."
+}
+```
+
+### 404 Not Found
+```json
+{
+  "detail": "등록되지 않은 직원입니다. 인사 정보를 먼저 등록해주세요."
 }
 ```
 
@@ -223,13 +264,15 @@ curl -X POST "http://localhost:8010/user/login" \
 ### 3단계: 추가 직원 등록
 ```bash
 # 관리자 토큰으로 추가 직원 등록
+# 주의: employee_info 테이블에 미리 등록된 직원만 계정 생성 가능
 curl -X POST "http://localhost:8010/admin/register-employee" \
   -H "Authorization: Bearer <admin_token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "user@example.com",
+    "name": "김직원",
+    "employee_number": "EMP002",
+    "email": "kim@example.com",
     "password": "password123",
-    "name": "일반 사용자",
     "role": "user"
   }'
 ```
@@ -255,8 +298,10 @@ curl -X POST "http://localhost:8010/admin/register-employee" \
 ## 주의사항
 
 1. **초기 관리자 생성**: 시스템 최초 실행 시에만 사용
-2. **관리자 권한**: 대부분의 기능은 admin 역할이 필요
-3. **데이터 백업**: 깨진 문서 정리 전에 데이터 백업 권장
-4. **보안**: 관리자 계정 정보를 안전하게 보관
-5. **토큰 관리**: 관리자 토큰의 안전한 보관 및 사용
-6. **문서 정리**: 깨진 문서 정리는 신중하게 실행 
+2. **직원 계정 생성**: employee_info 테이블에 먼저 직원 정보가 등록되어 있어야 계정 생성 가능
+3. **관리자 권한**: 대부분의 기능은 admin 역할이 필요
+4. **데이터 백업**: 깨진 문서 정리 전에 데이터 백업 권장
+5. **보안**: 관리자 계정 정보를 안전하게 보관
+6. **토큰 관리**: 관리자 토큰의 안전한 보관 및 사용
+7. **문서 정리**: 깨진 문서 정리는 신중하게 실행
+8. **계정 연결**: 계정 생성 시 자동으로 employee_info와 연결됨 

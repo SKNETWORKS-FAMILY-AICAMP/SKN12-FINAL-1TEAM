@@ -1,26 +1,101 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.schemas.employee import EmployeeCreate, EmployeeInfo
+from app.schemas.employee import EmployeeCreate, EmployeeInfo, EmployeeRegisterRequest
 from app.services.processors.user_service import get_employee_by_email, create_employee
 from app.services.utils.db import get_db
 from app.models.employees import Employee
+from app.models.employee_info import EmployeeInfo as EmployeeInfoModel
 from sqlalchemy.exc import IntegrityError
 from app.routers.user_router import get_current_admin_user
 from app.services.external.opensearch_service import DOCUMENT_INDEX_NAME
 from app.config import settings
 from app.services.external.opensearch_client import opensearch_client
+from passlib.context import CryptContext
 import asyncio
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 router = APIRouter()
 
 @router.post("/register-employee", response_model=EmployeeInfo)
-def register_employee(user: EmployeeCreate, db: Session = Depends(get_db), admin: EmployeeInfo = Depends(get_current_admin_user)):
-    db_user = get_employee_by_email(db, email=user.email)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    new_user = create_employee(db, user)
-    return EmployeeInfo.from_orm(new_user)
+def register_employee(
+    request: EmployeeRegisterRequest, 
+    db: Session = Depends(get_db), 
+    admin: EmployeeInfo = Depends(get_current_admin_user)
+):
+    """
+    직원 계정 등록 API
+    - employee_info 테이블에 등록된 직원만 계정 생성 가능
+    - 이름과 사번으로 직원 확인
+    - 이메일 중복 체크
+    - 계정 생성 후 employee_info 테이블 업데이트
+    """
+    try:
+        # 1. employee_info 테이블에서 직원 정보 확인
+        employee_info = db.query(EmployeeInfoModel).filter(
+            EmployeeInfoModel.name == request.name,
+            EmployeeInfoModel.employee_number == request.employee_number
+        ).first()
+        
+        if not employee_info:
+            raise HTTPException(
+                status_code=404, 
+                detail="등록되지 않은 직원입니다. 인사 정보를 먼저 등록해주세요."
+            )
+        
+        # 2. 이미 계정이 있는지 확인
+        if employee_info.employee_id:
+            # employee_id가 있다면 이미 계정이 연결되어 있음
+            existing_account = db.query(Employee).filter(
+                Employee.employee_id == employee_info.employee_id,
+                Employee.is_deleted == False
+            ).first()
+            if existing_account:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="해당 직원은 이미 계정이 존재합니다."
+                )
+        
+        # 3. 이메일 중복 체크
+        existing_email = get_employee_by_email(db, email=request.email)
+        if existing_email:
+            raise HTTPException(
+                status_code=400, 
+                detail="이메일이 이미 사용중입니다."
+            )
+        
+        # 4. 계정 생성
+        hashed_password = pwd_context.hash(request.password)
+        new_employee = Employee(
+            email=request.email,
+            password=hashed_password,
+            name=request.name,
+            role=request.role,
+            is_active=True
+        )
+        
+        db.add(new_employee)
+        db.flush()  # ID를 얻기 위해 flush
+        
+        # 5. employee_info 테이블 업데이트
+        employee_info.employee_id = new_employee.employee_id
+        
+        # 6. 트랜잭션 커밋
+        db.commit()
+        db.refresh(new_employee)
+        
+        return EmployeeInfo.from_orm(new_employee)
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500, 
+            detail=f"계정 생성 중 오류가 발생했습니다: {str(e)}"
+        )
 
 @router.post("/init-admin", response_model=EmployeeInfo)
 def init_admin(user: EmployeeCreate, db: Session = Depends(get_db)):
