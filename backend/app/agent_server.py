@@ -112,14 +112,21 @@ def get_api_routes():
 from fastapi.responses import StreamingResponse
 import asyncio
 
+# Catch-all 라우트는 모든 다른 라우트 이후에 등록되어야 함
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 async def proxy_to_database(path: str, request: Request):
     """
-    /user/*, /admin/*, /documents/* 등의 요청을 
+    /user/*, /admin/*, /documents/*, /employee-info/* 등의 요청을 
     fastapi-app:8000 (database API)로 프록시합니다.
     """
-    # API 요청이 아닌 경우만 프록시 (api로 시작하지 않는 경로)
-    if not path.startswith("api/") and not path in ["health", "api-routes", "docs", "openapi.json", "redoc"]:
+    # Database API로 프록시할 경로들만 처리
+    proxy_paths = ["user", "admin", "employee-info", "documents", "qa", "search", "hybrid"]
+    should_proxy = any(path.startswith(prefix + "/") or path == prefix for prefix in proxy_paths)
+    
+    # FastAPI 기본 경로들은 프록시하지 않음
+    excluded_paths = ["health", "api-routes", "docs", "openapi.json", "redoc"]
+    
+    if should_proxy and path not in excluded_paths:
         # Database API URL 구성
         database_url = f"{config.get_database_api_url()}/{path}"
         
@@ -215,13 +222,14 @@ async def proxy_to_database(path: str, request: Request):
                     status_code=500,
                     headers={"content-type": "application/json"}
                 )
-    
-    # API 경로는 404 반환 (위의 라우터들이 처리하지 못한 경우)
-    return Response(
-        content=b'{"detail": "Not Found"}',
-        status_code=404,
-        headers={"content-type": "application/json"}
-    )
+    else:
+        # Database API로 프록시하지 않는 경로는 404 반환
+        # (위의 라우터들이 처리하지 못한 경우)
+        return Response(
+            content=b'{"detail": "Not Found"}',
+            status_code=404,
+            headers={"content-type": "application/json"}
+        )
 
 # 메인 실행
 if __name__ == "__main__":

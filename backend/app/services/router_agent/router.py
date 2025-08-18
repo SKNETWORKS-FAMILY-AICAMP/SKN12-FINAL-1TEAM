@@ -12,7 +12,7 @@ import os
 from ..employee_agent.employee_agent import EnhancedEmployeeAgent
 from ..docs_agent import CreateDocumentAgent
 from ..client_agent import client_agent
-from ..search_agent import run as search_agent_run
+from ..search_agent.run import run as search_agent_run
 import asyncio
 
 # 분리된 모듈에서 import
@@ -182,6 +182,7 @@ class RouterAgent:
             logger.info(f"[EXECUTE_AGENT] Current state keys: {list(current_state.keys()) if current_state else 'None'}")
             session_id = current_state.get("session_id")
             context = current_state.get("context", {})
+            api_token = current_state.get("api_token")  # JWT 토큰 가져오기
             
             # 에이전트별 실행
             if agent_name == "docs_agent":
@@ -227,7 +228,8 @@ class RouterAgent:
                 if hasattr(agent, 'analyze_employee_performance'):
                     result = agent.analyze_employee_performance(query)
                 else:
-                    result = agent.run(query)
+                    # run 메서드는 async이고 session_id가 필요함
+                    result = asyncio.run(agent.run(query, session_id=session_id or "default"))
                 
                 current_state["agent_type"] = agent_name
                 return result
@@ -243,7 +245,13 @@ class RouterAgent:
             elif agent_name == "search_agent":
                 # search_agent는 async 함수
                 logger.info(f"[EXECUTE_AGENT] Running search_agent with query: {query[:50]}...")
-                result = asyncio.run(search_agent_run(query, session_id or "default"))
+                if api_token:
+                    logger.info(f"[EXECUTE_AGENT] Passing JWT token to search_agent")
+                result = asyncio.run(search_agent_run(
+                    query, 
+                    session_id or "default",
+                    api_token=api_token
+                ))
                 
                 current_state["agent_type"] = agent_name
                 return result
@@ -263,7 +271,7 @@ class RouterAgent:
     
     
     
-    def run(self, user_input: str, session_id: Optional[str] = None) -> Dict[str, Any]:
+    def run(self, user_input: str, session_id: Optional[str] = None, api_token: Optional[str] = None) -> Dict[str, Any]:
         """Router 실행"""
         # 세션 ID 생성 또는 사용
         if not session_id:
@@ -284,7 +292,8 @@ class RouterAgent:
             next_node=None,
             doc_type=None,
             state_info=None,
-            agent_selection_required=False
+            agent_selection_required=False,
+            api_token=api_token
         )
         
         try:
@@ -372,7 +381,7 @@ class RouterAgent:
                 "message": "세션을 찾을 수 없습니다."
             }
     
-    def resume(self, session_id: str, user_reply: str, reply_type: str = "user_reply") -> Dict[str, Any]:
+    def resume(self, session_id: str, user_reply: str, reply_type: str = "user_reply", api_token: Optional[str] = None) -> Dict[str, Any]:
         """인터럽트된 작업 재개"""
         session_info = self.sessions.get(session_id)
         if not session_info:
@@ -380,6 +389,10 @@ class RouterAgent:
                 "success": False,
                 "error": "세션을 찾을 수 없습니다."
             }
+        
+        # api_token을 세션 정보에 저장
+        if api_token:
+            session_info["api_token"] = api_token
         
         try:
             if session_info["agent"] == "docs_agent":

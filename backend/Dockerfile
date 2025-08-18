@@ -4,7 +4,7 @@
 FROM python:3.11-slim AS builder
 WORKDIR /app
 
-# requirements.txt 복사
+# backend/requirements.txt 복사 (backend 폴더에서 빌드하므로 상대 경로 사용)
 COPY requirements.txt .
 
 # 빌드 도구 설치 + uv 설치 + 패키지 설치를 한 번에 처리

@@ -45,7 +45,10 @@ services:
       - backend
     networks:
       - narutalk-network
+      - docker_app-network  # database 네트워크에도 연결
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Docker Desktop이 아닌 경우를 위한 설정
 
 networks:
   narutalk-network:

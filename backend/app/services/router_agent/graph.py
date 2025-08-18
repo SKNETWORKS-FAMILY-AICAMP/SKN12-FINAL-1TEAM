@@ -39,6 +39,9 @@ class RouterState(TypedDict):
     
     # 에이전트 선택
     agent_selection_required: Optional[bool]
+    
+    # JWT 토큰
+    api_token: Optional[str]
 
 
 def create_graph(router_agent):

@@ -198,7 +198,7 @@ class SearchAgent:
             자연어 응답
         """
         if total_count == 0:
-            return f""{query}"에 대한 데이터를 찾을 수 없습니다."
+            return f'"{query}"에 대한 데이터를 찾을 수 없습니다.'
         
         # LLM을 사용하여 결과를 자연어로 변환
         prompt = f"""
@@ -239,7 +239,7 @@ class SearchAgent:
             자연어 응답
         """
         if total_count == 0:
-            return f""{query}"와 관련된 문서를 찾을 수 없습니다."
+            return f'"{query}"와 관련된 문서를 찾을 수 없습니다.'
         
         # LLM을 사용하여 문서 검색 결과를 자연어로 변환
         prompt = f"""
@@ -307,7 +307,7 @@ class SearchAgent:
                 responses.append(f"**문서 검색 결과**:\n{opensearch_response}")
         
         if not responses:
-            return f""{query}"에 대한 정보를 찾을 수 없습니다."
+            return f'"{query}"에 대한 정보를 찾을 수 없습니다.'
         
         # LLM을 사용하여 통합 응답 생성
         combined_response = "\n\n".join(responses)
