@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { analyzeClient, getClientHealthCheck } from '../services/api';
+import { parseMarkdown } from '../utils/markdownParser';
 import './ClientAnalysis.css';
 
 const ClientAnalysis = () => {
@@ -198,9 +199,10 @@ const ClientAnalysis = () => {
                 {currentReport.final_report && (
                   <div className="report-section">
                     <h2>📋 분석 보고서</h2>
-                    <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
-                      {currentReport.final_report}
-                    </pre>
+                    <div 
+                      className="markdown-content"
+                      dangerouslySetInnerHTML={{ __html: parseMarkdown(currentReport.final_report) }}
+                    />
                   </div>
                 )}
                 
