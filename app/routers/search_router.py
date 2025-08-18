@@ -48,7 +48,7 @@ class SearchResponse(BaseModel):
     search_time: float
 
 # Text2SQL Search Endpoints
-@router.get("/search/text2sql", response_model=SearchResponse)
+@router.get("/text2sql", response_model=SearchResponse)
 async def search_text2sql(
     query: str = Query(..., description="검색 쿼리"),
     limit: Optional[int] = Query(20, description="결과 개수 제한", ge=1, le=100),
@@ -114,7 +114,7 @@ async def search_text2sql(
         raise HTTPException(status_code=500, detail=f"검색 중 오류가 발생했습니다: {str(e)}")
 
 # OpenSearch Pipeline Search Endpoints
-@router.get("/search/opensearch", response_model=SearchResponse)
+@router.get("/opensearch", response_model=SearchResponse)
 async def search_opensearch(
     query: str = Query(..., description="검색 쿼리"),
     limit: Optional[int] = Query(20, description="결과 개수 제한", ge=1, le=100),
@@ -192,7 +192,7 @@ async def search_opensearch(
         raise HTTPException(status_code=500, detail=f"검색 중 오류가 발생했습니다: {str(e)}")
 
 # Combined Search Endpoint
-@router.get("/search/all", response_model=Dict[str, SearchResponse])
+@router.get("/all", response_model=Dict[str, SearchResponse])
 async def search_all(
     query: str = Query(..., description="검색 쿼리"),
     limit: Optional[int] = Query(20, description="각 검색 방식별 결과 개수 제한", ge=1, le=100),
@@ -253,7 +253,7 @@ async def search_all(
         raise HTTPException(status_code=500, detail=f"검색 중 오류가 발생했습니다: {str(e)}")
 
 # Search Statistics Endpoint
-@router.get("/search/stats")
+@router.get("/stats")
 async def get_search_stats(user=Depends(get_current_user)):
     """
     검색 시스템 통계 정보를 조회합니다.
