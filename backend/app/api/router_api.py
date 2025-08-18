@@ -259,8 +259,42 @@ async def chat(
                     response.data = sub_result if isinstance(sub_result, dict) else {"result": sub_result}
             elif agent_type == "search_agent":
                 # search_agent 결과 처리
-                response.response = sub_result.get("search_result", "") or sub_result.get("result", "") or str(sub_result)
-                response.data = sub_result if isinstance(sub_result, dict) else {"result": sub_result}
+                raw_response = sub_result.get("response", "")
+                
+                # LLM 응답 객체에서 content만 추출
+                if raw_response:
+                    # AIMessage 객체인 경우 content 추출
+                    if hasattr(raw_response, 'content'):
+                        clean_response = raw_response.content
+                    # 문자열에서 content= 부분 추출
+                    elif isinstance(raw_response, str) and 'content=' in raw_response:
+                        import re
+                        match = re.search(r'content="([^"]*)"', raw_response)
+                        if match:
+                            clean_response = match.group(1)
+                        else:
+                            clean_response = raw_response
+                    else:
+                        clean_response = str(raw_response)
+                else:
+                    clean_response = "검색 결과를 찾을 수 없습니다."
+                
+                # 문서 경로 정보 추가 (있는 경우)
+                doc_paths = []
+                if sub_result.get("document_paths"):
+                    doc_paths = sub_result.get("document_paths")
+                elif sub_result.get("source_documents"):
+                    doc_paths = [doc.get("path") for doc in sub_result.get("source_documents", []) if doc.get("path")]
+                
+                if doc_paths:
+                    clean_response += f"\n\n📁 참조 문서: {', '.join(doc_paths)}"
+                
+                response.response = clean_response
+                response.data = {
+                    "search_type": sub_result.get("search_type", ""),
+                    "api_health": sub_result.get("api_health", {}),
+                    "document_paths": doc_paths
+                }
         
         
         else:

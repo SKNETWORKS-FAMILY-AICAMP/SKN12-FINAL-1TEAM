@@ -1,269 +1,163 @@
 # Search Router API 명세서
 
 ## 개요
-검색 API는 두 가지 검색 방식을 제공하여 구조화된 데이터와 비구조화된 문서를 모두 검색할 수 있습니다.
-
-- **Text2SQL**: 자연어 쿼리를 SQL로 변환하여 데이터베이스 테이블 검색
-- **OpenSearch**: 벡터 임베딩과 키워드를 활용한 문서 전문 검색
+검색 API는 Text2SQL과 OpenSearch를 활용한 통합 검색 기능을 제공합니다. 구조화된 데이터베이스 검색과 비정형 문서 검색을 모두 지원합니다.
 
 ## 기본 정보
 - **Base URL**: `/search`
-- **인증**: JWT 토큰 기반 (Bearer Token)
+- **인증**: Bearer Token 필요 (모든 엔드포인트)
 - **Content-Type**: `application/json`
-
-## 데이터 모델
-
-### Text2SQLSearchResult
-```json
-{
-  "id": 1,
-  "doc_id": 100,
-  "table_type": "customers",
-  "content": {
-    "customer_name": "삼성병원",
-    "monthly_sales": 5000000
-  },
-  "created_at": "2024-01-15T10:00:00",
-  "similarity_score": 0.95,
-  "source": "text2sql"
-}
-```
-
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| id | integer | 레코드 ID |
-| doc_id | integer | 문서 ID |
-| table_type | string | 테이블 유형 |
-| content | object | 검색된 데이터 내용 |
-| created_at | string | 생성 일시 |
-| similarity_score | float | 유사도 점수 |
-| source | string | 검색 출처 (항상 "text2sql") |
-
-### OpenSearchResult
-```json
-{
-  "id": "doc-123",
-  "doc_id": 123,
-  "doc_title": "계약서_2024",
-  "content": "계약 내용...",
-  "created_at": "2024-01-15T10:00:00",
-  "similarity_score": 0.89,
-  "metadata": {
-    "doc_type": "contract"
-  },
-  "source": "opensearch"
-}
-```
-
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| id | string | 문서 ID |
-| doc_id | integer | 문서 번호 |
-| doc_title | string | 문서 제목 |
-| content | string | 문서 내용 |
-| created_at | string | 생성 일시 |
-| similarity_score | float | 유사도 점수 |
-| metadata | object | 추가 메타데이터 |
-| source | string | 검색 출처 (항상 "opensearch") |
-
-### SearchResponse
-```json
-{
-  "success": true,
-  "message": "검색이 완료되었습니다.",
-  "query": "삼성병원 매출",
-  "results": [...],
-  "total_count": 10,
-  "search_time": 0.245
-}
-```
-
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| success | boolean | 성공 여부 |
-| message | string | 응답 메시지 |
-| query | string | 원본 검색 쿼리 |
-| results | array | 검색 결과 배열 |
-| total_count | integer | 전체 결과 수 |
-| search_time | float | 검색 소요 시간(초) |
 
 ## API 엔드포인트
 
 ### 1. Text2SQL 검색
-**GET** `/search/text2sql`
+자연어 쿼리를 SQL로 변환하여 데이터베이스를 검색합니다.
 
-#### 설명
-자연어 쿼리를 SQL로 변환하여 데이터베이스 테이블에서 정형 데이터를 검색합니다.
+#### **GET** `/search/text2sql`
 
-#### 요청 파라미터
-| 파라미터 | 타입 | 필수 | 설명 | 기본값 |
-|---------|------|------|------|--------|
-| query | string | Y | 검색 쿼리 | - |
-| limit | integer | N | 결과 개수 제한 (1-100) | 20 |
+#### Query Parameters
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| query | string | ✅ | - | 검색 쿼리 (자연어) |
+| limit | integer | ❌ | 20 | 결과 개수 제한 (1-100) |
 
-#### 헤더
-```
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-#### 응답
+#### Response
 ```json
 {
   "success": true,
   "message": "Text2SQL 검색이 완료되었습니다.",
-  "query": "지난달 매출이 가장 높은 고객",
+  "query": "홍길동 직원의 2024년 매출",
   "results": [
     {
-      "id": 1,
-      "doc_id": 100,
-      "table_type": "customer_monthly_performance",
+      "id": 123,
+      "doc_id": 456,
+      "table_type": "sales_records",
       "content": {
-        "customer_name": "삼성병원",
-        "monthly_sales": 15000000,
-        "year_month": "2024-01"
+        "sales_record_id": 123,
+        "employee_name": "홍길동",
+        "sale_amount": 1000000,
+        "sale_date": "2024-01-15",
+        "customer_name": "ABC병원",
+        "product_name": "의료기기A"
       },
-      "created_at": "2024-01-31T23:59:59",
-      "similarity_score": 0.98,
+      "created_at": "2024-01-15T10:30:00",
+      "similarity_score": 0.95,
       "source": "text2sql"
     }
   ],
-  "total_count": 1,
-  "search_time": 0.123
+  "total_count": 10,
+  "search_time": 1.234
 }
 ```
 
-#### 사용 예시
-```bash
-curl -X GET "http://localhost:8010/search/text2sql?query=지난달%20매출이%20가장%20높은%20고객&limit=10" \
-  -H "Authorization: Bearer <access_token>"
-```
+#### 검색 가능한 테이블
+- **sales_records**: 매출 기록 (직원, 고객, 제품, 매출액, 날짜)
+- **employee_info**: 직원 정보 (이름, 사번, 팀, 직급)
+- **customers**: 고객 정보 (고객명, 주소, 담당의사)
+- **products**: 제품 정보 (제품명, 설명, 카테고리)
 
-#### 활용 시나리오
-- 매출 통계 조회: "이번달 전체 매출"
-- 고객 정보 검색: "A등급 고객 목록"
-- 직원 실적 조회: "김직원의 분기 실적"
-- 제품 분석: "가장 많이 판매된 제품"
+#### 예시 쿼리
+- "홍길동 매출"
+- "2024년 3월 매출 현황"
+- "폭세틴 판매 내역"
+- "우리가족의원 거래 내역"
 
 ---
 
-### 2. OpenSearch 검색
-**GET** `/search/opensearch`
+### 2. OpenSearch 파이프라인 검색
+OpenSearch를 사용한 하이브리드 검색 (키워드 + 벡터 검색)을 수행합니다.
 
-#### 설명
-OpenSearch 파이프라인을 사용하여 문서를 벡터 검색과 키워드 검색으로 조회합니다.
+#### **GET** `/search/opensearch`
 
-#### 요청 파라미터
-| 파라미터 | 타입 | 필수 | 설명 | 기본값 |
-|---------|------|------|------|--------|
-| query | string | Y | 검색 쿼리 | - |
-| limit | integer | N | 결과 개수 제한 (1-100) | 20 |
-| pipeline_id | string | N | 사용할 파이프라인 ID | hybrid-minmax-pipeline |
+#### Query Parameters
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| query | string | ✅ | - | 검색 쿼리 |
+| limit | integer | ❌ | 20 | 결과 개수 제한 (1-100) |
+| pipeline_id | string | ❌ | hybrid-minmax-pipeline | 사용할 파이프라인 ID |
 
-#### 파이프라인 옵션
-- `hybrid-minmax-pipeline`: 벡터와 키워드 검색 조합 (기본값)
-- `keyword-only`: 키워드 검색만 사용
-- `vector-only`: 벡터 유사도 검색만 사용
-
-#### 응답
+#### Response
 ```json
 {
   "success": true,
   "message": "OpenSearch 파이프라인 검색이 완료되었습니다.",
-  "query": "신약 개발 계약서",
+  "query": "거래처 접대 규정",
   "results": [
     {
-      "id": "doc-456",
-      "doc_id": 456,
-      "doc_title": "신약개발_계약서_2024",
-      "content": "본 계약은 신약 개발에 관한...",
-      "created_at": "2024-01-10T14:30:00",
-      "similarity_score": 0.92,
+      "id": "document_123",
+      "doc_id": "10df8a93-c59e-4968-80a6-8d65d145042e",
+      "doc_title": "내부 규정집",
+      "content": "제3장 거래처 관리\n제15조 (접대 규정) 거래처 접대 시 다음 사항을 준수한다...",
+      "created_at": "2024-01-10T09:00:00",
+      "similarity_score": 0.89,
       "metadata": {
-        "doc_type": "contract",
-        "department": "R&D"
+        "chapter_num": "3",
+        "chapter_title": "거래처 관리",
+        "article_num": "15",
+        "article_title": "접대 규정"
       },
       "source": "opensearch"
     }
   ],
   "total_count": 5,
-  "search_time": 0.087
+  "search_time": 0.567
 }
 ```
 
-#### 사용 예시
-```bash
-curl -X GET "http://localhost:8010/search/opensearch?query=신약%20개발%20계약서&limit=10&pipeline_id=hybrid-minmax-pipeline" \
-  -H "Authorization: Bearer <access_token>"
-```
-
-#### 활용 시나리오
-- 문서 내용 검색: "FDA 승인 관련 문서"
-- 계약서 조회: "2024년 공급 계약"
-- 보고서 검색: "분기별 실적 보고서"
-- 메모 검색: "회의록 중 예산 관련"
+#### 검색 특징
+- **하이브리드 검색**: BM25 (30%) + 벡터 검색 (70%) 가중치 조합
+- **자동 키워드 추출**: OpenAI를 사용한 지능형 키워드 추출
+- **리랭킹**: BGE Reranker를 사용한 결과 재순위화
+- **문서 타입**: 규정 문서(regulation), 보고서(report) 지원
 
 ---
 
 ### 3. 통합 검색
-**GET** `/search/all`
+Text2SQL과 OpenSearch를 동시에 검색하여 통합 결과를 반환합니다.
 
-#### 설명
-Text2SQL과 OpenSearch를 동시에 사용하여 모든 데이터 소스에서 검색합니다.
+#### **GET** `/search/all`
 
-#### 요청 파라미터
-| 파라미터 | 타입 | 필수 | 설명 | 기본값 |
-|---------|------|------|------|--------|
-| query | string | Y | 검색 쿼리 | - |
-| limit | integer | N | 각 검색별 결과 개수 제한 (1-100) | 20 |
+#### Query Parameters
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| query | string | ✅ | - | 검색 쿼리 |
+| limit | integer | ❌ | 20 | 각 검색 방식별 결과 개수 제한 (1-100) |
 
-#### 응답
+#### Response
 ```json
 {
   "text2sql": {
     "success": true,
     "message": "Text2SQL 검색이 완료되었습니다.",
-    "query": "삼성병원",
+    "query": "2024년 매출",
     "results": [...],
-    "total_count": 3,
-    "search_time": 0.145
+    "total_count": 15,
+    "search_time": 1.234
   },
   "opensearch": {
     "success": true,
     "message": "OpenSearch 파이프라인 검색이 완료되었습니다.",
-    "query": "삼성병원",
+    "query": "2024년 매출",
     "results": [...],
-    "total_count": 7,
-    "search_time": 0.098
+    "total_count": 8,
+    "search_time": 0.567
   }
 }
 ```
 
-#### 사용 예시
-```bash
-curl -X GET "http://localhost:8010/search/all?query=삼성병원&limit=10" \
-  -H "Authorization: Bearer <access_token>"
-```
-
-#### 장점
-- **포괄적 검색**: 구조화된 데이터와 문서 모두 검색
-- **실패 격리**: 한 검색이 실패해도 다른 검색 결과는 제공
-- **다양한 관점**: 동일 쿼리에 대한 다각도 결과
-
-#### 활용 시나리오
-- 고객 종합 정보: 매출 데이터 + 관련 문서
-- 프로젝트 현황: 진행 상태 + 관련 보고서
-- 직원 정보: 인사 데이터 + 평가 문서
+#### 특징
+- 두 검색 엔진을 병렬로 실행
+- 각 검색이 실패해도 다른 검색 결과는 반환
+- 통합 검색으로 구조화/비구조화 데이터 모두 검색 가능
 
 ---
 
-### 4. 검색 시스템 통계
-**GET** `/search/stats`
+### 4. 검색 시스템 상태 조회
+검색 시스템의 상태와 사용 가능한 인덱스를 확인합니다.
 
-#### 설명
-검색 시스템의 상태와 통계 정보를 조회합니다.
+#### **GET** `/search/stats`
 
-#### 응답
+#### Response
 ```json
 {
   "success": true,
@@ -277,106 +171,168 @@ curl -X GET "http://localhost:8010/search/all?query=삼성병원&limit=10" \
       "available": true,
       "message": "OpenSearch가 정상 작동 중입니다.",
       "indices": [
-        "documents",
-        "news",
-        "contracts"
+        "document_chunks",
+        "qa_logs",
+        "user_activities"
       ]
     }
   }
 }
 ```
 
-#### 사용 예시
-```bash
-curl -X GET "http://localhost:8010/search/stats" \
-  -H "Authorization: Bearer <access_token>"
-```
+---
 
-## 검색 방식 비교
+## 데이터 모델
 
-| 구분 | Text2SQL | OpenSearch |
-|------|----------|------------|
-| **검색 대상** | 구조화된 테이블 데이터 | 비구조화된 문서 |
-| **검색 방식** | 자연어 → SQL 변환 | 벡터 + 키워드 하이브리드 |
-| **강점** | 정확한 수치 데이터 조회 | 의미 기반 유사도 검색 |
-| **속도** | 빠름 (인덱스 활용) | 보통 (벡터 연산) |
-| **적합한 쿼리** | "매출 통계", "고객 목록" | "관련 문서", "유사 내용" |
-| **결과 정확도** | 100% 일치 | 유사도 점수 기반 |
-
-## 에러 응답
-
-### 400 Bad Request
-```json
+### Text2SQLSearchResult
+```typescript
 {
-  "detail": "검색 쿼리는 필수입니다."
+  id: number;                  // 레코드 ID
+  doc_id: number;              // 문서 ID
+  table_type: string;          // 테이블 유형
+  content: object;             // 실제 데이터
+  created_at?: string;         // 생성일시
+  similarity_score?: number;   // 유사도 점수
+  source: "text2sql";         // 검색 소스
 }
 ```
 
-### 401 Unauthorized
-```json
+### OpenSearchResult
+```typescript
 {
-  "detail": "Could not validate credentials"
+  id: string;                          // 문서 ID (문자열)
+  doc_id?: number | string;            // 문서 ID (UUID 또는 정수)
+  doc_title?: string;                  // 문서 제목
+  content: string;                     // 문서 내용
+  created_at?: string;                 // 생성일시
+  similarity_score: number;            // 유사도 점수
+  metadata?: object;                   // 추가 메타데이터
+  source: "opensearch";               // 검색 소스
 }
 ```
 
-### 500 Internal Server Error
-```json
+### SearchResponse
+```typescript
 {
-  "detail": "검색 중 오류가 발생했습니다: <error_message>"
+  success: boolean;           // 성공 여부
+  message: string;           // 응답 메시지
+  query: string;             // 원본 쿼리
+  results: Array<any>;       // 검색 결과 배열
+  total_count: number;       // 전체 결과 수
+  search_time: number;       // 검색 소요 시간(초)
 }
 ```
 
-### 503 Service Unavailable
+---
+
+## 에러 처리
+
+### HTTP Status Codes
+| Code | Description |
+|------|-------------|
+| 200 | 성공 |
+| 400 | 잘못된 요청 (파라미터 오류) |
+| 401 | 인증 실패 |
+| 500 | 서버 내부 오류 |
+| 503 | 서비스 사용 불가 (OpenSearch 연결 실패) |
+
+### Error Response
 ```json
 {
-  "detail": "OpenSearch 서비스를 사용할 수 없습니다."
+  "detail": "검색 중 오류가 발생했습니다: [에러 메시지]"
 }
 ```
 
-## 사용 시나리오
+---
 
-### 시나리오 1: 매출 분석
+## 사용 예시
+
+### cURL 예시
+
+#### Text2SQL 검색
 ```bash
-# Text2SQL로 정확한 매출 데이터 조회
-GET /search/text2sql?query=2024년 1월 매출 상위 10개 고객
+curl -X GET "http://localhost:8000/search/text2sql?query=홍길동%20매출&limit=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-### 시나리오 2: 문서 검색
+#### OpenSearch 검색
 ```bash
-# OpenSearch로 관련 문서 검색
-GET /search/opensearch?query=FDA 승인 절차
+curl -X GET "http://localhost:8000/search/opensearch?query=거래처%20규정&limit=5" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-### 시나리오 3: 종합 정보 조회
+#### 통합 검색
 ```bash
-# 통합 검색으로 고객의 모든 정보 조회
-GET /search/all?query=삼성병원
-# 결과: 매출 데이터 + 계약서 + 미팅 노트 등
+curl -X GET "http://localhost:8000/search/all?query=2024년%20실적" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-## 성능 고려사항
+#### 시스템 상태 확인
+```bash
+curl -X GET "http://localhost:8000/search/stats" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
 
-### 결과 개수 제한
-- 기본값: 20개
-- 최대값: 100개
-- 대량 데이터는 페이지네이션 고려
+### Python 예시
 
-### 검색 시간
-- Text2SQL: 일반적으로 100ms 이내
-- OpenSearch: 문서 양에 따라 50-500ms
-- 통합 검색: 두 검색의 합 (병렬 처리)
+```python
+import requests
 
-### 최적화 팁
-1. **구체적인 쿼리 사용**: "매출" 보다 "2024년 1월 A등급 고객 매출"
-2. **적절한 검색 방식 선택**: 수치 데이터는 Text2SQL, 문서는 OpenSearch
-3. **결과 개수 제한**: 필요한 만큼만 요청
-4. **캐싱 활용**: 자주 사용되는 쿼리는 프론트엔드에서 캐싱
+# 설정
+base_url = "http://localhost:8000"
+token = "YOUR_ACCESS_TOKEN"
+headers = {"Authorization": f"Bearer {token}"}
+
+# Text2SQL 검색
+response = requests.get(
+    f"{base_url}/search/text2sql",
+    params={"query": "홍길동 2024년 매출", "limit": 20},
+    headers=headers
+)
+text2sql_results = response.json()
+
+# OpenSearch 검색
+response = requests.get(
+    f"{base_url}/search/opensearch",
+    params={"query": "거래처 접대 규정"},
+    headers=headers
+)
+opensearch_results = response.json()
+
+# 통합 검색
+response = requests.get(
+    f"{base_url}/search/all",
+    params={"query": "2024년 판매 실적"},
+    headers=headers
+)
+combined_results = response.json()
+```
+
+---
 
 ## 주의사항
 
-1. **인증 필수**: 모든 엔드포인트는 JWT 토큰 인증 필요
-2. **쿼리 길이**: 최대 500자 권장
-3. **특수문자 인코딩**: URL 쿼리 파라미터는 URL 인코딩 필요
-4. **서비스 가용성**: `/search/stats`로 서비스 상태 확인 후 사용
-5. **에러 처리**: 통합 검색에서 부분 실패 가능성 고려
-6. **검색 언어**: 한국어 쿼리 최적화됨
+1. **인증 필수**: 모든 엔드포인트는 유효한 Bearer Token이 필요합니다.
+
+2. **검색 쿼리 최적화**:
+   - Text2SQL: 구체적인 테이블 필드명이나 날짜를 포함하면 더 정확한 결과
+   - OpenSearch: 핵심 키워드를 포함하되 너무 긴 문장은 피하기
+
+3. **성능 고려사항**:
+   - `limit` 파라미터로 결과 수를 제한하여 응답 시간 단축
+   - 통합 검색은 두 엔진을 모두 사용하므로 개별 검색보다 시간이 더 소요됨
+
+4. **인덱스 관리**:
+   - OpenSearch 검색은 `document_chunks` 인덱스를 사용
+   - 인덱스가 없거나 문서가 없으면 빈 결과 반환
+
+5. **에러 처리**:
+   - 503 에러 발생 시 OpenSearch 서비스 상태 확인 필요
+   - 통합 검색에서 한 엔진이 실패해도 다른 결과는 반환됨
+
+---
+
+## 버전 정보
+- **현재 버전**: 1.0.0
+- **최종 업데이트**: 2024-12-18
+- **작성자**: System Administrator

@@ -253,7 +253,13 @@ class RouterAgent:
                     api_token=api_token
                 ))
                 
-                current_state["agent_type"] = agent_name
+                # 결과를 current_state에 저장 (Graph state 업데이트)
+                if hasattr(self, 'current_state') and self.current_state:
+                    self.current_state["agent_type"] = agent_name
+                    self.current_state["result"] = result
+                    logger.info(f"[EXECUTE_AGENT] Search agent result stored in graph state")
+                    logger.info(f"[EXECUTE_AGENT] Result keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+                
                 return result
             
             else:

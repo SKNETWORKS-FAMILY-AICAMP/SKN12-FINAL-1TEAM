@@ -44,10 +44,14 @@ async def run(query: str, session_id: str, api_token: Optional[str] = None) -> D
         # 결과에서 응답 추출
         if "messages" in result and len(result["messages"]) > 1:
             last_message = result["messages"][-1]
-            if "content" in last_message:
+            # AIMessage 객체에서 content 추출
+            if hasattr(last_message, "content"):
+                response = last_message.content
+            elif "content" in last_message:
                 response = last_message["content"]
             else:
-                response = str(last_message)
+                # 최후의 수단으로 str 사용
+                response = str(last_message) if last_message else "응답을 생성할 수 없습니다."
         else:
             response = "응답을 생성할 수 없습니다."
         
@@ -116,10 +120,14 @@ def run_sync(query: str, session_id: str, api_token: Optional[str] = None) -> Di
         # 결과에서 응답 추출
         if "messages" in result and len(result["messages"]) > 1:
             last_message = result["messages"][-1]
-            if "content" in last_message:
+            # AIMessage 객체에서 content 추출
+            if hasattr(last_message, "content"):
+                response = last_message.content
+            elif "content" in last_message:
                 response = last_message["content"]
             else:
-                response = str(last_message)
+                # 최후의 수단으로 str 사용
+                response = str(last_message) if last_message else "응답을 생성할 수 없습니다."
         else:
             response = "응답을 생성할 수 없습니다."
         

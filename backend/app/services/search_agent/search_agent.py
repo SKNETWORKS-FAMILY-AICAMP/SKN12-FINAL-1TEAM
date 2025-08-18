@@ -64,7 +64,7 @@ class SearchAgent:
                 f"{self.base_url}/search/text2sql",
                 headers=self.headers,
                 params=params,
-                timeout=30
+                timeout=60
             )
             
             if response.status_code == 200:
@@ -114,7 +114,7 @@ class SearchAgent:
                 f"{self.base_url}/search/opensearch",
                 headers=self.headers,
                 params=params,
-                timeout=30
+                timeout=60
             )
             
             if response.status_code == 200:
@@ -162,7 +162,7 @@ class SearchAgent:
                 f"{self.base_url}/search/all",
                 headers=self.headers,
                 params=params,
-                timeout=30
+                timeout=60
             )
             
             if response.status_code == 200:

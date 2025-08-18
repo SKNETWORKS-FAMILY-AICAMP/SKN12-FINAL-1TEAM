@@ -230,25 +230,39 @@ def final_node(router_agent, state: RouterState) -> RouterState:
     
     # Tool 실행 결과 추출
     messages = state.get("messages", [])
+    logger.info(f"[FINAL_NODE] Total messages: {len(messages)}")
     
     # ToolMessage 찾기 (마지막 메시지가 ToolMessage일 가능성이 높음)
     for i in range(len(messages) - 1, -1, -1):
         msg = messages[i]
+        logger.info(f"[FINAL_NODE] Checking message {i}: type={type(msg).__name__}, has_name={hasattr(msg, 'name')}, has_content={hasattr(msg, 'content')}")
         
         # ToolMessage 처리
         if hasattr(msg, 'name') and hasattr(msg, 'content'):  # ToolMessage의 특징
+            logger.info(f"[FINAL_NODE] Found ToolMessage: name={msg.name}, content_type={type(msg.content)}")
             try:
                 # Tool 반환값 처리
                 if isinstance(msg.content, str):
-                    result = json.loads(msg.content)
+                    # JSON 문자열인 경우 파싱
+                    try:
+                        result = json.loads(msg.content)
+                        logger.info(f"[FINAL_NODE] Parsed JSON result: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+                    except json.JSONDecodeError:
+                        # JSON이 아닌 일반 문자열인 경우
+                        result = {"content": msg.content}
+                        logger.info(f"[FINAL_NODE] Plain text result")
                 else:
+                    # 이미 객체인 경우
                     result = msg.content
+                    logger.info(f"[FINAL_NODE] Direct object result: {type(result)}")
                 
                 state["result"] = result
+                logger.info(f"[FINAL_NODE] Result set to state")
                 
                 # Tool name에서 agent_type 추출
                 if msg.name and msg.name.startswith('call_'):
                     state["agent_type"] = msg.name.replace('call_', '')
+                    logger.info(f"[FINAL_NODE] Agent type set to: {state['agent_type']}")
                 
                 # 인터럽트 발생 시 추가 정보를 state에 병합
                 if isinstance(result, dict) and result.get("interrupted"):
@@ -265,12 +279,10 @@ def final_node(router_agent, state: RouterState) -> RouterState:
                 
                 break  # 첫 번째 ToolMessage를 찾으면 중단
                 
-            except json.JSONDecodeError:
-                state["result"] = {"content": msg.content}
             except Exception as e:
-                logger.error(f"Tool message processing error: {e}")
+                logger.error(f"Tool message processing error: {e}", exc_info=True)
     
     # 최종 상태 로깅
-    logger.info(f"[FINAL_NODE] Final state - requires_interrupt: {state.get('requires_interrupt')}, next_node: {state.get('next_node')}, doc_type: {state.get('doc_type')}")
+    logger.info(f"[FINAL_NODE] Final state - result: {state.get('result') is not None}, requires_interrupt: {state.get('requires_interrupt')}, next_node: {state.get('next_node')}, doc_type: {state.get('doc_type')}")
     
     return state
