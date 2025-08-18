@@ -86,32 +86,21 @@ export const registerEmployee = async (employeeData) => {
   return await apiRequest('/admin/register-employee', {
     method: 'POST',
     body: JSON.stringify({
+      name: employeeData.name,
+      employee_number: employeeData.employee_number,
       email: employeeData.email,
       password: employeeData.password,
-      name: employeeData.name,
       role: employeeData.role || 'user'
     }),
   });
 };
 
-// 직원 리스트 조회 (계정 정보) - 8010 포트 직접 호출
+// 직원 리스트 조회 (계정 정보) - 프록시를 통한 호출
 export const getEmployees = async () => {
-  const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
-  
   try {
-    const response = await fetch('http://localhost:8010/user/employees/all', {
+    return await apiRequest('/user/employees/all', {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
     });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    return await response.json();
   } catch (error) {
     console.error('직원 리스트 조회 실패:', error);
     return [];
@@ -120,7 +109,7 @@ export const getEmployees = async () => {
 
 // 직원 정보 리스트 조회 (인사 정보)
 export const getEmployeeInfo = async () => {
-  return await apiRequest('/employee-info', {
+  return await apiRequest('/employee-info/', {
     method: 'GET',
   });
 };
