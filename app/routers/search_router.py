@@ -5,7 +5,7 @@ Text2SQL 검색과 OpenSearch 파이프라인 검색 기능을 제공합니다.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field
 from app.services.core.text2sql_search import text2sql_search_service
 from app.services.external.opensearch_client import opensearch_client
@@ -30,7 +30,7 @@ class Text2SQLSearchResult(BaseModel):
 class OpenSearchResult(BaseModel):
     """OpenSearch 검색 결과 모델"""
     id: str
-    doc_id: Optional[int] = None
+    doc_id: Optional[Union[int, str]] = None  # UUID 또는 정수 허용
     doc_title: Optional[str] = None
     content: str
     created_at: Optional[str] = None
@@ -152,27 +152,28 @@ async def search_opensearch(
             query_text=query,
             keywords=keywords,
             pipeline_id=pipeline_id,
-            size=limit
+            top_k=limit,
+            index_name="document_chunks"  # 올바른 인덱스 이름 지정
         )
         
-        # 결과 형식 변환
+        # 결과 형식 변환 (search_results는 리스트)
         formatted_results = []
-        for hit in search_results.get('hits', []):
+        for hit in search_results:  # 리스트로 직접 순회
             source = hit.get('source', {})
             formatted_result = OpenSearchResult(
-                id=hit.get('id', ''),
-                doc_id=source.get('doc_id'),
-                doc_title=source.get('doc_title'),
+                id=str(source.get('document_id', '')),  # 정수를 문자열로 변환
+                doc_id=source.get('document_id'),  # document_id 필드 사용
+                doc_title=source.get('title'),  # title 필드 사용
                 content=source.get('content', ''),
                 created_at=source.get('created_at'),
-                similarity_score=hit.get('score', 0.0),
+                similarity_score=hit.get('score', 0.0) if hit.get('score') else hit.get('rerank_score', 0.0),  # rerank_score도 체크
                 metadata=source.get('metadata'),
                 source="opensearch"
             )
             formatted_results.append(formatted_result.dict())
         
         search_time = time.time() - start_time
-        total_count = search_results.get('total', len(formatted_results))
+        total_count = len(formatted_results)  # 리스트이므로 길이로 계산
         
         logger.info(f"OpenSearch 검색 완료: {len(formatted_results)}개 결과")
         
