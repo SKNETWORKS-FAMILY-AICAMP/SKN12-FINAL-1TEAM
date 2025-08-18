@@ -1,7 +1,7 @@
 """
 LangGraph 기반 멀티 에이전트 라우터 API
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import logging
@@ -76,12 +76,16 @@ class SessionStatusResponse(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+async def chat(
+    request: ChatRequest,
+    authorization: Optional[str] = Header(None)
+) -> ChatResponse:
     """
     사용자 메시지를 처리하고 적절한 에이전트로 라우팅합니다.
     
     Args:
         request: 채팅 요청
+        authorization: JWT 토큰 (Bearer token)
         
     Returns:
         ChatResponse: 처리 결과
@@ -89,10 +93,17 @@ async def chat(request: ChatRequest) -> ChatResponse:
     try:
         logger.info(f"[CHAT] 요청 수신: {request.message[:50]}...")
         
+        # JWT 토큰 추출 (Bearer 제거)
+        api_token = None
+        if authorization and authorization.startswith("Bearer "):
+            api_token = authorization.replace("Bearer ", "")
+            logger.info(f"[CHAT] JWT 토큰 감지됨")
+        
         # 라우터 에이전트 실행
         result = router_agent.run(
             user_input=request.message,
-            session_id=request.session_id
+            session_id=request.session_id,
+            api_token=api_token
         )
         
         # 응답 구성
@@ -248,8 +259,42 @@ async def chat(request: ChatRequest) -> ChatResponse:
                     response.data = sub_result if isinstance(sub_result, dict) else {"result": sub_result}
             elif agent_type == "search_agent":
                 # search_agent 결과 처리
-                response.response = sub_result.get("search_result", "") or sub_result.get("result", "") or str(sub_result)
-                response.data = sub_result if isinstance(sub_result, dict) else {"result": sub_result}
+                raw_response = sub_result.get("response", "")
+                
+                # LLM 응답 객체에서 content만 추출
+                if raw_response:
+                    # AIMessage 객체인 경우 content 추출
+                    if hasattr(raw_response, 'content'):
+                        clean_response = raw_response.content
+                    # 문자열에서 content= 부분 추출
+                    elif isinstance(raw_response, str) and 'content=' in raw_response:
+                        import re
+                        match = re.search(r'content="([^"]*)"', raw_response)
+                        if match:
+                            clean_response = match.group(1)
+                        else:
+                            clean_response = raw_response
+                    else:
+                        clean_response = str(raw_response)
+                else:
+                    clean_response = "검색 결과를 찾을 수 없습니다."
+                
+                # 문서 경로 정보 추가 (있는 경우)
+                doc_paths = []
+                if sub_result.get("document_paths"):
+                    doc_paths = sub_result.get("document_paths")
+                elif sub_result.get("source_documents"):
+                    doc_paths = [doc.get("path") for doc in sub_result.get("source_documents", []) if doc.get("path")]
+                
+                if doc_paths:
+                    clean_response += f"\n\n📁 참조 문서: {', '.join(doc_paths)}"
+                
+                response.response = clean_response
+                response.data = {
+                    "search_type": sub_result.get("search_type", ""),
+                    "api_health": sub_result.get("api_health", {}),
+                    "document_paths": doc_paths
+                }
         
         
         else:
@@ -298,19 +343,30 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
 
 @router.post("/resume/{session_id}", response_model=ChatResponse)
-async def resume_session(session_id: str, request: ResumeRequest) -> ChatResponse:
+async def resume_session(
+    session_id: str, 
+    request: ResumeRequest,
+    authorization: Optional[str] = Header(None)
+) -> ChatResponse:
     """
     인터럽트된 세션을 재개합니다.
     
     Args:
         session_id: 세션 ID
         request: 재개 요청
+        authorization: JWT 토큰 (Bearer token)
         
     Returns:
         ChatResponse: 처리 결과
     """
     try:
         logger.info(f"[RESUME] 세션 재개: {session_id}")
+        
+        # JWT 토큰 추출 (Bearer 제거)
+        api_token = None
+        if authorization and authorization.startswith("Bearer "):
+            api_token = authorization.replace("Bearer ", "")
+            logger.info(f"[RESUME] JWT 토큰 감지됨")
         
         # 사용자 입력을 채팅 히스토리에 저장
         try:
@@ -326,11 +382,12 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
         except Exception as e:
             logger.error(f"[RESUME] 사용자 입력 저장 오류: {e}")
         
-        # 세션 재개
+        # 세션 재개 (api_token 전달)
         result = router_agent.resume(
             session_id=session_id,
             user_reply=request.user_reply,
-            reply_type=request.reply_type
+            reply_type=request.reply_type,
+            api_token=api_token
         )
         
         # result가 None인 경우 처리

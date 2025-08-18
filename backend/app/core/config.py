@@ -25,6 +25,8 @@ class Config:
         # 1. Docker 환경 자동 감지
         # Docker 컨테이너 내부에는 /.dockerenv 파일이 존재
         if os.path.exists("/.dockerenv"):
+            # Docker 네트워크를 통한 직접 연결
+            # fastapi-app 컨테이너의 내부 포트 8000 사용
             return "http://fastapi-app:8000"
         
         # 2. 기본값 (로컬 개발 환경)
