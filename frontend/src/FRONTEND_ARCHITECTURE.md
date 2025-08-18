@@ -17,6 +17,7 @@ frontend/src/
    - JWT 토큰 기반 인증
    - 자동 로그인 상태 확인
    - 토큰 유효성 검증
+   - 토큰은 `narutalk_token`으로 localStorage에 저장
 
 2. **라우팅 설정**
    - React Router v6 사용
@@ -28,6 +29,7 @@ frontend/src/
    - `currentUser`: 현재 사용자 정보
    - `schedules`: 일정 데이터 (localStorage 저장)
    - `sidebarVisible`: 사이드바 표시 여부
+   - `isLoading`: 초기 로딩 상태
 
 ### 라우트 구조
 ```javascript
@@ -129,6 +131,61 @@ app.use((req, res, next) => {
 - **changeOrigin: true**: Origin 헤더를 타겟으로 변경
 - **logLevel: 'debug'**: 개발 중 디버깅용 로그
 
+## 📦 컴포넌트 구조
+
+### 페이지 컴포넌트
+1. **Main.js** - 메인 대시보드
+2. **Search.js** - 문서 검색 페이지 (내부/외부 문서 분류 로직 포함)
+3. **ChatBot.js** - AI 챗봇 (Router Agent 및 4개 전문 에이전트)
+4. **Docs.js** - 문서 관리
+5. **ClientAnalysis.js** - 고객/거래처 분석
+6. **EmployeePerformance.js** - 직원 성과 관리
+7. **Schedule.js** - 일정 관리
+8. **Admin.js** - 관리자 페이지 (SSE 파일 업로드 지원)
+9. **Login.js** - 로그인 페이지
+
+### 공통 컴포넌트
+1. **Sidebar.js** - 사이드바 네비게이션
+2. **ProcessProgressBar.js** - 단일 파일 업로드 진행률 표시
+3. **BatchProcessProgressBar.js** - 배치 파일 업로드 진행률 표시
+4. **UserModal.js** - 사용자 정보 모달
+5. **Notification.js** - 알림 컴포넌트
+6. **Setting.js** - 설정 컴포넌트
+
+## 🔌 서비스 레이어 (services/api.js)
+
+### 주요 API 함수
+1. **인증 관련**
+   - `loginUser()` - 사용자 로그인
+   - `verifyToken()` - 토큰 유효성 검증
+   - `logoutUser()` - 로그아웃 처리
+
+2. **직원 관리**
+   - `registerEmployee()` - 직원 등록 (관리자 전용)
+   - `getEmployees()` - 직원 리스트 조회
+   - `getEmployeeInfo()` - 직원 인사 정보 조회
+
+3. **문서 관리**
+   - `uploadDocument()` - 일반 문서 업로드
+   - `uploadDocumentWithSSE()` - SSE 기반 단일 문서 업로드
+   - `uploadDocumentsBatchWithSSE()` - SSE 기반 배치 문서 업로드
+   - `getDocuments()` - 문서 목록 조회
+   - `getDocumentDetail()` - 문서 상세 조회
+   - `getDocumentContent()` - 문서 내용 조회
+
+### API 통신 특징
+- 모든 API 요청에 JWT 토큰 자동 추가
+- FormData 처리 지원
+- SSE (Server-Sent Events) 스트리밍 지원
+- 상세한 콘솔 로깅으로 디버깅 용이
+
+## 🛠 유틸리티 (utils/)
+
+### markdownParser.js
+- Markdown 텍스트를 HTML로 변환
+- 헤더, 리스트, 코드 블록, 인라인 코드 등 지원
+- ChatBot 컴포넌트에서 AI 응답 렌더링에 사용
+
 ## 🔄 API 통신 흐름
 
 ### 일반 API 요청
@@ -174,12 +231,29 @@ docker-compose up frontend
    - 기존 기능 보호 최우선 (DEVELOPMENT_RULES.md 참조)
    - 새 기능 추가 시 기존 기능 테스트 필수
 
+## 🎨 ChatBot 컴포넌트 상세
+
+### 에이전트 시스템
+1. **Router Agent** - 쿼리 분석 및 자동 라우팅 (`/api/chat`)
+2. **Employee Agent** - 직원 실적 분석 (`/api/select-agent`)
+3. **Client Agent** - 고객/거래처 분석 (`/api/select-agent`)
+4. **Search Agent** - 정보 검색 (`/api/select-agent`)
+5. **Docs Agent** - 문서 생성 (`/api/select-agent`)
+
+### 주요 기능
+- 세션 ID 기반 대화 관리
+- 채팅 히스토리 로컬 스토리지 저장
+- Markdown 응답 렌더링
+- 에이전트별 색상 구분
+- 대화형 문서 생성 (Docs Agent)
+
 ## 📝 다음 작업 시 참고사항
 
 ### UI 수정 시
 - 모든 컴포넌트는 currentUser prop 활용 가능
 - Admin 컴포넌트의 SSE 업로드 기능 정상 작동 중
 - 사이드바 토글 기능 구현됨
+- ChatBot의 Router Agent가 자동으로 적절한 에이전트 선택
 
 ### API 추가 시
 1. services/api.js에 API 함수 추가
@@ -190,7 +264,10 @@ docker-compose up frontend
 - 각 컴포넌트는 독립적인 CSS 파일 보유
 - 라우팅은 App.js에서 중앙 관리
 - 로그인 상태는 App.js에서 전역 관리
+- Search 컴포넌트에 내부/외부 문서 자동 분류 로직 포함
 
 ---
-최종 업데이트: 2025-01-15
-SSE 업로드 기능 정상 작동 확인됨
+최종 업데이트: 2025-01-18
+- 컴포넌트 구조 및 서비스 레이어 상세 문서화
+- ChatBot 에이전트 시스템 설명 추가
+- SSE 업로드 기능 정상 작동 확인됨

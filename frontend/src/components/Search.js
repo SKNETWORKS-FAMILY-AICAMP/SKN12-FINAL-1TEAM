@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDocuments, getDocumentDetail, getDocumentContent } from '../services/api';
+import { getDocuments, getDocumentDetail, getDocumentContent, getEmployeeInfo, getBranches } from '../services/api';
 import './Search.css';
 
 const Search = () => {
@@ -13,11 +13,153 @@ const Search = () => {
   const [detailError, setDetailError] = useState('');
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [selectAll, setSelectAll] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('전체');
+  const [selectedSubCategory, setSelectedSubCategory] = useState('');
+  const [filteredResults, setFilteredResults] = useState([]);
+  const [expandedCategories, setExpandedCategories] = useState(new Set());
+  const [employeeList, setEmployeeList] = useState([]);
+  const [branchList, setBranchList] = useState([]);
+  const [showDataList, setShowDataList] = useState(false);
+  const [dataListType, setDataListType] = useState('');
 
   // 컴포넌트 마운트 시 문서 목록 가져오기
   useEffect(() => {
     fetchDocuments();
+    fetchEmployeeInfo();
+    fetchBranches();
   }, []);
+
+  // 직원 정보 가져오기
+  const fetchEmployeeInfo = async () => {
+    try {
+      const data = await getEmployeeInfo();
+      if (Array.isArray(data)) {
+        setEmployeeList(data);
+      }
+    } catch (error) {
+      console.error('직원 정보 조회 실패:', error);
+    }
+  };
+
+  // 지점 정보 가져오기
+  const fetchBranches = async () => {
+    try {
+      const data = await getBranches();
+      if (Array.isArray(data)) {
+        setBranchList(data);
+      }
+    } catch (error) {
+      console.error('지점 정보 조회 실패:', error);
+    }
+  };
+
+  // 카테고리 정의
+  const categories = {
+    '인사': {
+      icon: '👥',
+      subCategories: [
+        { name: '직원 정보', keywords: ['직원', '사원', '인사', '채용', '퇴직', '승진', '평가', '급여', '연봉'] },
+        { name: '지점 정보', keywords: ['지점', '지사', '본사', '영업점', '사무소', '조직', '부서'] }
+      ]
+    },
+    '규정': {
+      icon: '📋',
+      subCategories: [
+        { name: '운영규정', keywords: ['운영', '운영규정', '내규'] },
+        { name: '인사규정', keywords: ['인사규정', '인사규칙', '취업규칙'] },
+        { name: '보안정책', keywords: ['보안', '정보보호', '개인정보'] },
+        { name: '업무지침', keywords: ['지침', '가이드', '업무지침', '매뉴얼'] },
+        { name: '준법규정', keywords: ['컴플라이언스', '준법', '법규'] }
+      ]
+    },
+    '문서': {
+      icon: '📄',
+      subCategories: [
+        { name: '계약서', keywords: ['계약', '계약서', '협약', '협약서'] },
+        { name: '보고서', keywords: ['보고서', '리포트', '업무보고'] },
+        { name: '제안서', keywords: ['제안', '제안서', '기획서'] },
+        { name: '회의록', keywords: ['회의', '회의록', '미팅'] },
+        { name: '공문서', keywords: ['공문', '공식문서', '공지'] }
+      ]
+    }
+  };
+
+  // 카테고리 확장/축소 토글
+  const toggleCategoryExpansion = (category) => {
+    const newExpanded = new Set(expandedCategories);
+    if (newExpanded.has(category)) {
+      newExpanded.delete(category);
+      // 축소할 때 하위 카테고리 선택 초기화
+      if (selectedCategory === category) {
+        setSelectedSubCategory('');
+      }
+    } else {
+      newExpanded.add(category);
+    }
+    setExpandedCategories(newExpanded);
+  };
+
+  // 카테고리 선택 핸들러
+  const handleCategorySelect = (category, subCategory = '') => {
+    setSelectedCategory(category);
+    setSelectedSubCategory(subCategory);
+    
+    // 직원 정보 또는 지점 정보 하위 카테고리를 선택했을 때
+    if (category === '인사' && subCategory === '직원 정보') {
+      setShowDataList(true);
+      setDataListType('employee');
+    } else if (category === '인사' && subCategory === '지점 정보') {
+      setShowDataList(true);
+      setDataListType('branch');
+    } else {
+      setShowDataList(false);
+      setDataListType('');
+    }
+    
+    // 하위 카테고리를 선택했을 때만 확장
+    if (subCategory && !expandedCategories.has(category)) {
+      toggleCategoryExpansion(category);
+    }
+  };
+
+  // 카테고리 필터링
+  useEffect(() => {
+    if (selectedCategory === '전체') {
+      setFilteredResults(searchResults);
+    } else {
+      const filtered = searchResults.filter(doc => {
+        const docTitleLower = doc.documentName.toLowerCase();
+        const docTypeLower = doc.docType?.toLowerCase() || '';
+        
+        // 하위 카테고리가 선택된 경우
+        if (selectedSubCategory) {
+          const category = categories[selectedCategory];
+          if (category) {
+            const subCat = category.subCategories.find(sub => sub.name === selectedSubCategory);
+            if (subCat) {
+              return subCat.keywords.some(keyword => 
+                docTitleLower.includes(keyword.toLowerCase()) ||
+                docTypeLower.includes(keyword.toLowerCase())
+              );
+            }
+          }
+        } else {
+          // 메인 카테고리만 선택된 경우
+          const category = categories[selectedCategory];
+          if (category) {
+            return category.subCategories.some(subCat =>
+              subCat.keywords.some(keyword =>
+                docTitleLower.includes(keyword.toLowerCase()) ||
+                docTypeLower.includes(keyword.toLowerCase())
+              )
+            );
+          }
+        }
+        return false;
+      });
+      setFilteredResults(filtered);
+    }
+  }, [selectedCategory, selectedSubCategory, searchResults]);
 
   // 내부/외부 구분 로직
   const determineClassification = (docType, docTitle) => {
@@ -75,8 +217,7 @@ const Search = () => {
         classification: determineClassification(doc.doc_type, doc.doc_title),
         author: '관리자', // 임시로 관리자로 표시
         creationDate: doc.created_at ? new Date(doc.created_at).toLocaleDateString('ko-KR') : 'N/A',
-        docType: doc.doc_type || '-',
-        filePath: doc.file_path || ''
+        docType: doc.doc_type || '-'
       }));
       
       setSearchResults(formattedDocuments);
@@ -174,7 +315,7 @@ const Search = () => {
     setSelectedItems(newSelectedItems);
     
     // 전체 선택 체크박스 상태 업데이트
-    setSelectAll(newSelectedItems.size === searchResults.length && searchResults.length > 0);
+    setSelectAll(newSelectedItems.size === filteredResults.length && filteredResults.length > 0);
   };
 
   // 전체 선택 체크박스 핸들러
@@ -182,7 +323,7 @@ const Search = () => {
     if (selectAll) {
       setSelectedItems(new Set());
     } else {
-      const allIds = searchResults.map(doc => doc.id);
+      const allIds = filteredResults.map(doc => doc.id);
       setSelectedItems(new Set(allIds));
     }
     setSelectAll(!selectAll);
@@ -290,7 +431,91 @@ const Search = () => {
         <h1>내/외부 문서 검색</h1>
       </div>
 
-      <div className="document-search-container">
+      <div className="search-container-with-sidebar">
+        {/* 카테고리 사이드바 */}
+        <div className="category-sidebar">
+          <h3 className="sidebar-title">카테고리</h3>
+          <ul className="category-list">
+            {/* 전체 카테고리 */}
+            <li 
+              className={selectedCategory === '전체' ? 'active' : ''}
+              onClick={() => handleCategorySelect('전체')}
+            >
+              <span className="category-icon">📁</span>
+              <span className="category-name">전체</span>
+              <span className="category-count">{searchResults.length}</span>
+            </li>
+            
+            {/* 메인 카테고리들 */}
+            {Object.entries(categories).map(([categoryName, categoryData]) => {
+              const categoryCount = searchResults.filter(doc => {
+                const docTitleLower = doc.documentName.toLowerCase();
+                const docTypeLower = doc.docType?.toLowerCase() || '';
+                return categoryData.subCategories.some(subCat =>
+                  subCat.keywords.some(keyword =>
+                    docTitleLower.includes(keyword.toLowerCase()) ||
+                    docTypeLower.includes(keyword.toLowerCase())
+                  )
+                );
+              }).length;
+
+              return (
+                <React.Fragment key={categoryName}>
+                  <li 
+                    className={`category-item ${selectedCategory === categoryName && !selectedSubCategory ? 'active' : ''} ${expandedCategories.has(categoryName) ? 'expanded' : ''}`}
+                  >
+                    <div 
+                      className="category-main"
+                      onClick={() => handleCategorySelect(categoryName)}
+                    >
+                      <span className="category-icon">{categoryData.icon}</span>
+                      <span className="category-name">{categoryName}</span>
+                      <span className="category-count">{categoryCount}</span>
+                    </div>
+                    <button
+                      className="expand-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCategoryExpansion(categoryName);
+                      }}
+                    >
+                      {expandedCategories.has(categoryName) ? '▼' : '▶'}
+                    </button>
+                  </li>
+                  
+                  {/* 하위 카테고리 */}
+                  {expandedCategories.has(categoryName) && (
+                    <ul className="sub-category-list">
+                      {categoryData.subCategories.map(subCat => {
+                        const subCount = searchResults.filter(doc => {
+                          const docTitleLower = doc.documentName.toLowerCase();
+                          const docTypeLower = doc.docType?.toLowerCase() || '';
+                          return subCat.keywords.some(keyword =>
+                            docTitleLower.includes(keyword.toLowerCase()) ||
+                            docTypeLower.includes(keyword.toLowerCase())
+                          );
+                        }).length;
+
+                        return (
+                          <li
+                            key={subCat.name}
+                            className={selectedCategory === categoryName && selectedSubCategory === subCat.name ? 'active' : ''}
+                            onClick={() => handleCategorySelect(categoryName, subCat.name)}
+                          >
+                            <span className="sub-category-name">{subCat.name}</span>
+                            <span className="sub-category-count">{subCount}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </ul>
+        </div>
+
+        <div className="document-search-container">
         <form onSubmit={handleSearch} className="search-form">
           <div className="search-input-group">
             <div className="search-input-wrapper">
@@ -347,6 +572,97 @@ const Search = () => {
         )}
 
         <div className="search-results">
+          {/* 직원/지점 정보 리스트 표시 */}
+          {showDataList && dataListType === 'employee' && (
+            <div className="data-list-container">
+              <h3>직원 정보 목록</h3>
+              <div className="data-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>이름</th>
+                      <th>사번</th>
+                      <th>직급</th>
+                      <th>지점</th>
+                      <th>연락처</th>
+                      <th>평가</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {employeeList.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="no-results">
+                          직원 정보가 없습니다.
+                        </td>
+                      </tr>
+                    ) : (
+                      employeeList.map((employee) => (
+                        <tr key={employee.employee_info_id}>
+                          <td>{employee.name}</td>
+                          <td>{employee.employee_number || '-'}</td>
+                          <td>{employee.position || '-'}</td>
+                          <td>{employee.branch_name || '-'}</td>
+                          <td>{employee.contact_number || '-'}</td>
+                          <td>
+                            <span className={`evaluation-badge ${employee.latest_evaluation?.toLowerCase()}`}>
+                              {employee.latest_evaluation || '-'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {showDataList && dataListType === 'branch' && (
+            <div className="data-list-container">
+              <h3>지점 정보 목록</h3>
+              <div className="data-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>지점명</th>
+                      <th>본부</th>
+                      <th>부서</th>
+                      <th>연락처</th>
+                      <th>상태</th>
+                      <th>비고</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {branchList.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="no-results">
+                          지점 정보가 없습니다.
+                        </td>
+                      </tr>
+                    ) : (
+                      branchList.map((branch) => (
+                        <tr key={branch.branch_id}>
+                          <td>{branch.branch_name}</td>
+                          <td>{branch.headquarters || '-'}</td>
+                          <td>{branch.department || '-'}</td>
+                          <td>{branch.contact_number || '-'}</td>
+                          <td>
+                            <span className={`status-badge ${branch.status}`}>
+                              {branch.status === 'active' ? '활성' : '비활성'}
+                            </span>
+                          </td>
+                          <td>{branch.notes || '-'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 기존 문서 리스트 표시 */}
+          {!showDataList && (
           <div className="results-table">
             <table>
               <thead>
@@ -366,14 +682,16 @@ const Search = () => {
                 </tr>
               </thead>
               <tbody>
-                {searchResults.length === 0 && !isLoading && !error ? (
+                {filteredResults.length === 0 && !isLoading && !error ? (
                   <tr>
                     <td colSpan="6" className="no-results">
-                      업로드된 문서가 없습니다.
+                      {selectedCategory !== '전체' 
+                        ? `${selectedCategory} 카테고리에 문서가 없습니다.`
+                        : '업로드된 문서가 없습니다.'}
                     </td>
                   </tr>
                 ) : (
-                  searchResults.map((result) => (
+                  filteredResults.map((result) => (
                     <tr 
                       key={result.id} 
                       className={`document-row ${selectedItems.has(result.id) ? 'selected' : ''}`}
@@ -425,6 +743,7 @@ const Search = () => {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       </div>
 
@@ -492,44 +811,6 @@ const Search = () => {
                     </div>
                   )}
                   
-                  {/* 파일 다운로드 링크 */}
-                  {selectedDocument.file_path && (
-                    <div className="detail-item">
-                      <label>파일 다운로드:</label>
-                      <button
-                        onClick={async () => {
-                          const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
-                          try {
-                            const response = await fetch(`http://localhost:8010/documents/${selectedDocument.doc_id}/download`, {
-                              headers: {
-                                'Authorization': `Bearer ${token}`
-                              }
-                            });
-                            if (response.ok) {
-                              const data = await response.json();
-                              if (data.download_url) {
-                                window.open(data.download_url, '_blank');
-                              }
-                            }
-                          } catch (error) {
-                            console.error('다운로드 URL 가져오기 실패:', error);
-                            alert('다운로드 링크를 가져오는데 실패했습니다.');
-                          }
-                        }}
-                        style={{ 
-                          color: '#6f42c1', 
-                          background: 'none',
-                          border: '1px solid #6f42c1',
-                          padding: '5px 10px',
-                          borderRadius: '5px',
-                          cursor: 'pointer',
-                          fontWeight: '500'
-                        }}
-                      >
-                        📄 파일 다운로드
-                      </button>
-                    </div>
-                  )}
                   
                   {/* 문서 내용 표시 (있는 경우에만) */}
                   {selectedDocument.content && (
@@ -546,6 +827,7 @@ const Search = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

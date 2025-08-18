@@ -86,6 +86,7 @@ module.exports = function(app) {
     '/user',
     '/admin',
     '/employee-info',
+    '/branches',
     '/documents',
     '/qa',
     '/search',
