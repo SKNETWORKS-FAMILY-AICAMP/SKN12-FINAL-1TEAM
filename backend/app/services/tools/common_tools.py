@@ -104,7 +104,7 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
                         print(f"📊 '{phrase}' 검색 결과: {len(search_results)}개")
                         
                         # 3단계: LLM을 사용해 추출된 규정 정보와 비교하여 위반 여부 판단
-                        violation_result = _check_phrase_against_regulations(phrase, search_results, llm)
+                        violation_result = check_phrase_against_regulations(phrase, search_results, llm)
                         if violation_result != "OK":
                             violations.append(violation_result)
                     else:
@@ -138,7 +138,7 @@ def check_policy_violation(content: Annotated[str, "작성된 문서 본문"]) -
         print(f"❌ 규정 검사 중 오류 발생: {e}")
         return f"규정 검사 오류: {str(e)}"
 
-def _check_phrase_against_regulations(phrase: str, search_results: list, llm: ChatOpenAI) -> str:
+def check_phrase_against_regulations(phrase: str, search_results: list, llm: ChatOpenAI) -> str:
     """추출된 문구를 규정 정보와 비교하여 위반 여부를 판단합니다."""
     
     try:

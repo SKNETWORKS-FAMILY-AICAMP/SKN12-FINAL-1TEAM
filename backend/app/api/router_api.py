@@ -134,6 +134,15 @@ async def chat(
                 response.response = "👋 문서 작성이 종료되었습니다. 새로운 작업을 시작해주세요."
             response.success = False
             response.data = {"terminated": True, "end_process": True}
+            
+            # 세션 정리 - 종료 후 새로운 요청이 오면 처음부터 시작하도록
+            try:
+                if hasattr(router_agent, 'clear_session'):
+                    router_agent.clear_session(result.get("session_id", request.session_id))
+                    logger.info(f"[CHAT] 세션 상태 정리 완료: {result.get('session_id', request.session_id)}")
+            except Exception as e:
+                logger.error(f"[CHAT] 세션 상태 정리 오류: {e}")
+            
             return response
         
         # help_message 처리 (router에서 직접 반환하는 경우)
@@ -382,13 +391,55 @@ async def resume_session(
         except Exception as e:
             logger.error(f"[RESUME] 사용자 입력 저장 오류: {e}")
         
-        # 세션 재개 (api_token 전달)
-        result = router_agent.resume(
-            session_id=session_id,
-            user_reply=request.user_reply,
-            reply_type=request.reply_type,
-            api_token=api_token
-        )
+        # 종료된 세션인지 확인 후 새로운 요청이면 처음부터 시작
+        current_state = None
+        try:
+            if hasattr(router_agent, 'get_session_state'):
+                current_state = router_agent.get_session_state(session_id)
+                logger.info(f"[RESUME] 현재 상태 조회: {session_id}, state: {current_state}")
+        except Exception as e:
+            logger.error(f"[RESUME] 상태 조회 오류: {e}")
+        
+        # 종료된 상태에서 새로운 입력이 들어온 경우, 새로운 대화로 시작
+        is_terminated = False
+        if current_state:
+            is_terminated = (
+                current_state.get("end_process") == True or 
+                current_state.get("error_type") == "user_terminated"
+            )
+        
+        # 종료 키워드가 아닌 실제 새로운 요청인지 확인
+        is_new_request = not request.user_reply.lower().strip() in ["", "종료", "exit", "quit"]
+        
+        if is_terminated and is_new_request:
+            logger.info(f"[RESUME] 종료된 세션에서 새로운 요청 감지, 새로운 대화로 시작: {session_id}")
+            logger.info(f"[RESUME] 사용자 입력: '{request.user_reply}', 종료 상태: {is_terminated}")
+            
+            # 세션 상태 초기화
+            try:
+                if hasattr(router_agent, 'clear_session'):
+                    success = router_agent.clear_session(session_id)
+                    logger.info(f"[RESUME] 세션 상태 초기화 결과: {success}")
+            except Exception as e:
+                logger.error(f"[RESUME] 세션 상태 초기화 오류: {e}")
+            
+            # 새로운 대화로 라우터 실행 (resume이 아닌 run으로)
+            result = router_agent.run(
+                user_input=request.user_reply,
+                session_id=session_id,
+                api_token=api_token
+            )
+            logger.info(f"[RESUME] 새로운 대화로 시작됨: {session_id}")
+            
+        else:
+            # 기존 로직: 정상적인 resume
+            logger.info(f"[RESUME] 정상적인 resume 진행: {session_id}, 종료상태: {is_terminated}, 새요청: {is_new_request}")
+            result = router_agent.resume(
+                session_id=session_id,
+                user_reply=request.user_reply,
+                reply_type=request.reply_type,
+                api_token=api_token
+            )
         
         # result가 None인 경우 처리
         if result is None:
@@ -400,11 +451,22 @@ async def resume_session(
         
         # 종료 조건 체크 (위반 및 사용자 종료 포함)
         if result.get("end_process") or result.get("error_type") == "user_terminated":
+            # 디버깅을 위한 로그 추가
+            logger.info(f"[RESUME] 종료 감지 - result: {result}")
+            
             # 위반인지 사용자 종료인지 구분
             violation_text = result.get("violation")
             inner_result = result.get("result", {})
             if not violation_text and isinstance(inner_result, dict):
                 violation_text = inner_result.get("violation")
+            
+            # error_type이 policy_violation인 경우도 확인
+            if result.get("error_type") == "policy_violation" and not violation_text:
+                # result 내부에서 violation 찾기
+                if isinstance(inner_result, dict):
+                    violation_text = inner_result.get("violation", "규정 위반")
+            
+            logger.info(f"[RESUME] violation_text: {violation_text}")
                 
             if violation_text and violation_text != "OK":
                 response = ChatResponse(
@@ -434,6 +496,14 @@ async def resume_session(
                     logger.warning(f"[RESUME] 위반/종료 메시지 저장 실패: {session_id}")
             except Exception as e:
                 logger.error(f"[RESUME] 위반/종료 메시지 저장 오류: {e}")
+            
+            # 세션 정리 - 종료 후 새로운 요청이 오면 처음부터 시작하도록
+            try:
+                if hasattr(router_agent, 'clear_session'):
+                    router_agent.clear_session(session_id)
+                    logger.info(f"[RESUME] 세션 상태 정리 완료: {session_id}")
+            except Exception as e:
+                logger.error(f"[RESUME] 세션 상태 정리 오류: {e}")
             
             return response
         
