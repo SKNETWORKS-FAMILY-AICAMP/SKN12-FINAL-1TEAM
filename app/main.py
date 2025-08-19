@@ -17,6 +17,7 @@ from app.routers.employee_info_router import router as employee_info_router
 from app.routers.data_upload_router import router as data_upload_router
 from app.routers.news_router import router as news_router
 from app.routers.schedule_router import router as schedule_router
+from app.routers.branch_router import router as branch_router
 from app.routers.search_router import router as search_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -129,6 +130,7 @@ app.include_router(employee_info_router, prefix="/employee-info", tags=["Employe
 app.include_router(data_upload_router, prefix="/data", tags=["Data Upload"])
 app.include_router(news_router, prefix="/news", tags=["News"])
 app.include_router(schedule_router, prefix="/schedules", tags=["Schedules"])
+app.include_router(branch_router, prefix="/branches", tags=["Branches"])
 app.include_router(search_router, prefix="/search", tags=["Search"])
 
 @app.get("/")
