@@ -34,7 +34,8 @@ aws ecr describe-repositories --repository-names $REPOSITORY_NAME --region $REGI
 
 # 3. Docker 이미지 빌드
 echo "🔨 Docker 이미지 빌드 중..."
-docker build -t $REPOSITORY_NAME:$IMAGE_TAG -f docker/Dockerfile ..
+# 프로덕션용 Dockerfile 사용
+docker build -t $REPOSITORY_NAME:$IMAGE_TAG -f ../database-fastapi-app-production.Dockerfile ../..
 
 # 4. ECR 태그 설정
 echo "🏷️ ECR 태그 설정 중..."
