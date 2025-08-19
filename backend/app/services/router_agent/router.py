@@ -445,3 +445,54 @@ class RouterAgent:
                 "success": False,
                 "error": str(e)
             }
+    
+    def get_session_state(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """세션의 현재 상태 조회"""
+        session_info = self.sessions.get(session_id)
+        if not session_info:
+            return None
+            
+        # docs_agent인 경우 실제 그래프 상태 조회
+        if session_info.get("agent") == "docs_agent":
+            try:
+                thread_id = session_info.get("thread_id")
+                if thread_id:
+                    agent = self.agents_config["docs_agent"]["instance"]
+                    if hasattr(agent, 'get_current_state'):
+                        current_state = agent.get_current_state(thread_id)
+                        if current_state:
+                            return current_state.values
+                    # 백업 방법: 세션 정보에서 상태 확인
+                    return session_info.get("last_state", {})
+            except Exception as e:
+                logger.error(f"Error getting session state: {e}")
+                return session_info.get("last_state", {})
+        
+        return session_info.get("last_state", {})
+    
+    def clear_session(self, session_id: str) -> bool:
+        """세션 상태 초기화"""
+        try:
+            if session_id in self.sessions:
+                session_info = self.sessions[session_id]
+                
+                # docs_agent인 경우 그래프 상태도 초기화
+                if session_info.get("agent") == "docs_agent":
+                    thread_id = session_info.get("thread_id")
+                    if thread_id:
+                        agent = self.agents_config["docs_agent"]["instance"]
+                        if hasattr(agent, 'clear_thread_state'):
+                            agent.clear_thread_state(thread_id)
+                            logger.info(f"Cleared docs_agent thread state: {thread_id}")
+                
+                # 세션 정보 삭제
+                del self.sessions[session_id]
+                logger.info(f"Session cleared: {session_id}")
+                return True
+            else:
+                logger.warning(f"Session not found for clearing: {session_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error clearing session {session_id}: {e}")
+            return False

@@ -606,13 +606,13 @@ const Admin = ({ currentUser }) => {
 
       {/* 직원 상세 정보 모달 */}
       {showEmployeeModal && selectedEmployee && (
-        <div className="modal-overlay" onClick={closeEmployeeModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className="admin-modal-overlay" onClick={closeEmployeeModal}>
+          <div className="admin-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-header">
               <h2>직원 상세 정보</h2>
-              <button className="modal-close" onClick={closeEmployeeModal}>✕</button>
+              <button className="admin-modal-close" onClick={closeEmployeeModal}>✕</button>
             </div>
-            <div className="modal-body">
+            <div className="admin-modal-body">
               <div className="detail-section">
                 <h3>기본 정보</h3>
                 <div className="detail-row">
@@ -701,7 +701,7 @@ const Admin = ({ currentUser }) => {
                 </div>
               </div>
             </div>
-            <div className="modal-footer">
+            <div className="admin-modal-footer">
               {selectedEmployee.hasAccount === '✓' ? (
                 <button className="btn-account-info" onClick={handleViewAccountInfo}>
                   계정 정보 조회
@@ -729,23 +729,23 @@ const Admin = ({ currentUser }) => {
 
       {/* 계정 생성 모달 */}
       {showAccountCreateModal && (
-        <div className="modal-overlay" onClick={() => {
+        <div className="admin-modal-overlay" onClick={() => {
           setShowAccountCreateModal(false);
           setAccountCreationMessage('');
           // 배경 스크롤 복원
           document.body.style.overflow = 'unset';
         }}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="admin-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-header">
               <h2>계정 생성</h2>
-              <button className="modal-close" onClick={() => {
+              <button className="admin-modal-close" onClick={() => {
                 setShowAccountCreateModal(false);
                 setAccountCreationMessage('');
                 // 배경 스크롤 복원
                 document.body.style.overflow = 'unset';
               }}>✕</button>
             </div>
-            <div className="modal-body">
+            <div className="admin-modal-body">
               <div className="detail-section">
                 <h3>직원 정보</h3>
                 <div className="detail-row">
@@ -796,7 +796,7 @@ const Admin = ({ currentUser }) => {
                 </div>
               )}
             </div>
-            <div className="modal-footer">
+            <div className="admin-modal-footer">
               <button 
                 className="btn-primary" 
                 onClick={handleCreateAccount}
@@ -812,21 +812,21 @@ const Admin = ({ currentUser }) => {
 
       {/* 계정 정보 조회 모달 */}
       {showAccountInfoModal && accountInfo && (
-        <div className="modal-overlay" onClick={() => {
+        <div className="admin-modal-overlay" onClick={() => {
           setShowAccountInfoModal(false);
           // 배경 스크롤 복원
           document.body.style.overflow = 'unset';
         }}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="admin-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-header">
               <h2>계정 정보</h2>
-              <button className="modal-close" onClick={() => {
+              <button className="admin-modal-close" onClick={() => {
                 setShowAccountInfoModal(false);
                 // 배경 스크롤 복원
                 document.body.style.overflow = 'unset';
               }}>✕</button>
             </div>
-            <div className="modal-body">
+            <div className="admin-modal-body">
               <div className="detail-section">
                 <h3>계정 상세 정보</h3>
                 <div className="detail-row">
@@ -858,7 +858,7 @@ const Admin = ({ currentUser }) => {
                 )}
               </div>
             </div>
-            <div className="modal-footer">
+            <div className="admin-modal-footer">
               <button className="btn-close" onClick={() => {
                 setShowAccountInfoModal(false);
                 // 배경 스크롤 복원

@@ -10,6 +10,7 @@ from datetime import datetime
 
 # docs_agent 임포트
 from app.services.docs_agent.create_document_agent import CreateDocumentAgent
+from app.services.docs_agent.create_document_func import CreateDocumentFunction
 import os
 from dotenv import load_dotenv
 
@@ -25,12 +26,19 @@ router = APIRouter(tags=["docs-agent"])
 
 # 전역 docs_agent 인스턴스 (API 모드로 설정)
 docs_agent = None
+docs_func = None
 
 def get_docs_agent():
     global docs_agent
     if docs_agent is None:
         docs_agent = CreateDocumentAgent(api_mode=True)
     return docs_agent
+
+def get_docs_func():
+    global docs_func
+    if docs_func is None:
+        docs_func = CreateDocumentFunction()
+    return docs_func
 
 # 세션 저장소 (간단한 메모리 저장소)
 sessions = {}
@@ -112,6 +120,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
             # 위반인지 사용자 종료인지 구분
             violation_text = result.get("violation")
             if violation_text and violation_text != "OK":
+                # 세션 정리
+                if session_id in sessions:
+                    del sessions[session_id]
+                    logger.info(f"[DOCS_CHAT] 위반으로 인한 세션 종료 및 정리: {session_id}")
                 return ChatResponse(
                     success=False,
                     session_id=session_id,
@@ -119,6 +131,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
                     data={"terminated": True, "end_process": True, "violation": violation_text}
                 )
             else:
+                # 세션 정리
+                if session_id in sessions:
+                    del sessions[session_id]
+                    logger.info(f"[DOCS_CHAT] 사용자 종료로 인한 세션 정리: {session_id}")
                 return ChatResponse(
                     success=False,
                     session_id=session_id,
@@ -274,6 +290,10 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
                 violation_text = inner_result.get("violation")
                 
             if violation_text and violation_text != "OK":
+                # 세션 정리
+                if session_id in sessions:
+                    del sessions[session_id]
+                    logger.info(f"[DOCS_RESUME] 위반으로 인한 세션 종료 및 정리: {session_id}")
                 return ChatResponse(
                     success=False,
                     session_id=session_id,
@@ -281,6 +301,10 @@ async def resume_session(session_id: str, request: ResumeRequest) -> ChatRespons
                     data={"terminated": True, "end_process": True, "violation": violation_text}
                 )
             else:
+                # 세션 정리
+                if session_id in sessions:
+                    del sessions[session_id]
+                    logger.info(f"[DOCS_RESUME] 사용자 종료로 인한 세션 정리: {session_id}")
                 return ChatResponse(
                     success=False,
                     session_id=session_id,
@@ -516,3 +540,79 @@ async def list_templates():
             }
         ]
     }
+
+
+# 문서 생성 요청/응답 모델 (CreateDocumentFunction용)
+class DocumentCreateRequest(BaseModel):
+    """문서 생성 요청 모델"""
+    type: str  # 문서 타입
+    content: Dict[str, Any]  # 문서 내용
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "type": "영업방문결과보고서",
+                "content": {
+                    "방문일": "250808",
+                    "병원명": "서울대학병원",
+                    "고객사개요": "대형 종합병원으로 다양한 진료과 운영",
+                    "프로젝트개요": "신규 의약품 도입 검토",
+                    "방문및협의내용": "신약 소개 및 임상 데이터 공유",
+                    "향후계획및일정": "다음 주 추가 미팅 예정",
+                    "협조사항및공유사항": "샘플 제공 예정"
+                }
+            }
+        }
+
+class DocumentCreateResponse(BaseModel):
+    """문서 생성 응답 모델"""
+    status: str  # success, violation, error
+    message: str
+    document_type: str
+    file_path: Optional[str] = None
+    parsed_data: Optional[Dict[str, Any]] = None
+    violations: Optional[str] = None
+    document_content: Optional[str] = None  # 생성된 문서 내용
+
+
+@router.post("/create-document", response_model=DocumentCreateResponse)
+async def create_document(request: DocumentCreateRequest) -> DocumentCreateResponse:
+    """
+    문서를 직접 생성합니다 (CreateDocumentFunction.run 실행).
+    
+    Args:
+        request: 문서 생성 요청 (타입과 내용 포함)
+        
+    Returns:
+        DocumentCreateResponse: 문서 생성 결과
+    """
+    try:
+        logger.info(f"[CREATE_DOCUMENT] 문서 생성 요청: type={request.type}")
+        
+        # CreateDocumentFunction 인스턴스 가져오기
+        doc_func = get_docs_func()
+        
+        # 문서 생성 실행
+        result = doc_func.run(request.dict())
+        
+        # 결과를 DocumentCreateResponse 형식으로 변환
+        response = DocumentCreateResponse(
+            status=result.get("status", "error"),
+            message=result.get("message", "알 수 없는 오류가 발생했습니다."),
+            document_type=result.get("document_type", request.type),
+            file_path=result.get("file_path"),
+            parsed_data=result.get("parsed_data"),
+            violations=result.get("violations"),
+            document_content=result.get("document_content")  # 문서 내용 추가
+        )
+        
+        logger.info(f"[CREATE_DOCUMENT] 응답 완료: status={response.status}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"[CREATE_DOCUMENT] 오류 발생: {str(e)}", exc_info=True)
+        return DocumentCreateResponse(
+            status="error",
+            message=f"문서 생성 중 오류가 발생했습니다: {str(e)}",
+            document_type=request.type
+        )

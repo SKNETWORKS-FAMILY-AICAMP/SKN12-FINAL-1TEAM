@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { analyzeClient } from '../services/api';
+import { analyzeClient, createDocumentFromForm } from '../services/api';
 import './Docs.css';
 
 const Docs = () => {
   const [selectedDocType, setSelectedDocType] = useState('');
   const [formData, setFormData] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('문서 생성 중...');
   const [generatedDocument, setGeneratedDocument] = useState(null);
   const [error, setError] = useState('');
+  const [fieldViolations, setFieldViolations] = useState({});
+  const [showViolationDetail, setShowViolationDetail] = useState({});
+  const [violationDetails, setViolationDetails] = useState({});
   const [documentHistory, setDocumentHistory] = useState(() => {
     // localStorage에서 문서 기록 불러오기
     const saved = localStorage.getItem('documentHistory');
@@ -20,7 +24,7 @@ const Docs = () => {
 
   // 문서 타입별 필드 정의 (templates.yaml과 일치)
   const documentTypes = {
-    '영업방문 결과보고서': {
+    '영업방문결과보고서': {
       fields: [
         { name: '방문제목', label: '방문제목', type: 'text', required: true, placeholder: '방문 목적 또는 제목' },
         { name: '방문일', label: '방문일', type: 'date', required: true },
@@ -40,11 +44,11 @@ const Docs = () => {
         { name: '협조사항및공유사항', label: '협조사항및공유사항', type: 'textarea', required: false, placeholder: '협조가 필요한 사항이나 공유할 내용' }
       ]
     },
-    '제품설명회 시행 신청서': {
+    '제품설명회시행신청서': {
       fields: [
         { name: '구분', label: '구분', type: 'text', required: true, placeholder: '제품설명회 구분' },
         { name: 'PM참석', label: 'PM참석', type: 'text', required: true, placeholder: '참석/불참석' },
-        { name: '일시', label: '일시', type: 'datetime-local', required: true },
+        { name: '일시', label: '일시', type: 'date', required: true },
         { name: '장소', label: '장소', type: 'text', required: true, placeholder: '제품설명회 장소' },
         { name: '제품명', label: '제품명', type: 'text', required: true, placeholder: '설명할 제품명' },
         { name: '참석인원', label: '참석인원', type: 'text', required: false, placeholder: '예상 참석 인원수 (직접 명시)' },
@@ -54,11 +58,11 @@ const Docs = () => {
         { name: 'medical', label: '참석 의료전문가', type: 'dynamic_medical', maxCount: 4 }
       ]
     },
-    '제품설명회 시행 결과보고서': {
+    '제품설명회시행결과보고서': {
       fields: [
         { name: '구분', label: '구분', type: 'text', required: true, placeholder: '제품설명회 구분' },
         { name: 'PM참석', label: 'PM참석', type: 'text', required: true, placeholder: '참석/불참석' },
-        { name: '일시', label: '일시', type: 'datetime-local', required: true },
+        { name: '일시', label: '일시', type: 'date', required: true },
         { name: '장소', label: '장소', type: 'text', required: true, placeholder: '제품설명회 실시 장소' },
         { name: '제품명', label: '제품명', type: 'text', required: true, placeholder: '설명한 제품명' },
         { name: '참석인원', label: '참석인원', type: 'text', required: false, placeholder: '실제 참석 인원수 (직접 명시)' },
@@ -89,6 +93,9 @@ const Docs = () => {
     setFormData({});
     setGeneratedDocument(null);
     setError('');
+    setFieldViolations({});
+    setViolationDetails({});
+    setShowViolationDetail(false);
     // 동적 필드 초기화
     setStaffMembers([{ team: '', name: '' }]);
     setMedicalProfessionals([{ institution: '', name: '' }]);
@@ -130,6 +137,35 @@ const Docs = () => {
     setMedicalProfessionals(updated);
   };
 
+  // 위반 내용 파싱 함수
+  const parseViolations = (violationText) => {
+    const violations = {};
+    const details = {};
+    
+    // 위반 내용을 섹션별로 분리
+    const sections = violationText.split('**사용자 입력**').filter(s => s.trim());
+    
+    sections.forEach(section => {
+      // 필드명 추출 (예: "프로젝트개요는" -> "프로젝트개요")
+      const fieldMatch = section.match(/:\s*([^\s]+)는\s/);
+      if (fieldMatch) {
+        const fieldName = fieldMatch[1];
+        
+        // 위반 규정과 사유 추출
+        const regulationMatch = section.match(/\*\*위반 규정\*\*\s*:\s*([^\n]+)/);
+        const reasonMatch = section.match(/\*\*위반 사유\*\*\s*:\s*([^*]+)/);
+        
+        violations[fieldName] = true;
+        details[fieldName] = {
+          regulation: regulationMatch ? regulationMatch[1].trim() : '',
+          reason: reasonMatch ? reasonMatch[1].trim() : ''
+        };
+      }
+    });
+    
+    return { violations, details };
+  };
+
   // 문서 기록 저장
   const saveToHistory = (docType, docData, generatedContent) => {
     const newDoc = {
@@ -149,7 +185,23 @@ const Docs = () => {
   // 이전 문서 불러오기
   const handleLoadDocument = (doc) => {
     setSelectedDocType(doc.type);
-    setFormData(doc.data);
+    // doc.data에서 날짜 필드를 yyyy-MM-dd 형식으로 변환
+    const convertedData = { ...doc.data };
+    
+    // 각 필드를 확인하고 날짜 형식 변환
+    Object.keys(convertedData).forEach(key => {
+      const value = convertedData[key];
+      // YYMMDD 형식인지 확인 (6자리 숫자)
+      if (typeof value === 'string' && /^\d{6}$/.test(value)) {
+        // YYMMDD를 yyyy-MM-dd로 변환
+        const year = '20' + value.substring(0, 2);
+        const month = value.substring(2, 4);
+        const day = value.substring(4, 6);
+        convertedData[key] = `${year}-${month}-${day}`;
+      }
+    });
+    
+    setFormData(convertedData);
     setGeneratedDocument(doc.content);
     setError('');
   };
@@ -172,6 +224,7 @@ const Docs = () => {
   // 보고서 생성 핸들러
   const handleGenerateDocument = async () => {
     setIsLoading(true);
+    setLoadingMessage('문서 생성 중...');
     setError('');
     
     try {
@@ -217,59 +270,51 @@ const Docs = () => {
           documentData['참석의료전문가'] = validMedical.map(m => [m.institution, m.name]);
         } else {
           const value = formData[field.name] || '';
-          // 날짜 필드 특별 처리
+          // 날짜 필드 특별 처리 - YYMMDD 형식으로 변환
           if (field.type === 'date' && value) {
             const date = new Date(value);
-            documentData[field.label] = date.toLocaleDateString('ko-KR');
-          } else if (field.type === 'datetime-local' && value) {
-            const date = new Date(value);
-            documentData[field.label] = `${date.toLocaleDateString('ko-KR')} ${date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+            const year = String(date.getFullYear()).slice(-2);
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            documentData[field.name] = `${year}${month}${day}`;
           } else {
-            documentData[field.label] = value;
+            // field.name을 키로 사용 (label이 아님)
+            documentData[field.name] = value;
           }
         }
       });
 
-      // 문서 타입도 추가
-      documentData['문서타입'] = selectedDocType;
-
       // 디버깅용 - 콘솔에 출력
       console.log('준비된 문서 데이터 (딕셔너리 형태):', documentData);
       
-      // TODO: 새로운 엔드포인트가 준비되면 아래와 같이 호출
-      // const response = await callNewDocumentAPI({
-      //   document_type: selectedDocType,
-      //   document_data: documentData
-      // });
-
-      // 임시로 기존 API 사용 (폼 데이터를 문자열로 변환)
-      const formattedData = currentFields
-        .map(field => {
-          const value = formData[field.name] || '';
-          if (field.type === 'date' && value) {
-            const date = new Date(value);
-            return `${field.label}: ${date.toLocaleDateString('ko-KR')}`;
-          }
-          if (field.type === 'datetime-local' && value) {
-            const date = new Date(value);
-            return `${field.label}: ${date.toLocaleDateString('ko-KR')} ${date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
-          }
-          return `${field.label}: ${value || '없음'}`;
-        })
-        .join('\n');
-
-      const query = `다음 정보를 바탕으로 ${selectedDocType}를 작성해주세요:\n\n${formattedData}`;
+      // 로딩 메시지 업데이트
+      setLoadingMessage('AI가 문서를 작성하고 있습니다...');
       
-      // API 호출 (기존 방식 - 임시)
-      const response = await analyzeClient({
-        query: query,
-        generate_docs: true
-      });
+      // 새로운 문서 생성 API 호출
+      const response = await createDocumentFromForm(selectedDocType, documentData);
       
+      console.log('API 응답:', response);
+      
+      // 새로운 API 응답 처리
       if (response.status === 'success') {
-        setGeneratedDocument(response);
+        // 응답 구조를 기존 형식과 호환되도록 변환
+        const formattedResponse = {
+          status: 'success',
+          message: response.message,
+          response: response.document_content || response.message || '문서가 성공적으로 생성되었습니다.',
+          files_generated: response.file_path ? [response.file_path] : [],
+          parsed_data: response.parsed_data,
+          document_content: response.document_content  // 실제 문서 내용
+        };
+        setGeneratedDocument(formattedResponse);
         // 문서 기록에 저장
-        saveToHistory(selectedDocType, formData, response);
+        saveToHistory(selectedDocType, documentData, formattedResponse);
+      } else if (response.status === 'violation') {
+        // 규정 위반 처리
+        const { violations, details } = parseViolations(response.violations || '');
+        setFieldViolations(violations);
+        setViolationDetails(details);
+        setError('규정을 위반합니다! (클릭하여 자세히 보기)');
       } else {
         setError(response.message || '문서 생성에 실패했습니다.');
       }
@@ -365,12 +410,43 @@ const Docs = () => {
                   <h3>{docType}</h3>
                   <p>
                     {docType === '영업방문결과보고서' && '고객사 방문 후 작성하는 결과 보고서'}
-                    {docType === '제품설명회신청서' && '제품 설명회 개최를 위한 신청서'}
-                    {docType === '제품설명회결과보고서' && '제품 설명회 진행 후 작성하는 결과 보고서'}
+                    {docType === '제품설명회시행신청서' && '제품 설명회 개최를 위한 신청서'}
+                    {docType === '제품설명회시행결과보고서' && '제품 설명회 진행 후 작성하는 결과 보고서'}
                   </p>
                 </div>
               ))}
             </div>
+          </div>
+        ) : generatedDocument ? (
+          // 생성된 문서 표시 화면
+          <div className="generated-document-view">
+            <div className="document-header">
+              <h2>{selectedDocType} - 생성 완료</h2>
+              <button className="new-doc-btn" onClick={startNewDocument}>
+                새 문서 작성
+              </button>
+            </div>
+            <div className="document-preview">
+              <h3>📄 문서 내용</h3>
+              <div className="document-content">
+                {/* 문서 내용을 줄바꿈 처리하여 표시 */}
+                {(generatedDocument.document_content || generatedDocument.response || generatedDocument.message)
+                  .split('\n')
+                  .map((line, index) => (
+                    <div key={index} className="document-line">
+                      {line || '\u00A0'}
+                    </div>
+                  ))}
+              </div>
+            </div>
+            {generatedDocument.files_generated && generatedDocument.files_generated.length > 0 && (
+              <div className="generated-files">
+                <h4>💾 생성된 파일 경로:</h4>
+                <div className="file-path">
+                  {generatedDocument.files_generated[0]}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           // 폼 입력 화면
@@ -485,17 +561,43 @@ const Docs = () => {
                 }
                 
                 // 일반 필드
+                const hasViolation = fieldViolations[field.name];
+                const showDetail = showViolationDetail[field.name];
+                
                 return (
-                  <div key={field.name} className="form-field">
+                  <div key={field.name} className={`form-field ${hasViolation ? 'violation' : ''}`}>
                     <label htmlFor={field.name}>
                       {field.label}
                       {field.required && <span className="required">*</span>}
+                      {hasViolation && (
+                        <>
+                          <span className="violation-indicator"> ⚠️ 규정 위반</span>
+                          <button 
+                            type="button"
+                            className="violation-detail-btn"
+                            onClick={() => setShowViolationDetail(prev => ({
+                              ...prev,
+                              [field.name]: !prev[field.name]
+                            }))}
+                          >
+                            {showDetail ? '접기' : '자세히 보기'}
+                          </button>
+                        </>
+                      )}
                     </label>
                     {field.type === 'textarea' ? (
                       <textarea
                         id={field.name}
+                        className={hasViolation ? 'input-violation' : ''}
                         value={formData[field.name] || ''}
-                        onChange={(e) => handleInputChange(field.name, e.target.value)}
+                        onChange={(e) => {
+                          handleInputChange(field.name, e.target.value);
+                          // 입력 변경시 해당 필드의 위반 상태 초기화
+                          if (hasViolation) {
+                            setFieldViolations(prev => ({...prev, [field.name]: false}));
+                            setShowViolationDetail(prev => ({...prev, [field.name]: false}));
+                          }
+                        }}
                         placeholder={field.placeholder}
                         required={field.required}
                         rows={4}
@@ -504,11 +606,27 @@ const Docs = () => {
                       <input
                         type={field.type}
                         id={field.name}
+                        className={hasViolation ? 'input-violation' : ''}
                         value={formData[field.name] || ''}
-                        onChange={(e) => handleInputChange(field.name, e.target.value)}
+                        onChange={(e) => {
+                          handleInputChange(field.name, e.target.value);
+                          // 입력 변경시 해당 필드의 위반 상태 초기화
+                          if (hasViolation) {
+                            setFieldViolations(prev => ({...prev, [field.name]: false}));
+                            setShowViolationDetail(prev => ({...prev, [field.name]: false}));
+                          }
+                        }}
                         placeholder={field.placeholder}
                         required={field.required}
                       />
+                    )}
+                    {hasViolation && showDetail && violationDetails[field.name] && (
+                      <div className="violation-detail-box">
+                        <div className="violation-detail-content">
+                          <p><strong>위반 규정:</strong> {violationDetails[field.name].regulation}</p>
+                          <p><strong>위반 사유:</strong> {violationDetails[field.name].reason}</p>
+                        </div>
+                      </div>
                     )}
                   </div>
                 );
@@ -526,7 +644,7 @@ const Docs = () => {
                   className="generate-btn"
                   disabled={isLoading}
                 >
-                  {isLoading ? '문서 생성 중...' : '문서 생성'}
+                  {isLoading ? loadingMessage : '문서 생성'}
                 </button>
                 <button 
                   type="button" 
@@ -537,30 +655,22 @@ const Docs = () => {
                 </button>
               </div>
             </form>
-
-            {/* 생성된 문서 표시 */}
-            {generatedDocument && (
-              <div className="generated-document">
-                <h3>생성된 문서</h3>
-                <div className="document-content">
-                  {generatedDocument.response || generatedDocument.message}
-                </div>
-                {generatedDocument.files_generated && (
-                  <div className="generated-files">
-                    <h4>생성된 파일:</h4>
-                    <ul>
-                      {generatedDocument.files_generated.map((file, index) => (
-                        <li key={index}>{file}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
         </div>
       </div>
+      
+      {/* 로딩 스피너 오버레이 */}
+      {isLoading && (
+        <div className="loading-overlay">
+          <div className="loading-container">
+            <div className="spinner-box">
+              <div className="spinner"></div>
+              <p className="loading-text">{loadingMessage}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

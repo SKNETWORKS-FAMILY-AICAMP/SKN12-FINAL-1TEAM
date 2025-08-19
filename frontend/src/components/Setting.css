@@ -15,7 +15,7 @@
 .settings-modal {
   background: white;
   border-radius: 16px;
-  width: 90%;
+  width: 85%;
   max-width: 450px;
   max-height: 70vh;
   overflow: hidden;
@@ -23,21 +23,18 @@
   animation: modalSlideIn 0.3s ease-out;
   display: flex;
   flex-direction: column;
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  position: relative;
   z-index: 1001;
 }
 
 @keyframes modalSlideIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -50%) translateY(-20px) scale(0.95);
+    transform: translateY(-20px) scale(0.95);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -50%) translateY(0) scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -78,6 +75,7 @@
 }
 
 .modal-content {
+  margin-left: 20px;
   padding: 20px 24px;
   flex: 1;
   overflow-y: auto;

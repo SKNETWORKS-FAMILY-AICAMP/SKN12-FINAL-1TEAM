@@ -596,6 +596,7 @@ class CreateDocumentAgent:
         # 위반 사항을 state에 저장
         state["final_doc"] = None  # 문서 생성 실패 표시
         state["end_process"] = True  # 프로세스 종료 표시
+        state["error_type"] = "policy_violation"  # 오류 타입 명시
         
         return state
     
@@ -1380,6 +1381,11 @@ class CreateDocumentAgent:
                 try:
                     final_result = self.app.invoke(None, config)
                     
+                    # 디버깅을 위해 final_result 내용 출력
+                    print(f"[DEBUG] final_result keys: {final_result.keys() if final_result else 'None'}")
+                    print(f"[DEBUG] final_result.violation: {final_result.get('violation', 'NOT FOUND')}")
+                    print(f"[DEBUG] final_result.error_type: {final_result.get('error_type', 'NOT FOUND')}")
+                    
                     # 또 다른 인터럽트 확인
                     current_state_after = self.app.get_state(config)
                     if current_state_after.next:
@@ -1387,14 +1393,52 @@ class CreateDocumentAgent:
                     
                     # 종료 처리 확인
                     if final_result.get("end_process"):
-                        return {
-                            "success": False,
-                            "result": final_result,
-                            "thread_id": thread_id,
-                            "error_type": "user_terminated",
-                            "message": "사용자가 종료를 선택했습니다.",
-                            "end_process": True
-                        }
+                        # 위반사항 먼저 확인
+                        violation_text = final_result.get("violation", "")
+                        error_type = final_result.get("error_type", "")
+                        
+                        # 중간 종료 시 그래프 상태를 완전히 정리
+                        print(f"[INFO] 중간 종료 감지, 그래프 상태 정리: {thread_id}")
+                        try:
+                            # 그래프를 강제로 END 상태로 만들어 완료 처리
+                            self.app.update_state(config, {"end_process": True})
+                            # 현재 상태를 END로 마킹하여 이후 resume 시 새로운 대화로 인식되도록 함
+                            print(f"[INFO] 그래프 상태 정리 완료: {thread_id}")
+                        except Exception as e:
+                            print(f"[ERROR] 그래프 상태 정리 중 오류: {e}")
+                        
+                        # 위반사항이 있는 경우
+                        if violation_text and violation_text != "OK":
+                            return {
+                                "success": False,
+                                "result": final_result,
+                                "thread_id": thread_id,
+                                "error_type": "policy_violation",
+                                "violation": violation_text,
+                                "message": "규정 위반으로 문서 생성이 중단되었습니다.",
+                                "end_process": True
+                            }
+                        # 규정 위반 타입으로 명시된 경우
+                        elif error_type == "policy_violation":
+                            return {
+                                "success": False,
+                                "result": final_result,
+                                "thread_id": thread_id,
+                                "error_type": "policy_violation",
+                                "violation": violation_text or "규정 위반",
+                                "message": "규정 위반으로 문서 생성이 중단되었습니다.",
+                                "end_process": True
+                            }
+                        # 사용자 종료
+                        else:
+                            return {
+                                "success": False,
+                                "result": final_result,
+                                "thread_id": thread_id,
+                                "error_type": "user_terminated",
+                                "message": "사용자가 종료를 선택했습니다.",
+                                "end_process": True
+                            }
                     
                     # 성공 또는 실패 처리
                     violation_text = final_result.get("violation", "")
@@ -1541,6 +1585,62 @@ class CreateDocumentAgent:
             interrupt_info["template_content"] = state_values.get("template_content")
         
         return interrupt_info
+
+    def get_current_state(self, thread_id: str):
+        """특정 thread의 현재 상태를 조회합니다."""
+        try:
+            if hasattr(self, 'graph'):
+                config = {"configurable": {"thread_id": thread_id}}
+                state_snapshot = self.graph.get_state(config)
+                return state_snapshot
+            else:
+                print(f"[WARNING] Graph not initialized for thread {thread_id}")
+                return None
+        except Exception as e:
+            print(f"[ERROR] Error getting current state for thread {thread_id}: {e}")
+            return None
+
+    def clear_thread_state(self, thread_id: str) -> bool:
+        """특정 thread의 상태를 초기화합니다."""
+        try:
+            # app 객체에서 checkpointer 접근
+            if hasattr(self, 'app') and hasattr(self.app, 'checkpointer'):
+                config = {"configurable": {"thread_id": thread_id}}
+                
+                # 그래프를 강제로 완료 상태로 만들기
+                try:
+                    current_state = self.app.get_state(config)
+                    if current_state and current_state.values:
+                        # 강제로 end_process를 True로 설정하고 그래프 완료
+                        self.app.update_state(config, {"end_process": True})
+                        print(f"[INFO] 그래프를 강제 완료 상태로 설정: {thread_id}")
+                except Exception as e:
+                    print(f"[WARNING] 그래프 강제 완료 설정 실패: {e}")
+                
+                # MemorySaver의 경우 직접 삭제
+                if hasattr(self.app.checkpointer, 'storage'):
+                    # 메모리 저장소에서 해당 thread_id 관련 데이터 삭제
+                    storage = self.app.checkpointer.storage
+                    keys_to_delete = []
+                    for key in storage.keys():
+                        if thread_id in str(key):
+                            keys_to_delete.append(key)
+                    
+                    for key in keys_to_delete:
+                        del storage[key]
+                    
+                    print(f"[INFO] Successfully cleared thread state: {thread_id} (deleted {len(keys_to_delete)} keys)")
+                    return True
+                else:
+                    print(f"[WARNING] Checkpointer storage not accessible for thread {thread_id}")
+                    return False
+            else:
+                print(f"[WARNING] App or checkpointer not available for thread {thread_id}")
+                return False
+                
+        except Exception as e:
+            print(f"[ERROR] Error clearing thread state {thread_id}: {e}")
+            return False
 
 if __name__ == "__main__":
     # 통합 문서 작성 시스템 실행

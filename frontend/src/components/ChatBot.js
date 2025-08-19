@@ -460,6 +460,39 @@ const ChatBot = () => {
         // 기본 응답 내용
         botResponseContent = data.response || data.message || '처리가 완료되었습니다.';
         
+        // 종료 메시지 감지 - 위반사항은 제외
+        const isTerminationMessage = (
+          // 위반사항이 아닐 때만 종료로 처리
+          !data.data?.violation &&
+          data.data?.error_type !== 'policy_violation' &&
+          (
+            botResponseContent.includes('종료되었습니다') || 
+            botResponseContent.includes('새로운 작업을 시작해주세요') ||
+            botResponseContent.includes('문서 작성이 종료') ||
+            data.data?.end_process === true ||
+            data.data?.terminated === true ||
+            data.data?.error_type === 'user_terminated' ||
+            // 백엔드 응답에서 종료 상황 감지
+            (data.response && data.response.includes('👋')) ||
+            (data.message && data.message.includes('👋'))
+          )
+        );
+
+        if (isTerminationMessage) {
+          // 세션 관련 모든 스토리지 강제 정리
+          sessionStorage.removeItem(`thread_${sessionId}`);
+          sessionStorage.removeItem(`interrupt_type_${sessionId}`);
+          
+          // 새로운 세션 ID 생성하여 완전히 새로운 대화로 시작
+          const newSessionId = generateSessionId();
+          setSessionId(newSessionId);
+          
+          // 종료 메시지를 더 명확하게 표시
+          if (!botResponseContent.includes('👋')) {
+            botResponseContent = '👋 문서 작성이 종료되었습니다. 새로운 작업을 시작해주세요.';
+          }
+        }
+        
         // 라우팅 정보가 있으면 추가
         if (data.classification_result) {
           botResponseContent += `\n\n[${data.classification_result}]`;
@@ -504,31 +537,52 @@ const ChatBot = () => {
         // 오류 메시지 처리
         const errorMsg = data.response || data.error || data.message || '알 수 없는 오류가 발생했습니다.';
         
-        if (data.data?.error_type === 'user_terminated') {
-          botResponseContent = '👋 문서 작성이 종료되었습니다. 새로운 작업을 시작해주세요.';
+        // 규정 위반을 먼저 체크
+        if (data.data?.error_type === 'policy_violation' || data.data?.violation) {
+          // response에 위반 메시지가 포함되어 있으면 그대로 사용
+          if (data.response && data.response.includes('🚫')) {
+            botResponseContent = data.response;
+          } else {
+            botResponseContent = `❌ ${errorMsg}`;
+            
+            if (data.data?.violation_details && data.data.violation_details.length > 0) {
+              botResponseContent += '\n\n📋 위반 내용:';
+              data.data.violation_details.forEach((violation, index) => {
+                botResponseContent += `\n${index + 1}. ${violation}`;
+              });
+            } else if (data.data?.violation) {
+              botResponseContent += `\n\n📋 위반 내용:\n${data.data.violation}`;
+            }
+            
+            if (data.data?.filled_data) {
+              botResponseContent += '\n\n📝 입력한 데이터:';
+              Object.entries(data.data.filled_data).forEach(([key, value]) => {
+                if (value) {
+                  botResponseContent += `\n- ${key}: ${value}`;
+                }
+              });
+            }
+          }
+          
+          // 세션 관련 모든 스토리지 강제 정리
           sessionStorage.removeItem(`thread_${sessionId}`);
           sessionStorage.removeItem(`interrupt_type_${sessionId}`);
+          
+          // 새로운 세션 ID 생성
+          const newSessionId = generateSessionId();
+          setSessionId(newSessionId);
         }
-        else if (data.data?.error_type === 'policy_violation') {
-          botResponseContent = `❌ ${errorMsg}`;
+        // 위반이 아닌 일반 종료의 경우
+        else if (data.data?.error_type === 'user_terminated' || data.data?.terminated || data.data?.end_process) {
+          botResponseContent = '👋 문서 작성이 종료되었습니다. 새로운 작업을 시작해주세요.';
           
-          if (data.data?.violation_details && data.data.violation_details.length > 0) {
-            botResponseContent += '\n\n📋 위반 내용:';
-            data.data.violation_details.forEach((violation, index) => {
-              botResponseContent += `\n${index + 1}. ${violation}`;
-            });
-          } else if (data.data?.violation) {
-            botResponseContent += `\n\n📋 위반 내용:\n${data.data.violation}`;
-          }
+          // 세션 관련 모든 스토리지 강제 정리
+          sessionStorage.removeItem(`thread_${sessionId}`);
+          sessionStorage.removeItem(`interrupt_type_${sessionId}`);
           
-          if (data.data?.filled_data) {
-            botResponseContent += '\n\n📝 입력한 데이터:';
-            Object.entries(data.data.filled_data).forEach(([key, value]) => {
-              if (value) {
-                botResponseContent += `\n- ${key}: ${value}`;
-              }
-            });
-          }
+          // 새로운 세션 ID 생성
+          const newSessionId = generateSessionId();
+          setSessionId(newSessionId);
         } else {
           botResponseContent = `❌ ${errorMsg}`;
         }

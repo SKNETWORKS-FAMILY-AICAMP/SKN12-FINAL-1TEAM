@@ -551,17 +551,17 @@ const Schedule = ({ currentUser }) => {
                     </div>
                     
                     <div className="schedule-details">
-                      <div className="detail-item">
-                        <span className="detail-label">📍</span>
+                      <div className="schedule-detail-item">
+                        <span className="schedule-detail-label">📍</span>
                         <span>{schedule.location}</span>
                       </div>
-                      <div className="detail-item">
-                        <span className="detail-label">👤</span>
+                      <div className="schedule-detail-item">
+                        <span className="schedule-detail-label">👤</span>
                         <span>{schedule.contact_person}</span>
                       </div>
                       {schedule.memo && (
-                        <div className="detail-item">
-                          <span className="detail-label">📝</span>
+                        <div className="schedule-detail-item">
+                          <span className="schedule-detail-label">📝</span>
                           <span>{schedule.memo}</span>
                         </div>
                       )}

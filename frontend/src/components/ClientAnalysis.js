@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { analyzeClient, getClientHealthCheck } from '../services/api';
 import { parseMarkdown } from '../utils/markdownParser';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
+import { saveAs } from 'file-saver';
 import './ClientAnalysis.css';
 
-const ClientAnalysis = () => {
+const ClientAnalysis = ({ currentUser }) => {
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
-  const [chatHistory, setChatHistory] = useState([]);
-  const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [analysisQuery, setAnalysisQuery] = useState('');
   const [error, setError] = useState(null);
   const [analysisHistory, setAnalysisHistory] = useState([]);
   const [currentReport, setCurrentReport] = useState(null);
@@ -31,8 +32,12 @@ const ClientAnalysis = () => {
   };
 
   const loadAnalysisHistory = () => {
+    // 사용자별 localStorage 키 생성
+    const userId = currentUser?.employee_id || currentUser?.email || 'guest';
+    const storageKey = `clientAnalysisHistory_${userId}`;
+    
     // localStorage에서 분석 히스토리 불러오기
-    const savedHistory = localStorage.getItem('clientAnalysisHistory');
+    const savedHistory = localStorage.getItem(storageKey);
     if (savedHistory) {
       try {
         const history = JSON.parse(savedHistory);
@@ -44,27 +49,21 @@ const ClientAnalysis = () => {
   };
 
   const saveAnalysisHistory = (newAnalysis) => {
+    const userId = currentUser?.employee_id || currentUser?.email || 'guest';
+    const storageKey = `clientAnalysisHistory_${userId}`;
+    
     const updatedHistory = [newAnalysis, ...analysisHistory].slice(0, 10); // 최대 10개 저장
     setAnalysisHistory(updatedHistory);
-    localStorage.setItem('clientAnalysisHistory', JSON.stringify(updatedHistory));
+    localStorage.setItem(storageKey, JSON.stringify(updatedHistory));
   };
 
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim()) return;
+  const handleAnalyze = async () => {
+    if (!analysisQuery.trim()) return;
     
-    const userMsg = inputMessage.trim();
-    setInputMessage('');
+    const userMsg = analysisQuery.trim();
     setLoading(true);
     setError(null);
-    
-    // 사용자 메시지 추가
-    const newUserMessage = {
-      id: Date.now(),
-      type: 'user',
-      content: userMsg,
-      timestamp: new Date().toISOString()
-    };
-    setChatHistory(prev => [...prev, newUserMessage]);
+    setCurrentReport(null);
     
     try {
       // API 호출
@@ -74,16 +73,6 @@ const ClientAnalysis = () => {
       });
       
       if (response.success) {
-        // AI 응답 메시지 추가
-        const aiMessage = {
-          id: Date.now() + 1,
-          type: 'ai',
-          content: response.final_report || '분석이 완료되었습니다.',
-          data: response,
-          timestamp: new Date().toISOString()
-        };
-        setChatHistory(prev => [...prev, aiMessage]);
-        
         // 현재 보고서 설정
         setCurrentReport(response);
         setSelectedAnalysis(`${response.company_name || '분석'} 보고서`);
@@ -98,31 +87,25 @@ const ClientAnalysis = () => {
           grade: response.grade_result
         };
         saveAnalysisHistory(historyItem);
+        
+        // 입력창 초기화
+        setAnalysisQuery('');
       } else {
         throw new Error(response.error || '분석 실패');
       }
     } catch (error) {
       console.error('거래처 분석 실패:', error);
       setError(error.message || '거래처 분석 중 오류가 발생했습니다.');
-      
-      // 오류 메시지 추가
-      const errorMessage = {
-        id: Date.now() + 1,
-        type: 'error',
-        content: `오류: ${error.message || '분석 중 문제가 발생했습니다.'}`,
-        timestamp: new Date().toISOString()
-      };
-      setChatHistory(prev => [...prev, errorMessage]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleNewAnalysis = () => {
-    setChatHistory([]);
     setCurrentReport(null);
     setSelectedAnalysis(null);
     setError(null);
+    setAnalysisQuery('');
   };
 
   const handleSelectHistory = (item) => {
@@ -134,10 +117,196 @@ const ClientAnalysis = () => {
     });
   };
 
+  const handleDeleteHistory = (e, itemId) => {
+    e.stopPropagation(); // 클릭 이벤트 전파 방지
+    
+    const userId = currentUser?.employee_id || currentUser?.email || 'guest';
+    const storageKey = `clientAnalysisHistory_${userId}`;
+    
+    const updatedHistory = analysisHistory.filter(item => item.id !== itemId);
+    setAnalysisHistory(updatedHistory);
+    localStorage.setItem(storageKey, JSON.stringify(updatedHistory));
+    
+    // 현재 선택된 항목이 삭제된 경우 초기화
+    const deletedItem = analysisHistory.find(item => item.id === itemId);
+    if (deletedItem && currentReport?.company_name === deletedItem.company_name) {
+      handleNewAnalysis();
+    }
+  };
+
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !loading) {
-      handleSendMessage();
+      handleAnalyze();
     }
+  };
+
+  const handleDownloadReport = async () => {
+    if (!currentReport) return;
+    
+    try {
+      const doc = new Document({
+        sections: [
+          {
+            properties: {},
+            children: [
+              // 제목
+              new Paragraph({
+                text: `${currentReport.company_name || '거래처'} 분석 보고서`,
+                heading: HeadingLevel.TITLE,
+                alignment: AlignmentType.CENTER,
+              }),
+              new Paragraph({
+                text: `작성일: ${new Date().toLocaleDateString('ko-KR')}`,
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 400 },
+              }),
+              
+              // 등급 평가
+              new Paragraph({
+                text: '등급 평가',
+                heading: HeadingLevel.HEADING_1,
+                spacing: { before: 400, after: 200 },
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: '최종 등급: ', bold: true }),
+                  new TextRun(currentReport.grade_result?.final_grade || 'N/A'),
+                ],
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: '점수: ', bold: true }),
+                  new TextRun(`${currentReport.grade_result?.total_score || 0}점`),
+                ],
+                spacing: { after: 400 },
+              }),
+              
+              // 분석 보고서 내용
+              new Paragraph({
+                text: '분석 보고서',
+                heading: HeadingLevel.HEADING_1,
+                spacing: { before: 400, after: 200 },
+              }),
+              ...parseReportToDocx(currentReport.final_report || ''),
+            ],
+          },
+        ],
+      });
+      
+      const blob = await Packer.toBlob(doc);
+      const fileName = `거래처분석보고서_${currentReport.company_name || '분석'}_${new Date().toISOString().slice(0, 10)}.docx`;
+      saveAs(blob, fileName);
+    } catch (error) {
+      console.error('보고서 다운로드 실패:', error);
+      setError('보고서 다운로드에 실패했습니다.');
+    }
+  };
+  
+  const parseReportToDocx = (reportText) => {
+    if (!reportText) return [];
+    
+    const lines = reportText.split('\n');
+    const paragraphs = [];
+    
+    lines.forEach(line => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) {
+        paragraphs.push(new Paragraph({ text: '' }));
+        return;
+      }
+      
+      // 헤더 처리
+      if (trimmedLine.startsWith('######')) {
+        paragraphs.push(
+          new Paragraph({
+            text: trimmedLine.replace(/^######\s*/, ''),
+            heading: HeadingLevel.HEADING_6,
+            spacing: { before: 200, after: 100 },
+          })
+        );
+      } else if (trimmedLine.startsWith('#####')) {
+        paragraphs.push(
+          new Paragraph({
+            text: trimmedLine.replace(/^#####\s*/, ''),
+            heading: HeadingLevel.HEADING_5,
+            spacing: { before: 200, after: 100 },
+          })
+        );
+      } else if (trimmedLine.startsWith('####')) {
+        paragraphs.push(
+          new Paragraph({
+            text: trimmedLine.replace(/^####\s*/, ''),
+            heading: HeadingLevel.HEADING_4,
+            spacing: { before: 200, after: 100 },
+          })
+        );
+      } else if (trimmedLine.startsWith('###')) {
+        paragraphs.push(
+          new Paragraph({
+            text: trimmedLine.replace(/^###\s*/, ''),
+            heading: HeadingLevel.HEADING_3,
+            spacing: { before: 200, after: 100 },
+          })
+        );
+      } else if (trimmedLine.startsWith('##')) {
+        paragraphs.push(
+          new Paragraph({
+            text: trimmedLine.replace(/^##\s*/, ''),
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 300, after: 150 },
+          })
+        );
+      } else if (trimmedLine.startsWith('#')) {
+        paragraphs.push(
+          new Paragraph({
+            text: trimmedLine.replace(/^#\s*/, ''),
+            heading: HeadingLevel.HEADING_1,
+            spacing: { before: 400, after: 200 },
+          })
+        );
+      }
+      // 리스트 항목 처리
+      else if (trimmedLine.startsWith('-') || trimmedLine.startsWith('*')) {
+        paragraphs.push(
+          new Paragraph({
+            text: trimmedLine.replace(/^[-*]\s*/, ''),
+            bullet: { level: 0 },
+            spacing: { after: 100 },
+          })
+        );
+      }
+      // 일반 텍스트
+      else {
+        const children = [];
+        let currentText = trimmedLine;
+        
+        // 간단한 굵은 글씨 처리
+        const boldRegex = /\*\*(.+?)\*\*/g;
+        let lastIndex = 0;
+        let match;
+        
+        while ((match = boldRegex.exec(currentText)) !== null) {
+          if (match.index > lastIndex) {
+            children.push(new TextRun(currentText.substring(lastIndex, match.index)));
+          }
+          children.push(new TextRun({ text: match[1], bold: true }));
+          lastIndex = match.index + match[0].length;
+        }
+        
+        if (lastIndex < currentText.length) {
+          children.push(new TextRun(currentText.substring(lastIndex)));
+        }
+        
+        paragraphs.push(
+          new Paragraph({
+            children: children.length > 0 ? children : [new TextRun(trimmedLine)],
+            spacing: { after: 100 },
+          })
+        );
+      }
+    });
+    
+    return paragraphs;
   };
 
   return (
@@ -159,13 +328,19 @@ const ClientAnalysis = () => {
                 key={item.id} 
                 className="analysis-item"
                 onClick={() => handleSelectHistory(item)}
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: 'pointer', position: 'relative' }}
               >
                 <span className="analysis-icon">📊</span>
                 <span className="analysis-name">
                   {item.company_name || '분석'} - {new Date(item.timestamp).toLocaleDateString()}
                 </span>
-                <span className="analysis-arrow">›</span>
+                <button 
+                  className="delete-btn"
+                  onClick={(e) => handleDeleteHistory(e, item.id)}
+                  title="삭제"
+                >
+                  ×
+                </button>
               </div>
             ))
           ) : (
@@ -176,26 +351,69 @@ const ClientAnalysis = () => {
         </div>
       </div>
 
-      {/* Center Content Area */}
-      <div className="client-main">
+      {/* Main Content Area */}
+      <div className="client-main-full">
         <div className="analysis-content">
-          <h1>{selectedAnalysis || '거래처 분석'}</h1>
+          <div className="content-header">
+            <h1>{selectedAnalysis || '거래처 분석'}</h1>
+            {currentReport && !loading && (
+              <button 
+                className="download-btn"
+                onClick={handleDownloadReport}
+                title="보고서 다운로드"
+              >
+                📥 보고서 다운로드
+              </button>
+            )}
+          </div>
           
+          {/* 입력 영역 */}
+          {!loading && !currentReport && (
+            <div className="input-section">
+              <div className="input-wrapper">
+                <input
+                  type="text"
+                  value={analysisQuery}
+                  onChange={(e) => setAnalysisQuery(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="거래처명과 분석 기간을 입력하세요."
+                  className="analysis-input"
+                  disabled={loading}
+                />
+                <button 
+                  onClick={handleAnalyze}
+                  className="analyze-button"
+                  disabled={loading || !analysisQuery.trim()}
+                >
+                  분석 시작
+                </button>
+              </div>
+              <div className="input-hint">
+                <p>💡 예시: "서울대병원 2024년 분석해줘", "강호경내과의원 2023년 1분기 분석해줘"</p>
+              </div>
+            </div>
+          )}
+
+          {/* 로딩 스피너 */}
+          {loading && (
+            <div className="loading-container">
+              <div className="loading-spinner"></div>
+              <p className="loading-text">거래처 분석 중입니다...</p>
+              <p className="loading-subtext">잠시만 기다려주세요</p>
+            </div>
+          )}
+          
+          {/* 에러 메시지 */}
           {error && (
-            <div className="error-message" style={{ 
-              padding: '10px', 
-              backgroundColor: '#ffebee', 
-              color: '#c62828', 
-              borderRadius: '4px',
-              marginBottom: '20px'
-            }}>
+            <div className="error-message">
               {error}
             </div>
           )}
           
-          <div className="analysis-body">
-            {currentReport ? (
-              <div className="report-container">
+          {/* 분석 결과 */}
+          {currentReport && !loading && (
+            <div className="analysis-body">
+                <div className="report-container">
                 {currentReport.final_report && (
                   <div className="report-section">
                     <h2>📋 분석 보고서</h2>
@@ -210,76 +428,39 @@ const ClientAnalysis = () => {
                   <div className="report-section">
                     <h2>📊 등급 평가</h2>
                     <div className="grade-info">
-                      <p><strong>최종 등급:</strong> {currentReport.grade_result.final_grade || 'N/A'}</p>
-                      <p><strong>점수:</strong> {currentReport.grade_result.total_score || 0}점</p>
+                      <p><strong>최종 등급:</strong> {currentReport.grade_result['최종등급'] || currentReport.grade_result.final_grade || 'N/A'}</p>
+                      <p><strong>점수:</strong> {currentReport.grade_result['총점'] || currentReport.grade_result.total_score || 0}점</p>
+                      {currentReport.grade_result['세부등급'] && (
+                        <div className="grade-details">
+                          <p><strong>세부 등급:</strong></p>
+                          <ul>
+                            {Object.entries(currentReport.grade_result['세부등급']).map(([key, value]) => (
+                              <li key={key}>
+                                {key}: {value.등급 || value.grade || 'N/A'}
+                                {value.평균 && ` (평균: ${value.평균.toLocaleString()})`}
+                                {value.비율 && ` (비율: ${value.비율}%)`}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {currentReport.grade_result['요약'] && (
+                        <div className="grade-details">
+                          <p><strong>실적 요약:</strong></p>
+                          <ul>
+                            <li>총 매출액: {currentReport.grade_result['요약']['총매출']?.toLocaleString() || 0}원</li>
+                            <li>월평균 매출: {currentReport.grade_result['요약']['월평균매출']?.toLocaleString() || 0}원</li>
+                            <li>평균 환자수: {currentReport.grade_result['요약']['평균환자수']?.toLocaleString() || 0}명</li>
+                            <li>월평균 방문: {currentReport.grade_result['요약']['월평균방문'] || 0}회</li>
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '50px', color: '#999' }}>
-                <p>거래처를 선택하거나 새로운 분석을 시작하세요.</p>
-                <p>예: "서울대병원 2024년 1월부터 12월까지 분석해줘"</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Right Panel - AI Assistant */}
-      <div className="client-ai-panel">
-        <h2>거래처 분석 요청</h2>
-        
-        <div className="chat-container">
-          {chatHistory.map((message) => (
-            <div key={message.id} className={`message ${message.type}-message`}>
-              {message.type === 'ai' && <div className="ai-avatar">🤖</div>}
-              <div className="message-content">
-                {message.content}
-              </div>
-            </div>
-          ))}
-          
-          {loading && (
-            <div className="message ai-message">
-              <div className="ai-avatar">🤖</div>
-              <div className="message-content">
-                <div className="loading-dots">
-                  분석 중<span>.</span><span>.</span><span>.</span>
-                </div>
-              </div>
             </div>
           )}
-          
-          {chatHistory.length === 0 && !loading && (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
-              <p>거래처 분석을 시작하세요.</p>
-              <p style={{ fontSize: '0.9em', marginTop: '10px' }}>
-                예시:
-                "서울대병원 2024년 분석해줘"<br/>
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Input Area */}
-        <div className="input-area">
-          <input
-            type="text"
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="거래처명과 분석 기간을 입력하세요..."
-            className="message-input"
-            disabled={loading}
-          />
-          <button 
-            onClick={handleSendMessage}
-            className="send-button"
-            disabled={loading || !inputMessage.trim()}
-          >
-            <span className="send-icon">{loading ? '⏳' : '➤'}</span>
-          </button>
         </div>
       </div>
     </div>

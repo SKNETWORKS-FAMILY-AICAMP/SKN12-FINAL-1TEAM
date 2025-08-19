@@ -1,5 +1,5 @@
 /* 모달 스타일 */
-.modal-overlay {
+.admin-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -12,7 +12,7 @@
   z-index: 1000;
 }
 
-.modal-content {
+.admin-modal-content {
   background: white;
   border-radius: 12px;
   width: 90%;
@@ -22,7 +22,7 @@
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 }
 
-.modal-header {
+.admin-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -31,12 +31,12 @@
   color: white;
 }
 
-.modal-header h2 {
+.admin-modal-header h2 {
   margin: 0;
   font-size: 1.5rem;
 }
 
-.modal-close {
+.admin-modal-close {
   background: none;
   border: none;
   color: white;
@@ -52,11 +52,11 @@
   transition: background 0.2s;
 }
 
-.modal-close:hover {
+.admin-modal-close:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
-.modal-body {
+.admin-modal-body {
   padding: 30px;
   max-height: calc(80vh - 140px);
   overflow-y: auto;
@@ -91,7 +91,7 @@
   color: #333;
 }
 
-.modal-footer {
+.admin-modal-footer {
   padding: 20px 30px;
   background: #f8f9fa;
   display: flex;

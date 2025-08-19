@@ -392,6 +392,28 @@ export const getDocumentContent = async (docId) => {
   });
 };
 
+// 새로운 문서 생성 API (폼 데이터 직접 전송)
+export const createDocumentFromForm = async (documentType, documentData) => {
+  // 문서타입 필드는 제거 (type 파라미터로 전달)
+  const processedContent = { ...documentData };
+  delete processedContent['문서타입'];
+  
+  // 참석직원과 참석의료전문가는 그대로 유지 (이미 이중 배열 형태)
+  
+  // 전송할 데이터 확인
+  const requestData = {
+    type: documentType,
+    content: processedContent
+  };
+  
+  console.log('📤 문서 생성 요청 데이터:', JSON.stringify(requestData, null, 2));
+  
+  return await apiRequest('/api/v1/docs/create-document', {
+    method: 'POST',
+    body: JSON.stringify(requestData),
+  });
+};
+
 // Employee Performance API 함수들
 
 // 직원 실적 목록 조회
