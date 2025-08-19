@@ -138,6 +138,12 @@ Final_Git/
 </td>
 </tr>
 
+---
+## VII. DB 스키마
+<img src="./team/erd.png" style="width:100%; max-width:1000px;">
+</td>
+</tr>
+
 --- 
 
 ## 에이전트 기능
