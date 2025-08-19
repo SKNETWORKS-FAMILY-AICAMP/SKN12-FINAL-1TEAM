@@ -3,7 +3,10 @@ export const parseMarkdown = (text) => {
   
   let html = text;
   
-  // 헤더 변환 (### -> h3, ## -> h2, # -> h1)
+  // 헤더 변환 (####부터 h4로 변환, 역순으로 처리)
+  html = html.replace(/^###### (.*$)/gim, '<h6>$1</h6>');
+  html = html.replace(/^##### (.*$)/gim, '<h5>$1</h5>');
+  html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
   html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
   html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
   html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
