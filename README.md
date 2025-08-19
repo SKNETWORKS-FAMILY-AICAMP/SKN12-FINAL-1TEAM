@@ -13,27 +13,10 @@
 
 <table>
 <tr>
-<td align="center">
- <img src="./team/1.png" width="120px"><br/>
- <b>김도윤</b><br/><span style="font-size:14px;"> P M </sub>
-</td>
-<td align="center">
- <img src="./team/2.png" width="120px"><br/>
- <b>손현성</b><br/><span style="font-size:14px;">백앤드/인프라 </sub>
-</td>
-<td align="center">
- <img src="./team/3.png" width="120px"><br/>
- <b>이용규</b><br/><span style="font-size:14px;">QC </sub>
-</td>
-<td align="center">
- <img src="./team/6.png" width="120px"><br/>
- <b>최문영</b><br/><span style="font-size:14px;">프론트 </sub>
-</td>
-<td align="center">
- <img src="./team/5.png" width="120px"><br/>
- <b>허한결</b><br/><span style="font-size:14px;">데이터베이스구축 </sub>
-</td>
-</tr>
+ </div>
+</table>    
+<img src="./team/team.png" style="width:100%; max-width:1000px;">
+
 </table>
   </p>
 </div>
@@ -56,8 +39,8 @@
 ![BGE Reranker](https://img.shields.io/badge/BGE_Reranker--v2--m3-4ECDC4?style=for-the-badge&logo=huggingface&logoColor=white)
 
 <!-- DevOps & Deploy -->
-![AWS](https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&logo=amazon-aws&logoColor=white)
-![RunPod](https://img.shields.io/badge/RunPod-FFAFCC?style=for-the-badge&logo=runpod&logoColor=black)
+[![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![AWS EC2](https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)](https://aws.amazon.com/ec2/)
 
 <!-- Crawling & OAuth -->
 ![Selenium](https://img.shields.io/badge/Selenium-43B02A?style=for-the-badge&logo=selenium&logoColor=white)
@@ -66,16 +49,17 @@
 ![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)
 ![Git](https://img.shields.io/badge/Git-F05032?style=for-the-badge&logo=git&logoColor=white)
 
+
 </div>
 
 
 
 ## 지원 에이전트<br/>
 <br/>
-1. employee_agent: 직원 실적 분석, 인사 정보, 조직도 관련 업무<br/>
-2. client_agent: 거래처 분석, 고객 데이터 분석, 매출 분석<br/>
-3. db_agent: 데이터베이스 검색, 문서 검색, 정보 조회<br/>
-4. docs_agent: 문서 자동생성, 규정 위반 여부 분석, 컴플라이언스 검토<br/>
+1. docs_agent: 문서 자동생성, 규정 위반 여부 분석, 컴플라이언스 검토<br/>
+2. employee_agent: 직원 실적 분석, 인사 정보, 조직도 관련 업무<br/>
+3. client_agent: 거래처 분석, 고객 데이터 분석, 매출 분석<br/>
+4. search_agent: 데이터베이스 검색, 문서 검색, 정보 조회<br/>
 <br/><br/>
 </div>
 </table>
