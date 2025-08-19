@@ -14,10 +14,10 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - PYTHONUNBUFFERED=1
-      - DATABASE_API_URL=http://fastapi-app:8000
+      - DATABASE_API_URL=http://host.docker.internal:8010
     networks:
       - narutalk-network
-      - docker_app-network  # database 네트워크 연결
+      - docker_app-network  # database 네트워크에 직접 연결
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -45,10 +45,13 @@ services:
       - backend
     networks:
       - narutalk-network
+      - docker_app-network  # database 네트워크에도 연결
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Docker Desktop이 아닌 경우를 위한 설정
 
 networks:
   narutalk-network:
     driver: bridge
   docker_app-network:
-    external: true
+    external: true  # database/docker/docker-compose.yml에서 생성한 네트워크 사용

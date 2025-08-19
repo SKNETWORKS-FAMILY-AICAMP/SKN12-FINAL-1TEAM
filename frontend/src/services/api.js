@@ -114,6 +114,13 @@ export const getEmployeeInfo = async () => {
   });
 };
 
+// 지점 정보 리스트 조회
+export const getBranches = async () => {
+  return await apiRequest('/branches/', {
+    method: 'GET',
+  });
+};
+
 // 문서 업로드 (기존 방식)
 export const uploadDocument = async (file, docTitle) => {
   // 현재 사용자 정보 가져오기

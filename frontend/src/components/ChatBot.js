@@ -300,11 +300,15 @@ const ChatBot = () => {
           reply_type: replyType
         };
         
+        // JWT 토큰 가져오기
+        const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
+        
         // 기존 프로젝트 URL 사용 (8010 포트)
         response = await fetch(`/api/v1/resume/${sessionId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
           },
           body: JSON.stringify(requestBody)
         });
@@ -315,10 +319,14 @@ const ChatBot = () => {
           session_id: sessionId
         };
 
+        // JWT 토큰 가져오기
+        const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
+        
         response = await fetch('/api/v1/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
           },
           body: JSON.stringify(requestBody)
         });
