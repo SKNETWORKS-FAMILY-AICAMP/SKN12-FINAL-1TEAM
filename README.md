@@ -13,27 +13,13 @@
 
 <table>
 <tr>
-<td align="center">
- <img src="./team/1.png" width="120px"><br/>
- <b>김도윤</b><br/><span style="font-size:14px;"> P M </sub>
-</td>
-<td align="center">
- <img src="./team/2.png" width="120px"><br/>
- <b>손현성</b><br/><span style="font-size:14px;">백앤드/인프라 </sub>
-</td>
-<td align="center">
- <img src="./team/3.png" width="120px"><br/>
- <b>이용규</b><br/><span style="font-size:14px;">QC </sub>
-</td>
-<td align="center">
- <img src="./team/6.png" width="120px"><br/>
- <b>최문영</b><br/><span style="font-size:14px;">프론트 </sub>
-</td>
-<td align="center">
- <img src="./team/5.png" width="120px"><br/>
- <b>허한결</b><br/><span style="font-size:14px;">데이터베이스구축 </sub>
+ </div>
+</table>    
+<img src="./team/team.png" style="width:100%; max-width:1000px;">
 </td>
 </tr>
+
+  
 </table>
   </p>
 </div>
@@ -51,13 +37,13 @@
 ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-000000?style=for-the-badge&logo=langgraph&logoColor=white)
-![HuggingFace](https://img.shields.io/badge/🤗_Hugging_Face-FFD21E?style=for-the-badge&logoColor=black)
 ![KURE](https://img.shields.io/badge/KURE--v1-FF6B6B?style=for-the-badge&logo=huggingface&logoColor=white)
 ![BGE Reranker](https://img.shields.io/badge/BGE_Reranker--v2--m3-4ECDC4?style=for-the-badge&logo=huggingface&logoColor=white)
 
 <!-- DevOps & Deploy -->
 ![AWS](https://img.shields.io/badge/AWS-232F3E?style=for-the-badge&logo=amazon-aws&logoColor=white)
-![RunPod](https://img.shields.io/badge/RunPod-FFAFCC?style=for-the-badge&logo=runpod&logoColor=black)
+[![AWS EC2](https://img.shields.io/badge/AWS_EC2-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)](https://aws.amazon.com/ec2/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 
 <!-- Crawling & OAuth -->
 ![Selenium](https://img.shields.io/badge/Selenium-43B02A?style=for-the-badge&logo=selenium&logoColor=white)
@@ -69,53 +55,142 @@
 </div>
 
 
-
-## 지원 에이전트<br/>
-<br/>
-1. employee_agent: 직원 실적 분석, 인사 정보, 조직도 관련 업무<br/>
-2. client_agent: 거래처 분석, 고객 데이터 분석, 매출 분석<br/>
-3. db_agent: 데이터베이스 검색, 문서 검색, 정보 조회<br/>
-4. docs_agent: 문서 자동생성, 규정 위반 여부 분석, 컴플라이언스 검토<br/>
-<br/><br/>
-</div>
-</table>
-에이전트 흐름도<br/>        
-<img src="./team/11.png" style="width:100%; max-width:1000px;">
-<img src="./team/12.png" style="width:100%; max-width:1000px;">
-<img src="./team/13.png" style="width:100%; max-width:1000px;">
-<img src="./team/14.png" style="width:100%; max-width:1000px;">
-<img src="./team/15.png" style="width:100%; max-width:1000px;">
-<img src="./team/16.png" style="width:100%; max-width:1000px;">
-
 ## 📂 **프로젝트 구조**<br/>
 ```
-backend/
-└── app/
-    ├── main.py # FastAPI 실행
-    │
-    ├── api/ # API 관리
-    │   ├── router_api.py
-    │   ├── client_api.py
-    │   ├── docs_api.py
-    │   ├── employee_api.py
-    │   └── search_api.py
-    │ 
-    ├── services/ # agent 관리
-    │   ├── router_agent/
-    │   │   ├── router_agent.py
-    │   │   ├── state_graph_router.py
-    │   │   └── memory_store_sqlite.py # 대화 저장/조회 기능
-    │   │
-    │   ├── client_agent/
-    │   ├── employee_agent/
-    │   ├── docs_agent/
-    │   └── search_agent/
+Final_Git/
+├── backend/                    # 백엔드 서버
+│   ├── app/
+│   │   ├── api/               # API 엔드포인트
+│   │   ├── core/              # 핵심 설정
+│   │   └── services/          # 에이전트
+│   │       ├── router_agent/  # 라우터
+│   │       ├── docs_agent/    # 문서 자동생성 및 규정위반체크 에이전트
+│   │       ├── client_agent/  # 거래처 분석 에이전트
+│   │       ├── employee_agent/# 직원 실적분석 에이전트
+│   │       ├── search_agent/  # 정보검색 에이전트
+│   │       ├── common/        # 공통 모듈
+│   │       └── tools/         # 유틸리티 도구
+│   ├── alembic/               # 데이터베이스 마이그레이션
+│   └── Dockerfile
+│
+├── frontend/                   # 프론트엔드 클라이언트
+│   ├── public/
+│   ├── src/
+│   │   ├── components/        # React 컴포넌트
+│   │   ├── services/          # API 서비스
+│   │   └── utils/             # 유틸리티 함수
+│   └── Dockerfile
+│  
+├── database/                   # 데이터베이스 설정
+│   ├── docker/                # Docker 구성
+│   ├── docs/                  # API 문서
+│   └── util_scripts/          # 유틸리티 스크립트
+└── docker-compose.yml         # Docker Compose 설정
+```
+## 시스템 아키텍처
+<img src="./team/arch.png" style="width:100%; max-width:1000px;">
 
-database/
-└── history/
-    └── memory.sqlite
+### 멀티 에이전트 시스템
+- **Router Agent**: 사용자 요청을 분석하여 적절한 에이전트로 라우팅
+- **Docs Agent**: 문서 템플릿 기반 자동 생성 및 규정 검토
+- **Client Agent**: 거래처 데이터 분석 및 보고서 생성
+- **Employee Agent**: 직원 성과 데이터 조회 및 분석
+- **Search Agent**: 하이브리드 검색 (키워드 + 벡터)
 
-frontend/
-└── react
+### API 구조
+- **Agent Server (8000)**: 에이전트 API 제공
+  - `/api/router/chat`: 메인 챗봇 엔드포인트
+  - `/api/docs/*`: 문서 생성 API
+  - `/api/client/*`: 거래처 분석 API
+  - `/api/employee/*`: 직원 관리 API
+
+- **Database API (8010)**: 데이터베이스 및 인프라 API
+  - 사용자 인증/권한 관리
+  - 문서 저장 및 검색
+  - 대화 히스토리 관리
+
+## 설치 및 실행
+
+### 사전 요구사항
+- Docker & Docker Compose
+- Node.js 18+ (개발 모드)
+- Python 3.11+ (개발 모드)
+
+### 환경 변수 설정
+`.env` 파일 생성:
+```bash
+# OpenAI
+OPENAI_API_KEY=your_api_key
+
+# Database
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_password
+POSTGRES_DB=narutalk
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+
+# MinIO
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=minioadmin
+MINIO_ENDPOINT=minio:9000
+MINIO_BUCKET_NAME=narutalk
+
+# OpenSearch
+OPENSEARCH_HOST=opensearch-node1
+OPENSEARCH_PORT=9200
+OPENSEARCH_INITIAL_ADMIN_PASSWORD=your_password
+
+# JWT
+JWT_SECRET_KEY=your_secret_key
+
+# PgAdmin
+PGADMIN_EMAIL=admin@example.com
+PGADMIN_PASSWORD=admin
+```
+
+### Docker Compose 실행
+```bash
+# 데이터베이스 서비스 실행
+cd database/docker
+docker-compose up -d
+
+# 메인 애플리케이션 실행
+cd ../..
+docker-compose up -d
+```
+
+### 접속 URL
+- Frontend: http://localhost:3000
+- Agent API: http://localhost:8000/docs
+- Database API: http://localhost:8010/docs
+- PgAdmin: http://localhost:5050
+- MinIO Console: http://localhost:9001
+- OpenSearch Dashboard: http://localhost:5601
+
+## 개발 가이드
+
+### 백엔드 개발
+```bash
+cd backend
+pip install -r requirements.txt
+python app/agent_server.py
+```
+
+### 프론트엔드 개발
+```bash
+cd frontend
+npm install
+npm start
+```
+
+### 테스트 실행
+```bash
+# Backend 테스트
+cd backend
+pytest
+
+# Frontend 테스트
+cd frontend
+npm test
 ```
 
