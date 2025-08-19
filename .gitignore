@@ -122,6 +122,9 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
+!.env.*.example
 .venv
 env/
 venv/
@@ -272,12 +275,27 @@ secrets.json
 api_keys.json
 credentials.json
 
-# SSL certificates
+# SSL certificates and SSH keys
 *.pem
 *.key
 *.crt
 *.csr
+opensearch-key.pem
+*-key.pem
+*.ppk
 
 # Docker compose override files (local development)
 docker-compose.override.yml
 docker-compose.local.yml 
+
+# AWS specific files
+docker/aws/.env.aws
+docker/aws/.env.aws.local
+docker/aws/.env.aws.production
+encryption.json
+iam_role_policy_document.json
+
+# AWS credentials and configs
+.aws/
+aws_credentials
+aws_config
