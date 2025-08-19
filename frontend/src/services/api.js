@@ -453,6 +453,7 @@ export const analyzeEmployeePerformance = async (params) => {
   if (params.start_period) requestBody.start_period = params.start_period;
   if (params.end_period) requestBody.end_period = params.end_period;
   if (params.employee_name) requestBody.employee_name = params.employee_name;
+  if (params.employee_info_id) requestBody.employee_info_id = params.employee_info_id;
   
   return await apiRequest('/api/employee/analyze', {
     method: 'POST',
@@ -465,6 +466,44 @@ export const getDashboardStats = async () => {
   return await apiRequest('/api/employee/dashboard-stats', {
     method: 'GET',
   });
+};
+
+// 오늘 일정 가져오기
+export const getTodaySchedules = async () => {
+  const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  
+  try {
+    const response = await fetch('http://localhost:8010/schedules/my', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      // 오늘 일정만 필터링
+      return data.filter(schedule => schedule.schedule_date === todayStr);
+    } else {
+      // API가 안되면 localStorage에서 가져오기
+      const userId = localStorage.getItem('user_id') || 'guest';
+      const storageKey = `schedules_${userId}`;
+      const saved = localStorage.getItem(storageKey);
+      const schedules = saved ? JSON.parse(saved) : [];
+      return schedules.filter(schedule => schedule.schedule_date === todayStr);
+    }
+  } catch (error) {
+    console.error('일정 가져오기 오류:', error);
+    // 오류 시에도 localStorage에서 가져오기
+    const userId = localStorage.getItem('user_id') || 'guest';
+    const storageKey = `schedules_${userId}`;
+    const saved = localStorage.getItem(storageKey);
+    const schedules = saved ? JSON.parse(saved) : [];
+    return schedules.filter(schedule => schedule.schedule_date === todayStr);
+  }
 };
 
 // 거래처 분석 요청

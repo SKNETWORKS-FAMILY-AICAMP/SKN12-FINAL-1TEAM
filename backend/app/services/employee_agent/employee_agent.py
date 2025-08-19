@@ -2,6 +2,8 @@ from typing import Dict, List, Any, Optional, TypedDict
 from datetime import datetime
 import openai
 import os
+import json
+from pathlib import Path
 from langgraph.graph import StateGraph, END
 from .db_manager import EmployeeDBManager
 from .query_analyzer import EmployeeQueryAnalyzer
@@ -25,12 +27,14 @@ class AnalysisState(TypedDict):
     error: Optional[str]
 
 class EnhancedEmployeeAgent:
-    """직원 실적 분석 에이전트"""
+    """직원 실적 분석 에이전트
+    """
     
     def __init__(self):
         self.db_manager = EmployeeDBManager()
         self.query_analyzer = EmployeeQueryAnalyzer()
         self.calc_tools = PerformanceCalculationTools()
+        self.employee_info_id = None  # 특정 직원 ID 지정 가능
         self.graph = self._create_graph()
     
     def _create_graph(self):
@@ -103,9 +107,10 @@ class EnhancedEmployeeAgent:
             start_period = state["start_period"]
             end_period = state["end_period"]
             
-            # 실적 데이터 로드
+            # 실적 데이터 로드 (employee_info_id가 있으면 우선 사용)
             performance_summary = self.db_manager.get_performance_summary(
-                employee_name, start_period, end_period
+                employee_name, start_period, end_period, 
+                employee_info_id=self.employee_info_id
             )
             
             # 실적 데이터가 없는 경우 오류 반환
@@ -119,12 +124,14 @@ class EnhancedEmployeeAgent:
             
             # 목표 대비 실적 데이터 로드
             target_vs_performance = self.db_manager.get_target_vs_performance(
-                state["employee_name"], start_period, end_period
+                state["employee_name"], start_period, end_period,
+                employee_info_id=self.employee_info_id
             )
             
             # 성장률 분석 데이터 로드
             growth_analysis = self.db_manager.analyze_performance_trend(
-                state["employee_name"], start_period, end_period
+                state["employee_name"], start_period, end_period,
+                employee_info_id=self.employee_info_id
             )
             
             state["performance_data"] = performance_summary
@@ -325,6 +332,9 @@ class EnhancedEmployeeAgent:
             
             state["report"] = report
             
+            # 리포트를 파일로 저장
+            self._save_report_to_file(report, state)
+            
             print("[OK] 보고서 생성 완료")
             
         except Exception as e:
@@ -461,6 +471,48 @@ class EnhancedEmployeeAgent:
         
         return report
     
+    def _save_report_to_file(self, report: str, state: AnalysisState) -> None:
+        """리포트를 파일로 저장합니다."""
+        try:
+            # 저장 디렉토리 생성
+            output_dir = Path("backend/app/output/employee_reports")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 파일명 생성 (직원명_시작기간_종료기간_타임스탬프)
+            employee_name = state.get("employee_name", "Unknown")
+            start_period = state.get("start_period", "").replace("/", "")
+            end_period = state.get("end_period", "").replace("/", "")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # 텍스트 파일로 저장
+            txt_filename = f"직원실적분석_{employee_name}_{start_period}_{end_period}_{timestamp}.txt"
+            txt_path = output_dir / txt_filename
+            
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(report)
+            
+            # JSON 형태로도 저장 (분석 데이터 포함)
+            json_filename = f"직원실적분석_{employee_name}_{start_period}_{end_period}_{timestamp}.json"
+            json_path = output_dir / json_filename
+            
+            json_data = {
+                "employee_name": employee_name,
+                "period": f"{state.get('start_period')}~{state.get('end_period')}",
+                "generated_at": datetime.now().isoformat(),
+                "report": report,
+                "performance_data": state.get("performance_data"),
+                "target_data": state.get("target_data"),
+                "analysis_results": state.get("analysis_results")
+            }
+            
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(json_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"[OK] 리포트 저장 완료: {txt_filename}")
+            
+        except Exception as e:
+            print(f"[WARNING] 리포트 파일 저장 실패: {e}")
+    
     async def run(self, query: str, session_id: str, messages: List[Dict] = None) -> Dict[str, Any]:
         """router_api.py에서 호출하는 표준 인터페이스 (멀티턴 대화 지원)"""
         try:
@@ -515,18 +567,26 @@ class EnhancedEmployeeAgent:
                     "message": "실적 분석이 완료되었습니다."
                 }
                 
+                # 실제 워크플로우 결과에서 데이터 추출
+                performance_data = result.get("performance_data", {})
+                target_data = result.get("target_data", {})
+                
                 return {
                     "success": True,
                     "response": analysis_result.get("report", "분석 결과를 생성할 수 없습니다."),
                     "report": analysis_result.get("report", ""),
                     "agent": "employee_agent",
                     "session_id": session_id,
-                    "employee_name": analysis_result.get("employee_name"),
+                    "employee_name": result.get("employee_name", analysis_result.get("employee_name")),
                     "period": analysis_result.get("period"),
                     "total_performance": analysis_result.get("total_performance"),
                     "achievement_rate": analysis_result.get("achievement_rate"),
                     "evaluation": analysis_result.get("evaluation"),
-                    "analysis_details": analysis_result.get("analysis_details", {})
+                    "analysis_details": {
+                        "performance_data": performance_data,
+                        "achievement_analysis": result.get("analysis_results", {}).get("achievement_analysis", {}),
+                        "comprehensive_evaluation": result.get("analysis_results", {}).get("comprehensive_evaluation", {})
+                    }
                 }
                 
             except Exception as e:

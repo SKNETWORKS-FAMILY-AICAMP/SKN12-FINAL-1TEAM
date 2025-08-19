@@ -14,32 +14,13 @@ import EmployeePerformance from './components/EmployeePerformance';
 import Schedule from './components/Schedule';
 import Login from './components/Login';
 import Admin from './components/Admin';
+import News from './components/News';
 
 function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [schedules, setSchedules] = useState([]);
-
-  // localStorage에서 일정 데이터 불러오기
-  useEffect(() => {
-    const savedSchedules = localStorage.getItem('narutalk_schedules');
-    if (savedSchedules) {
-      try {
-        setSchedules(JSON.parse(savedSchedules));
-      } catch (error) {
-        console.error('일정 데이터 로드 실패:', error);
-      }
-    }
-  }, []);
-
-  // 일정이 변경될 때마다 localStorage에 저장
-  useEffect(() => {
-    if (schedules.length > 0) {
-      localStorage.setItem('narutalk_schedules', JSON.stringify(schedules));
-    }
-  }, [schedules]);
 
   // 컴포넌트 마운트 시 로그인 상태 확인
   useEffect(() => {
@@ -116,14 +97,15 @@ function App() {
         />
         <div className={`main-content ${!sidebarVisible ? 'sidebar-hidden' : ''}`}>
           <Routes>
-            <Route path="/" element={<Main currentUser={currentUser} schedules={schedules} />} />
+            <Route path="/" element={<Main currentUser={currentUser} />} />
             <Route path="/search" element={<SearchPage currentUser={currentUser} />} />
             <Route path="/chat" element={<ChatBot currentUser={currentUser} />} />
             <Route path="/docs" element={<Docs currentUser={currentUser} />} />
             <Route path="/client" element={<ClientAnalysis currentUser={currentUser} />} />
             <Route path="/employee" element={<EmployeePerformance currentUser={currentUser} />} />
-            <Route path="/schedule" element={<Schedule currentUser={currentUser} schedules={schedules} setSchedules={setSchedules} />} />
+            <Route path="/schedule" element={<Schedule currentUser={currentUser} />} />
             <Route path="/admin" element={<Admin currentUser={currentUser} />} />
+            <Route path="/news" element={<News />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

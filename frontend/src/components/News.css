@@ -1,0 +1,197 @@
+.news-page {
+  padding: 30px;
+  background-color: #f8f9fa;
+  min-height: 100vh;
+}
+
+.news-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.news-header h1 {
+  font-size: 2.5rem;
+  color: #333;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.news-header p {
+  color: #666;
+  font-size: 1.1rem;
+}
+
+/* 탭 네비게이션 */
+.news-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 30px;
+  justify-content: center;
+  border-bottom: 2px solid #e9ecef;
+  padding-bottom: 10px;
+}
+
+.tab-btn {
+  padding: 10px 24px;
+  background-color: transparent;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tab-btn:hover {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.tab-btn.active {
+  background-color: #6f42c1;
+  color: white;
+}
+
+/* 뉴스 컨테이너 */
+.news-container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.loading-container,
+.no-news-container {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 1.1rem;
+}
+
+/* 뉴스 그리드 */
+.news-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 24px;
+}
+
+/* 뉴스 카드 */
+.news-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.news-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.news-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.news-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.news-badge.pharma {
+  background-color: #667eea20;
+  color: #667eea;
+}
+
+.news-badge.general {
+  background-color: #6f42c120;
+  color: #6f42c1;
+}
+
+.news-date {
+  color: #999;
+  font-size: 0.9rem;
+}
+
+.news-card-title {
+  margin: 0 0 15px 0;
+  font-size: 1.2rem;
+  color: #333;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.news-card-content {
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 20px;
+  flex: 1;
+}
+
+.news-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 15px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.news-meta {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.news-author,
+.news-source {
+  color: #999;
+  font-size: 0.85rem;
+}
+
+.news-link {
+  color: #6f42c1;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: color 0.3s ease;
+}
+
+.news-link:hover {
+  color: #5a32a3;
+  text-decoration: underline;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .news-page {
+    padding: 20px;
+  }
+
+  .news-header h1 {
+    font-size: 2rem;
+  }
+
+  .news-tabs {
+    flex-wrap: wrap;
+  }
+
+  .tab-btn {
+    padding: 8px 16px;
+    font-size: 0.9rem;
+  }
+
+  .news-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .news-card {
+    padding: 20px;
+  }
+}

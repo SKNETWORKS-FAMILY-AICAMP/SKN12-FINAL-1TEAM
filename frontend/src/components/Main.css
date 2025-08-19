@@ -179,8 +179,15 @@
   margin-bottom: 20px;
 }
 
+.news-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
 .pharma-news-section h3 {
-  margin: 0 0 20px 0;
+  margin: 0;
   font-size: 1.2rem;
   color: #333;
   font-weight: 600;
@@ -197,7 +204,8 @@
 .news-item {
   display: flex;
   padding: 16px;
-  background: linear-gradient(135deg, #e8f5f7 0%, #f0f8ff 100%);
+  background: #f4f0fb;
+  /* background: linear-gradient(135deg, #e8f5f7 0%, #f0f8ff 100%); */
   border-radius: 10px;
   border-left: 4px solid #6f42c1;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -235,7 +243,7 @@
 }
 
 .news-title {
-  color: #333;
+  color: #343a40;
   font-size: 1rem;
   line-height: 1.5;
   font-weight: 500;

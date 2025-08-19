@@ -47,7 +47,7 @@ const Sidebar = ({ sidebarVisible, setSidebarVisible, currentUser, onLogout }) =
     { path: '/search', icon: '🔍', label: '검색' },
     { path: '/chat', icon: '💬', label: '채팅' },
     { path: '/docs', icon: '📄', label: '문서 생성' },
-    { path: '/client', icon: '👥', label: '고객 관리' },
+    { path: '/client', icon: '👥', label: '거래처 분석' },
     { path: '/employee', icon: '📊', label: '직원 실적 분석' },
     { path: '/admin', icon: '⚙️', label: '시스템 관리' },
   ];
@@ -58,7 +58,7 @@ const Sidebar = ({ sidebarVisible, setSidebarVisible, currentUser, onLogout }) =
     { path: '/search', icon: '🔍', label: '검색' },
     { path: '/chat', icon: '💬', label: '채팅' },
     { path: '/docs', icon: '📄', label: '문서 생성' },
-    { path: '/client', icon: '👥', label: '고객 관리' },
+    { path: '/client', icon: '👥', label: '거래처 분석' },
     { path: '/employee', icon: '👤', label: '실적 확인' },
     { path: '/schedule', icon: '📅', label: '일정 관리' },
   ];

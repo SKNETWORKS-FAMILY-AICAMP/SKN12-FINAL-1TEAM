@@ -1,742 +1,568 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
+import { analyzeClient } from '../services/api';
 import './Docs.css';
 
 const Docs = () => {
-  const [selectedDocument, setSelectedDocument] = useState('');
-  const [messages, setMessages] = useState([]);
-  const [inputMessage, setInputMessage] = useState('');
-  const [sessionId, setSessionId] = useState(null);
+  const [selectedDocType, setSelectedDocType] = useState('');
+  const [formData, setFormData] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  const [requiresInterrupt, setRequiresInterrupt] = useState(false);
-  const [interruptData, setInterruptData] = useState(null);
-  const [documentOptions, setDocumentOptions] = useState([]);
-  const [existingDocuments, setExistingDocuments] = useState([]);
-  const [renderKey, setRenderKey] = useState(0); // 강제 리렌더링을 위한 키
-  const chatContainerRef = useRef(null); // 채팅 컨테이너 ref
-  const messagesEndRef = useRef(null); // 메시지 끝 부분 ref
-  const [currentDocument, setCurrentDocument] = useState(null); // 현재 생성 중인 문서
-  const [conversationHistory, setConversationHistory] = useState([]); // 대화 기록 저장
-  const [activeConversationId, setActiveConversationId] = useState(null); // 현재 활성 대화 ID
+  const [generatedDocument, setGeneratedDocument] = useState(null);
+  const [error, setError] = useState('');
+  const [documentHistory, setDocumentHistory] = useState(() => {
+    // localStorage에서 문서 기록 불러오기
+    const saved = localStorage.getItem('documentHistory');
+    return saved ? JSON.parse(saved) : [];
+  });
   
-  // localStorage에서 대화 기록 불러오기
-  useEffect(() => {
-    const savedHistory = localStorage.getItem('docsConversationHistory');
-    if (savedHistory) {
-      try {
-        const parsed = JSON.parse(savedHistory);
-        setConversationHistory(parsed);
-        setExistingDocuments(parsed.map(conv => ({
-          id: conv.id,
-          name: conv.title,
-          created_at: conv.created_at,
-          messages: conv.messages,
-          document: conv.document,
-          sessionId: conv.sessionId
-        })));
-      } catch (error) {
-        console.error('대화 기록 불러오기 실패:', error);
-      }
+  // 동적 필드를 위한 상태 (직원 및 의료전문가)
+  const [staffMembers, setStaffMembers] = useState([{ team: '', name: '' }]);
+  const [medicalProfessionals, setMedicalProfessionals] = useState([{ institution: '', name: '' }]);
+
+  // 문서 타입별 필드 정의 (templates.yaml과 일치)
+  const documentTypes = {
+    '영업방문 결과보고서': {
+      fields: [
+        { name: '방문제목', label: '방문제목', type: 'text', required: true, placeholder: '방문 목적 또는 제목' },
+        { name: '방문일', label: '방문일', type: 'date', required: true },
+        { name: '병원명', label: '병원명', type: 'text', required: true, placeholder: '병원명' },
+        { name: '지역구', label: '지역구', type: 'text', required: true, placeholder: '병원 지역구' },
+        { name: '원장명', label: '원장명', type: 'text', required: true, placeholder: '병원 원장 이름' },
+        { name: '원장연락처', label: '원장연락처', type: 'text', required: true, placeholder: '병원 원장 연락처' },
+        { name: '담당자성명', label: '담당자성명', type: 'text', required: true, placeholder: '고객사 담당자 이름' },
+        { name: '담당자부서', label: '담당자부서', type: 'text', required: true, placeholder: '고객사 담당자 소속부서' },
+        { name: '담당자연락처', label: '담당자연락처', type: 'text', required: true, placeholder: '고객사 담당자 연락처' },
+        { name: '지점', label: '지점', type: 'text', required: true, placeholder: '담당자 소속 지점' },
+        { name: '지점연락처', label: '지점연락처', type: 'text', required: true, placeholder: '담당자 소속 지점 연락처' },
+        { name: '고객사개요', label: '고객사개요', type: 'textarea', required: true, placeholder: '고객사에 대한 간단한 설명' },
+        { name: '프로젝트개요', label: '프로젝트개요', type: 'textarea', required: true, placeholder: '진행 중인 프로젝트 개요' },
+        { name: '방문및협의내용', label: '방문및협의내용', type: 'textarea', required: true, placeholder: '방문 시 논의한 주요 내용' },
+        { name: '향후계획및일정', label: '향후계획및일정', type: 'textarea', required: true, placeholder: '향후 진햄할 계획과 일정' },
+        { name: '협조사항및공유사항', label: '협조사항및공유사항', type: 'textarea', required: false, placeholder: '협조가 필요한 사항이나 공유할 내용' }
+      ]
+    },
+    '제품설명회 시행 신청서': {
+      fields: [
+        { name: '구분', label: '구분', type: 'text', required: true, placeholder: '제품설명회 구분' },
+        { name: 'PM참석', label: 'PM참석', type: 'text', required: true, placeholder: '참석/불참석' },
+        { name: '일시', label: '일시', type: 'datetime-local', required: true },
+        { name: '장소', label: '장소', type: 'text', required: true, placeholder: '제품설명회 장소' },
+        { name: '제품명', label: '제품명', type: 'text', required: true, placeholder: '설명할 제품명' },
+        { name: '참석인원', label: '참석인원', type: 'text', required: false, placeholder: '예상 참석 인원수 (직접 명시)' },
+        { name: '제품설명회시행목적', label: '제품설명회시행목적', type: 'textarea', required: true, placeholder: '제품설명회를 진행하는 목적' },
+        { name: '제품설명회주요내용', label: '제품설명회주요내용', type: 'textarea', required: true, placeholder: '제품설명회에서 다룰 주요 내용' },
+        { name: 'staff', label: '참석 직원', type: 'dynamic_staff', maxCount: 3 },
+        { name: 'medical', label: '참석 의료전문가', type: 'dynamic_medical', maxCount: 4 }
+      ]
+    },
+    '제품설명회 시행 결과보고서': {
+      fields: [
+        { name: '구분', label: '구분', type: 'text', required: true, placeholder: '제품설명회 구분' },
+        { name: 'PM참석', label: 'PM참석', type: 'text', required: true, placeholder: '참석/불참석' },
+        { name: '일시', label: '일시', type: 'datetime-local', required: true },
+        { name: '장소', label: '장소', type: 'text', required: true, placeholder: '제품설명회 실시 장소' },
+        { name: '제품명', label: '제품명', type: 'text', required: true, placeholder: '설명한 제품명' },
+        { name: '참석인원', label: '참석인원', type: 'text', required: false, placeholder: '실제 참석 인원수 (직접 명시)' },
+        { name: '제품설명회시행목적', label: '제품설명회시행목적', type: 'textarea', required: true, placeholder: '제품설명회를 진행한 목적' },
+        { name: '제품설명회주요내용', label: '제품설명회주요내용', type: 'textarea', required: true, placeholder: '제품설명회에서 다룬 주요 내용' },
+        { name: '지급내역', label: '지급내역', type: 'text', required: false, placeholder: '지급한 항목들 (직접 명시)' },
+        { name: '금액', label: '금액', type: 'text', required: false, placeholder: '총 지급 금액' },
+        { name: '메뉴', label: '메뉴', type: 'text', required: false, placeholder: '제공한 식사 메뉴' },
+        { name: '주류', label: '주류', type: 'text', required: false, placeholder: '제공한 주류' },
+        { name: '1인금액', label: '1인금액', type: 'text', required: false, placeholder: '1인당 지급된 금액' },
+        { name: 'staff', label: '참석 직원', type: 'dynamic_staff', maxCount: 4 },
+        { name: 'medical', label: '참석 의료전문가', type: 'dynamic_medical', maxCount: 8 }
+      ]
     }
-  }, []);
-  
-  // messages 상태 변화 추적 및 자동 스크롤
-  useEffect(() => {
-    console.log('✨ messages 상태 변경됨!');
-    console.log('✨ 현재 메시지 개수:', messages.length);
-    console.log('✨ 메시지 내용:', messages);
-    messages.forEach((msg, idx) => {
-      console.log(`  ${idx}: [${msg.type}] ${msg.content?.substring(0, 50)}...`);
-    });
-    
-    // 자동 스크롤 - 메시지가 추가될 때마다 맨 아래로
-    scrollToBottom();
-    
-    // 현재 대화 저장 (메시지가 2개 이상일 때)
-    if (messages.length >= 2 && activeConversationId) {
-      updateConversationHistory(activeConversationId);
-    }
-  }, [messages]);
-  
-  // 스크롤을 맨 아래로 이동하는 함수
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // 입력값 변경 핸들러
+  const handleInputChange = (fieldName, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [fieldName]: value
+    }));
+  };
+
+  // 문서 타입 선택 핸들러
+  const handleDocTypeSelect = (docType) => {
+    setSelectedDocType(docType);
+    setFormData({});
+    setGeneratedDocument(null);
+    setError('');
+    // 동적 필드 초기화
+    setStaffMembers([{ team: '', name: '' }]);
+    setMedicalProfessionals([{ institution: '', name: '' }]);
   };
   
-  // 문서 내용 포맷팅 함수 (보고서 형식)
-  const formatDocumentContent = (data, docType) => {
-    if (!data) return '';
-    
-    // 문자열인 경우 (생성 중 메시지 또는 원본 문서 내용)
-    if (typeof data === 'string') {
-      // 문서 내용을 그대로 표시
-      return (
-        <div className="generated-document">
-          <div className="document-content-text">
-            {data}
-          </div>
-        </div>
-      );
+  // 직원 추가/삭제 핸들러
+  const handleAddStaff = () => {
+    const maxCount = selectedDocType === '제품설명회 시행 신청서' ? 3 : 4;
+    if (staffMembers.length < maxCount) {
+      setStaffMembers([...staffMembers, { team: '', name: '' }]);
     }
-    
-    // 객체인 경우 (완성된 문서)
-    const fieldNames = {
-      '방문제목': '방문 제목',
-      '방문날짜': '방문 날짜',
-      'Client': '고객사명',
-      '방문site': '방문 장소',
-      '담당자성명': '고객사 담당자',
-      '담당자소속': '담당자 소속',
-      '담당자연락처': '담당자 연락처',
-      '영업제공자성명': '영업 담당자',
-      '영업제공자연락처': '영업 담당자 연락처',
-      '방문자성명': '방문자',
-      '방문자소속': '방문자 소속',
-      '고객사개요': '고객사 개요',
-      '프로젝트개요': '프로젝트 개요',
-      '방문및협의내용': '방문 및 협의 내용',
-      '향후계획및일정': '향후 계획 및 일정',
-      '협조사항및공유사항': '협조사항 및 공유사항'
+  };
+  
+  const handleRemoveStaff = (index) => {
+    setStaffMembers(staffMembers.filter((_, i) => i !== index));
+  };
+  
+  const handleStaffChange = (index, field, value) => {
+    const updated = [...staffMembers];
+    updated[index][field] = value;
+    setStaffMembers(updated);
+  };
+  
+  // 의료전문가 추가/삭제 핸들러
+  const handleAddMedical = () => {
+    const maxCount = selectedDocType === '제품설명회 시행 신청서' ? 4 : 8;
+    if (medicalProfessionals.length < maxCount) {
+      setMedicalProfessionals([...medicalProfessionals, { institution: '', name: '' }]);
+    }
+  };
+  
+  const handleRemoveMedical = (index) => {
+    setMedicalProfessionals(medicalProfessionals.filter((_, i) => i !== index));
+  };
+  
+  const handleMedicalChange = (index, field, value) => {
+    const updated = [...medicalProfessionals];
+    updated[index][field] = value;
+    setMedicalProfessionals(updated);
+  };
+
+  // 문서 기록 저장
+  const saveToHistory = (docType, docData, generatedContent) => {
+    const newDoc = {
+      id: Date.now(),
+      type: docType,
+      title: docData['방문제목'] || docData['구분'] || `${docType} - ${new Date().toLocaleDateString('ko-KR')}`,
+      date: new Date().toISOString(),
+      data: docData,
+      content: generatedContent
     };
     
-    // 객체 데이터를 문서 형식으로 변환
-    const documentTitle = docType || data['문서제목'] || '생성된 문서';
-    
-    // 문서 내용을 실제 문서처럼 포맷팅
-    let documentContent = `${documentTitle}\n\n`;
-    documentContent += '=' .repeat(50) + '\n\n';
-    
-    Object.entries(data).forEach(([key, value]) => {
-      const displayName = fieldNames[key] || key;
-      if (value && value !== '' && key !== '문서제목') {
-        documentContent += `【${displayName}】\n`;
-        documentContent += `${value}\n\n`;
-      }
-    });
-    
-    documentContent += '\n' + '=' .repeat(50) + '\n';
-    documentContent += `작성일: ${new Date().toLocaleDateString('ko-KR')}\n`;
-    
-    return (
-      <div className="generated-document">
-        <pre className="document-content-text">
-          {documentContent}
-        </pre>
-      </div>
-    );
+    const updatedHistory = [newDoc, ...documentHistory].slice(0, 20); // 최대 20개 저장
+    setDocumentHistory(updatedHistory);
+    localStorage.setItem('documentHistory', JSON.stringify(updatedHistory));
   };
 
-  // API Base URL - 에이전트 서버로 요청 (8000 포트)
-  const API_BASE_URL = 'http://localhost:8000';
+  // 이전 문서 불러오기
+  const handleLoadDocument = (doc) => {
+    setSelectedDocType(doc.type);
+    setFormData(doc.data);
+    setGeneratedDocument(doc.content);
+    setError('');
+  };
 
-  // 초기 문서 작성 요청
-  const handleInitialRequest = async (message) => {
+  // 문서 기록 삭제
+  const handleDeleteHistory = (docId) => {
+    const updatedHistory = documentHistory.filter(doc => doc.id !== docId);
+    setDocumentHistory(updatedHistory);
+    localStorage.setItem('documentHistory', JSON.stringify(updatedHistory));
+  };
+
+  // 전체 기록 삭제
+  const handleClearHistory = () => {
+    if (window.confirm('모든 문서 기록을 삭제하시겠습니까?')) {
+      setDocumentHistory([]);
+      localStorage.removeItem('documentHistory');
+    }
+  };
+
+  // 보고서 생성 핸들러
+  const handleGenerateDocument = async () => {
     setIsLoading(true);
+    setError('');
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/docs/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: message,
-          session_id: sessionId
+      // 필수 필드 검증
+      const currentFields = documentTypes[selectedDocType].fields;
+      const missingFields = currentFields
+        .filter(field => {
+          if (field.type === 'dynamic_staff' || field.type === 'dynamic_medical') {
+            return false; // 동적 필드는 별도 처리
+          }
+          return field.required && !formData[field.name];
         })
-      });
-
-      const data = await response.json();
-      console.log('Docs API Response:', data);
-
-      if (data.success) {
-        // 문서 생성 완료
-        setMessages(prev => [...prev, 
-          { type: 'user', content: message },
-          { type: 'ai', content: data.response, data: data.data }
-        ]);
-        
-        // 최종 문서가 생성된 경우 (final_doc 또는 filled_data가 있는 경우)
-        if (data.data?.final_doc || data.data?.filled_data) {
-          const newDocument = {
-            type: data.data.document_type || '생성된 문서',
-            content: data.data.document_content,
-            fields: data.data.filled_data
-          };
-          setCurrentDocument(newDocument);
-          setSelectedDocument(data.data.document_type || '생성된 문서');
-          
-          // 대화와 문서를 함께 저장
-          setTimeout(() => {
-            const conversationId = Date.now();
-            const newConversation = {
-              id: conversationId,
-              title: newDocument.type || '생성된 문서',
-              messages: [
-                { type: 'user', content: message },
-                { type: 'ai', content: data.response, data: data.data }
-              ],
-              document: newDocument,
-              sessionId: sessionId || null,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            };
-            
-            const updatedHistory = [...conversationHistory, newConversation];
-            setConversationHistory(updatedHistory);
-            setExistingDocuments(prev => [...prev, {
-              id: newConversation.id,
-              name: newConversation.title,
-              created_at: newConversation.created_at,
-              messages: newConversation.messages,
-              document: newConversation.document,
-              sessionId: newConversation.sessionId
-            }]);
-            
-            localStorage.setItem('docsConversationHistory', JSON.stringify(updatedHistory));
-            setActiveConversationId(conversationId);
-          }, 500);
-        }
-      } else if (data.requires_interrupt) {
-        // 사용자 입력 필요
-        setSessionId(data.session_id);
-        setRequiresInterrupt(true);
-        setInterruptData(data.data);
-        
-        setMessages(prev => [...prev, 
-          { type: 'user', content: message },
-          { type: 'ai', content: data.response, interrupt: true, data: data.data }
-        ]);
-        
-        // 문서 선택 옵션이 있는 경우
-        if (data.data?.options) {
-          setDocumentOptions(data.data.options);
-        }
-      } else {
-        // 오류 발생 또는 위반 메시지
-        const displayMessage = data.response || data.error || '오류가 발생했습니다.';
-        setMessages(prev => [...prev, 
-          { type: 'user', content: message },
-          { type: 'ai', content: displayMessage, error: !data.response }
-        ]);
-      }
-    } catch (error) {
-      console.error('API 호출 오류:', error);
-      setMessages(prev => [...prev, 
-        { type: 'user', content: message },
-        { type: 'ai', content: '서버 연결에 실패했습니다. 다시 시도해주세요.', error: true }
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // 인터럽트 처리 (세션 재개)
-  const handleResumeSession = async (userReply, replyType = 'user_reply') => {
-    console.log('=== handleResumeSession 시작 ===');
-    console.log('sessionId:', sessionId);
-    console.log('userReply:', userReply);
-    console.log('replyType:', replyType);
-    
-    if (!sessionId) {
-      console.error('세션 ID가 없습니다.');
-      return;
-    }
-
-    // 사용자 메시지 즉시 표시
-    setMessages(prev => [...prev, { type: 'user', content: userReply }]);
-    setIsLoading(true);
-    try {
-      const requestBody = {
-        user_reply: userReply,
-        reply_type: replyType
-      };
-      console.log('Request Body:', requestBody);
-      console.log('Request URL:', `${API_BASE_URL}/api/v1/docs/resume/${sessionId}`);
+        .map(field => field.label);
       
-      const response = await fetch(`${API_BASE_URL}/api/v1/docs/resume/${sessionId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      console.log('Response Status:', response.status);
-      const data = await response.json();
-      console.log('Resume Response Data:', data);
-
-      if (data.success) {
-        console.log('처리 완료!');
-        // 처리 완료
-        setRequiresInterrupt(false);
-        setInterruptData(null);
+      if (missingFields.length > 0) {
+        setError(`다음 필수 항목을 입력해주세요: ${missingFields.join(', ')}`);
+        setIsLoading(false);
+        return;
+      }
+      
+      // 동적 필드 검증
+      if (selectedDocType.includes('제품설명회')) {
+        const hasValidStaff = staffMembers.some(s => s.team && s.name);
+        const hasValidMedical = medicalProfessionals.some(m => m.institution && m.name);
         
-        // 대화 자동 저장 트리거
-        if (!activeConversationId && messages.length > 0) {
-          setTimeout(() => saveConversation(), 500);
+        if (!hasValidStaff || !hasValidMedical) {
+          setError('최소 한 명의 직원과 의료전문가 정보를 입력해주세요.');
+          setIsLoading(false);
+          return;
         }
-        
-        // 사용자 메시지는 이미 추가했으므로 AI 응답만 추가
-        setMessages(prev => [...prev, 
-          { type: 'ai', content: data.response, data: data.data }
-        ]);
-        
-        // 문서 경로 또는 filled_data가 있을 때 완성된 문서 표시
-        if (data.data?.final_doc || data.data?.filled_data) {
-          // 완성된 문서 표시
-          const newDocument = {
-            type: data.data.document_type || '생성된 문서',
-            content: data.data.document_content,
-            fields: data.data.filled_data
-          };
-          setCurrentDocument(newDocument);
-          setSelectedDocument(data.data.document_type || '생성된 문서');
-          
-          // 세션 완료 처리 - 문서를 직접 전달
-          if (data.data?.final_doc) {
-            // 대화 저장
-            if (!activeConversationId) {
-              setTimeout(() => saveConversationWithDocument(newDocument), 500);
-            } else {
-              setTimeout(() => updateConversationHistoryWithDocument(activeConversationId, newDocument), 500);
-            }
+      }
+
+      // 폼 데이터를 딕셔너리 형태로 준비 (새 엔드포인트용)
+      const documentData = {};
+      currentFields.forEach(field => {
+        if (field.type === 'dynamic_staff') {
+          // 직원 데이터를 이중 리스트로 처리 [['영업팀', '손현성'], ['영업팀', '최문영']]
+          const validStaff = staffMembers.filter(s => s.team && s.name);
+          documentData['참석직원'] = validStaff.map(s => [s.team, s.name]);
+        } else if (field.type === 'dynamic_medical') {
+          // 의료전문가 데이터를 이중 리스트로 처리 [['서울아산병원', '김의사'], ['단국대병원', '이의사']]
+          const validMedical = medicalProfessionals.filter(m => m.institution && m.name);
+          documentData['참석의료전문가'] = validMedical.map(m => [m.institution, m.name]);
+        } else {
+          const value = formData[field.name] || '';
+          // 날짜 필드 특별 처리
+          if (field.type === 'date' && value) {
+            const date = new Date(value);
+            documentData[field.label] = date.toLocaleDateString('ko-KR');
+          } else if (field.type === 'datetime-local' && value) {
+            const date = new Date(value);
+            documentData[field.label] = `${date.toLocaleDateString('ko-KR')} ${date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+          } else {
+            documentData[field.label] = value;
           }
         }
-      } else if (data.requires_interrupt) {
-        console.log('추가 인터럽트 발생!');
-        console.log('data.response:', data.response);
-        console.log('data.data:', data.data);
-        
-        // 추가 입력 필요
-        setRequiresInterrupt(true);  // 인터럽트 상태 유지
-        setSessionId(data.session_id || sessionId);  // 세션 ID 업데이트
-        setInterruptData(data.data);
-        
-        // 메시지 추가 전 현재 메시지 배열 확인
-        console.log('현재 메시지 개수:', messages.length);
-        
-        // 사용자 메시지는 이미 추가했으므로 AI 응답만 추가
-        const aiMessage = { 
-          type: 'ai', 
-          content: data.response || '필수 입력 항목을 안내해드리겠습니다.', 
-          interrupt: true, 
-          data: data.data 
-        };
-        console.log('AI 메시지 추가:', aiMessage);
-        console.log('AI 메시지 내용:', aiMessage.content);
-        
-        // 메시지 배열 업데이트
-        setMessages(prev => {
-          const newMessages = [...prev, aiMessage];
-          console.log('업데이트된 메시지 배열 길이:', newMessages.length);
-          console.log('마지막 메시지:', newMessages[newMessages.length - 1]);
-          return newMessages;
-        });
-        
-        // 문서 작성 중에는 중앙 화면에 아무것도 표시하지 않음
-        // 최종 완성될 때만 표시
-        
-        // 강제 리렌더링
-        setRenderKey(prev => prev + 1);
-        
-        if (data.data?.options) {
-          setDocumentOptions(data.data.options);
-        }
+      });
+
+      // 문서 타입도 추가
+      documentData['문서타입'] = selectedDocType;
+
+      // 디버깅용 - 콘솔에 출력
+      console.log('준비된 문서 데이터 (딕셔너리 형태):', documentData);
+      
+      // TODO: 새로운 엔드포인트가 준비되면 아래와 같이 호출
+      // const response = await callNewDocumentAPI({
+      //   document_type: selectedDocType,
+      //   document_data: documentData
+      // });
+
+      // 임시로 기존 API 사용 (폼 데이터를 문자열로 변환)
+      const formattedData = currentFields
+        .map(field => {
+          const value = formData[field.name] || '';
+          if (field.type === 'date' && value) {
+            const date = new Date(value);
+            return `${field.label}: ${date.toLocaleDateString('ko-KR')}`;
+          }
+          if (field.type === 'datetime-local' && value) {
+            const date = new Date(value);
+            return `${field.label}: ${date.toLocaleDateString('ko-KR')} ${date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+          }
+          return `${field.label}: ${value || '없음'}`;
+        })
+        .join('\n');
+
+      const query = `다음 정보를 바탕으로 ${selectedDocType}를 작성해주세요:\n\n${formattedData}`;
+      
+      // API 호출 (기존 방식 - 임시)
+      const response = await analyzeClient({
+        query: query,
+        generate_docs: true
+      });
+      
+      if (response.status === 'success') {
+        setGeneratedDocument(response);
+        // 문서 기록에 저장
+        saveToHistory(selectedDocType, formData, response);
       } else {
-        // 오류 또는 위반 메시지 (사용자 메시지는 이미 추가했으므로 AI 응답만 추가)
-        const displayMessage = data.response || data.error || '오류가 발생했습니다.';
-        setMessages(prev => [...prev, 
-          { type: 'ai', content: displayMessage, error: !data.response }
-        ]);
+        setError(response.message || '문서 생성에 실패했습니다.');
       }
     } catch (error) {
-      console.error('Resume 오류:', error);
-      // 사용자 메시지는 이미 추가했으므로 AI 응답만 추가
-      setMessages(prev => [...prev, 
-        { type: 'ai', content: '세션 재개에 실패했습니다.', error: true }
-      ]);
+      console.error('문서 생성 오류:', error);
+      setError('문서 생성 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 메시지 전송 처리
-  const handleSendMessage = () => {
-    if (inputMessage.trim() && !isLoading) {
-      const message = inputMessage.trim();
-      setInputMessage('');
-      
-      if (requiresInterrupt && sessionId) {
-        // 인터럽트 상태에서는 세션 재개
-        const replyType = interruptData?.interrupt_type === 'verification' ? 
-          'verification_reply' : 'user_reply';
-        handleResumeSession(message, replyType);
-      } else {
-        // 새로운 요청
-        handleInitialRequest(message);
-      }
-    }
-  };
-
-  // 문서 타입 선택 처리
-  const handleDocumentTypeSelect = (option) => {
-    handleResumeSession(option.value, 'verification_reply');
-  };
-
-  // 대화 기록 업데이트
-  const updateConversationHistory = (convId) => {
-    const updatedHistory = conversationHistory.map(conv => {
-      if (conv.id === convId) {
-        return {
-          ...conv,
-          messages: messages,
-          document: currentDocument,
-          sessionId: sessionId,
-          updated_at: new Date().toISOString()
-        };
-      }
-      return conv;
-    });
-    
-    setConversationHistory(updatedHistory);
-    localStorage.setItem('docsConversationHistory', JSON.stringify(updatedHistory));
-  };
-  
-  // 문서와 함께 대화 기록 업데이트
-  const updateConversationHistoryWithDocument = (convId, document) => {
-    const updatedHistory = conversationHistory.map(conv => {
-      if (conv.id === convId) {
-        return {
-          ...conv,
-          messages: messages,
-          document: document,
-          sessionId: sessionId,
-          updated_at: new Date().toISOString()
-        };
-      }
-      return conv;
-    });
-    
-    setConversationHistory(updatedHistory);
-    setExistingDocuments(prev => prev.map(doc => {
-      if (doc.id === convId) {
-        return {
-          ...doc,
-          document: document
-        };
-      }
-      return doc;
-    }));
-    localStorage.setItem('docsConversationHistory', JSON.stringify(updatedHistory));
-  };
-  
-  // 대화 저장
-  const saveConversation = () => {
-    if (messages.length === 0) return;
-    
-    const newConversation = {
-      id: Date.now(),
-      title: selectedDocument || currentDocument?.type || `대화 ${new Date().toLocaleDateString()}`,
-      messages: messages,
-      document: currentDocument,
-      sessionId: sessionId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    const updatedHistory = [...conversationHistory, newConversation];
-    setConversationHistory(updatedHistory);
-    setExistingDocuments(prev => [...prev, {
-      id: newConversation.id,
-      name: newConversation.title,
-      created_at: newConversation.created_at,
-      messages: newConversation.messages,
-      document: newConversation.document,
-      sessionId: newConversation.sessionId
-    }]);
-    
-    localStorage.setItem('docsConversationHistory', JSON.stringify(updatedHistory));
-    setActiveConversationId(newConversation.id);
-  };
-  
-  // 문서와 함께 대화 저장
-  const saveConversationWithDocument = (document) => {
-    if (messages.length === 0) return;
-    
-    const newConversation = {
-      id: Date.now(),
-      title: document?.type || selectedDocument || `대화 ${new Date().toLocaleDateString()}`,
-      messages: messages,
-      document: document,
-      sessionId: sessionId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    const updatedHistory = [...conversationHistory, newConversation];
-    setConversationHistory(updatedHistory);
-    setExistingDocuments(prev => [...prev, {
-      id: newConversation.id,
-      name: newConversation.title,
-      created_at: newConversation.created_at,
-      messages: newConversation.messages,
-      document: newConversation.document,
-      sessionId: newConversation.sessionId
-    }]);
-    
-    localStorage.setItem('docsConversationHistory', JSON.stringify(updatedHistory));
-    setActiveConversationId(newConversation.id);
-  };
-  
-  // 새 문서 생성
-  const handleNewDocument = () => {
-    // 현재 대화 저장
-    if (messages.length > 0 && !activeConversationId) {
-      saveConversation();
-    }
-    
-    // 초기화
-    setMessages([]);
-    setSelectedDocument('');
-    setSessionId(null);
-    setRequiresInterrupt(false);
-    setInterruptData(null);
-    setDocumentOptions([]);
-    setCurrentDocument(null);
-    setActiveConversationId(null);
-  };
-  
-  // 이전 대화 불러오기
-  const loadConversation = (doc) => {
-    console.log('대화 불러오기:', doc);
-    console.log('문서 내용:', doc.document);
-    console.log('문서 fields:', doc.document?.fields);
-    console.log('문서 content:', doc.document?.content);
-    
-    // 현재 대화 저장
-    if (messages.length > 0 && !activeConversationId) {
-      saveConversation();
-    }
-    
-    // 선택한 대화 불러오기
-    setMessages(doc.messages || []);
-    setSelectedDocument(doc.name);
-    setCurrentDocument(doc.document || null);
-    setSessionId(doc.sessionId || null);
-    setActiveConversationId(doc.id);
-    setRequiresInterrupt(false);
-    setInterruptData(null);
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
+  // 새 문서 작성 시작
+  const startNewDocument = () => {
+    setSelectedDocType('');
+    setFormData({});
+    setGeneratedDocument(null);
+    setError('');
   };
 
   return (
     <div className="docs-page">
-      {/* Left Sidebar */}
+      {/* 왼쪽 사이드바 - 문서 기록 */}
       <div className="docs-sidebar">
-        <h2>문서 생성</h2>
-        
-        <button className="new-doc-btn" onClick={handleNewDocument}>
+        <h2>문서 기록</h2>
+        <button className="new-doc-btn" onClick={startNewDocument}>
           <span className="plus-icon">+</span>
-          새로운 문서 생성
+          새 문서 작성
         </button>
-
-        <div className="existing-docs">
-          <h3>
-            기존 문서
-            {existingDocuments.length > 0 && (
-              <button 
-                className="clear-history-btn"
-                onClick={() => {
-                  if (window.confirm('모든 대화 기록을 삭제하시겠습니까?')) {
-                    setConversationHistory([]);
-                    setExistingDocuments([]);
-                    localStorage.removeItem('docsConversationHistory');
-                    handleNewDocument();
-                  }
-                }}
-              >
+        
+        <div className="history-section">
+          <div className="history-header">
+            <h3>이전 문서</h3>
+            {documentHistory.length > 0 && (
+              <button className="clear-history-btn" onClick={handleClearHistory}>
                 전체 삭제
               </button>
             )}
-          </h3>
-          {existingDocuments.length > 0 ? (
-            existingDocuments.map((doc) => (
-              <div 
-                key={doc.id} 
-                className={`doc-item ${activeConversationId === doc.id ? 'active' : ''}`}
-                onClick={() => loadConversation(doc)}
-              >
-                <span className="doc-icon">📄</span>
-                <span className="doc-name">{doc.name}</span>
-                <span className="doc-arrow">›</span>
-              </div>
-            ))
+          </div>
+          
+          {documentHistory.length > 0 ? (
+            <div className="history-list">
+              {documentHistory.map(doc => (
+                <div 
+                  key={doc.id} 
+                  className="history-item"
+                  onClick={() => handleLoadDocument(doc)}
+                >
+                  <div className="history-item-header">
+                    <span className="doc-type-badge">{doc.type}</span>
+                    <button 
+                      className="delete-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteHistory(doc.id);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="history-item-title">{doc.title}</div>
+                  <div className="history-item-date">
+                    {new Date(doc.date).toLocaleDateString('ko-KR')}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
-            <div className="no-docs">
-              <p>기존 문서가 없습니다.</p>
+            <div className="no-history">
+              <p>저장된 문서가 없습니다</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Center Content Area */}
+      {/* 메인 콘텐츠 영역 */}
       <div className="docs-main">
-        <div className="document-content">
-          {currentDocument ? (
-            <>
-              <h1>{selectedDocument || currentDocument?.type || '생성된 문서'}</h1>
-              <div className="document-body">
-                {currentDocument?.fields ? 
-                  formatDocumentContent(currentDocument.fields, currentDocument.type) :
-                  currentDocument?.content ? (
-                    typeof currentDocument.content === 'string' ? 
-                      <div className="generated-document">
-                        <pre className="document-content-text">
-                          {currentDocument.content}
-                        </pre>
-                      </div> :
-                      formatDocumentContent(currentDocument.content, currentDocument.type)
-                  ) : (
-                    <div className="generated-document">
-                      <pre className="document-content-text">
-                        {JSON.stringify(currentDocument, null, 2)}
-                      </pre>
+        <div className="docs-header">
+          <h1>문서 생성</h1>
+        </div>
+
+        <div className="docs-content">
+        {!selectedDocType ? (
+          // 문서 타입 선택 화면
+          <div className="doc-type-selection">
+            <h2>생성할 문서를 선택하세요</h2>
+            <div className="doc-type-cards">
+              {Object.keys(documentTypes).map(docType => (
+                <div 
+                  key={docType}
+                  className="doc-type-card"
+                  onClick={() => handleDocTypeSelect(docType)}
+                >
+                  <h3>{docType}</h3>
+                  <p>
+                    {docType === '영업방문결과보고서' && '고객사 방문 후 작성하는 결과 보고서'}
+                    {docType === '제품설명회신청서' && '제품 설명회 개최를 위한 신청서'}
+                    {docType === '제품설명회결과보고서' && '제품 설명회 진행 후 작성하는 결과 보고서'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          // 폼 입력 화면
+          <div className="doc-form-container">
+            <h2>{selectedDocType} 작성</h2>
+            <p className="form-description">
+              {selectedDocType} 작성을 위해 다음 정보를 입력해주세요:
+            </p>
+
+            <form className="doc-form" onSubmit={(e) => { e.preventDefault(); handleGenerateDocument(); }}>
+              {documentTypes[selectedDocType].fields.map(field => {
+                // 동적 직원 필드
+                if (field.type === 'dynamic_staff') {
+                  return (
+                    <div key={field.name} className="form-field dynamic-field">
+                      <label>
+                        {field.label}
+                        <span className="required">*</span>
+                        <span className="field-info"> (최대 {field.maxCount}명)</span>
+                      </label>
+                      <div className="dynamic-inputs">
+                        {staffMembers.map((staff, index) => (
+                          <div key={index} className="dynamic-input-row">
+                            <input
+                              type="text"
+                              placeholder="팀명"
+                              value={staff.team}
+                              onChange={(e) => handleStaffChange(index, 'team', e.target.value)}
+                              className="team-input"
+                            />
+                            <input
+                              type="text"
+                              placeholder="성명"
+                              value={staff.name}
+                              onChange={(e) => handleStaffChange(index, 'name', e.target.value)}
+                              className="name-input"
+                            />
+                            {staffMembers.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveStaff(index)}
+                                className="remove-btn"
+                              >
+                                −
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {staffMembers.length < field.maxCount && (
+                          <button
+                            type="button"
+                            onClick={handleAddStaff}
+                            className="add-btn"
+                          >
+                            + 직원 추가
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )
+                  );
                 }
-              </div>
-            </>
-          ) : (
-            <div className="empty-document">
-              <p>왼쪽에서 '새로운 문서 생성'을 클릭하거나</p>
-              <p>오른쪽 패널에서 문서 작성을 시작해주세요.</p>
-            </div>
-          )}
-        </div>
-      </div>
+                
+                // 동적 의료전문가 필드
+                if (field.type === 'dynamic_medical') {
+                  return (
+                    <div key={field.name} className="form-field dynamic-field">
+                      <label>
+                        {field.label}
+                        <span className="required">*</span>
+                        <span className="field-info"> (최대 {field.maxCount}명)</span>
+                      </label>
+                      <div className="dynamic-inputs">
+                        {medicalProfessionals.map((medical, index) => (
+                          <div key={index} className="dynamic-input-row">
+                            <input
+                              type="text"
+                              placeholder="의료기관명"
+                              value={medical.institution}
+                              onChange={(e) => handleMedicalChange(index, 'institution', e.target.value)}
+                              className="institution-input"
+                            />
+                            <input
+                              type="text"
+                              placeholder="전문가 성명"
+                              value={medical.name}
+                              onChange={(e) => handleMedicalChange(index, 'name', e.target.value)}
+                              className="name-input"
+                            />
+                            {medicalProfessionals.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMedical(index)}
+                                className="remove-btn"
+                              >
+                                −
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {medicalProfessionals.length < field.maxCount && (
+                          <button
+                            type="button"
+                            onClick={handleAddMedical}
+                            className="add-btn"
+                          >
+                            + 의료전문가 추가
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // 일반 필드
+                return (
+                  <div key={field.name} className="form-field">
+                    <label htmlFor={field.name}>
+                      {field.label}
+                      {field.required && <span className="required">*</span>}
+                    </label>
+                    {field.type === 'textarea' ? (
+                      <textarea
+                        id={field.name}
+                        value={formData[field.name] || ''}
+                        onChange={(e) => handleInputChange(field.name, e.target.value)}
+                        placeholder={field.placeholder}
+                        required={field.required}
+                        rows={4}
+                      />
+                    ) : (
+                      <input
+                        type={field.type}
+                        id={field.name}
+                        value={formData[field.name] || ''}
+                        onChange={(e) => handleInputChange(field.name, e.target.value)}
+                        placeholder={field.placeholder}
+                        required={field.required}
+                      />
+                    )}
+                  </div>
+                );
+              })}
 
-      {/* Right Panel - AI Assistant */}
-      <div className="docs-ai-panel">
-        <h2>문서 생성 요청</h2>
-        
-        <div className="docs-chat-container" ref={chatContainerRef} key={renderKey}>
-          {messages.length === 0 ? (
-            <div className="docs-initial-prompt">
-              <p>문서 작성을 시작하려면 아래 예시를 참고하세요:</p>
-              <ul>
-                <li>"영업방문 결과보고서 작성해줘"</li>
-                <li>"제품설명회 신청서를 만들어주세요"</li>
-                <li>"제품설명회 결과보고서 작성"</li>
-              </ul>
-            </div>
-          ) : (
-            messages.map((msg, index) => (
-              <div key={index} className={`docs-message docs-${msg.type}-message`}>
-                {msg.type === 'ai' && <div className="docs-ai-avatar">🤖</div>}
-                <div className="docs-message-content">
-                  {msg.content}
-                  
-                  {/* 문서 타입 선택 옵션 표시 */}
-                  {msg.interrupt && msg.data?.options && (
-                    <div className="document-options">
-                      {msg.data.options.map((option) => (
-                        <button
-                          key={option.value}
-                          className="option-btn"
-                          onClick={() => handleDocumentTypeSelect(option)}
-                          disabled={isLoading}
-                        >
-                          {option.label}
-                        </button>
+              {error && (
+                <div className="error-message">
+                  {error}
+                </div>
+              )}
+
+              <div className="form-actions">
+                <button 
+                  type="submit" 
+                  className="generate-btn"
+                  disabled={isLoading}
+                >
+                  {isLoading ? '문서 생성 중...' : '문서 생성'}
+                </button>
+                <button 
+                  type="button" 
+                  className="cancel-btn"
+                  onClick={startNewDocument}
+                >
+                  취소
+                </button>
+              </div>
+            </form>
+
+            {/* 생성된 문서 표시 */}
+            {generatedDocument && (
+              <div className="generated-document">
+                <h3>생성된 문서</h3>
+                <div className="document-content">
+                  {generatedDocument.response || generatedDocument.message}
+                </div>
+                {generatedDocument.files_generated && (
+                  <div className="generated-files">
+                    <h4>생성된 파일:</h4>
+                    <ul>
+                      {generatedDocument.files_generated.map((file, index) => (
+                        <li key={index}>{file}</li>
                       ))}
-                    </div>
-                  )}
-                  
-                  {/* 확인 버튼 (예/아니오) 표시 */}
-                  {msg.interrupt && msg.data?.interrupt_type === 'verification' && !msg.data?.options && (
-                    <div className="verification-buttons">
-                      <button
-                        className="verification-btn yes-btn"
-                        onClick={() => handleResumeSession('네, 맞습니다', 'verification_reply')}
-                        disabled={isLoading}
-                      >
-                        예
-                      </button>
-                      <button
-                        className="verification-btn no-btn"
-                        onClick={() => handleResumeSession('아니오, 다시 선택하겠습니다', 'verification_reply')}
-                        disabled={isLoading}
-                      >
-                        아니오
-                      </button>
-                    </div>
-                  )}
-                  
-                  {/* 성공 메시지 */}
-                  {msg.data?.document_path && (
-                    <div className="success-info">
-                      <p>✅ 문서가 성공적으로 생성되었습니다!</p>
-                      <p>파일 경로: {msg.data.document_path}</p>
-                    </div>
-                  )}
-                  
-                  {/* 오류 메시지 */}
-                  {msg.error && (
-                    <div className="error-info">
-                      ⚠️ {msg.content}
-                    </div>
-                  )}
-                </div>
+                    </ul>
+                  </div>
+                )}
               </div>
-            ))
-          )}
-          
-          {/* 로딩 인디케이터 */}
-          {isLoading && (
-            <div className="docs-message docs-ai-message">
-              <div className="docs-ai-avatar">🤖</div>
-              <div className="docs-message-content">
-                <div className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* 스크롤 끝 지점 */}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input Area */}
-        <div className="docs-input-area">
-          <textarea
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder={requiresInterrupt ? 
-              "요청된 정보를 입력해주세요..." : 
-              "문서 작성 요청을 입력해주세요..."}
-            className="docs-message-input"
-            disabled={isLoading}
-            rows="3"
-          />
-          <button 
-            onClick={handleSendMessage}
-            className="docs-send-button"
-            disabled={isLoading || !inputMessage.trim()}
-          >
-            {isLoading ? '처리 중...' : '전송'}
-          </button>
+            )}
+          </div>
+        )}
         </div>
       </div>
     </div>
   );
 };
 
-export default Docs; 
+export default Docs;

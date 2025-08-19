@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './Schedule.css';
 
-const Schedule = ({ schedules, setSchedules }) => {
+const Schedule = ({ currentUser }) => {
   // 오늘 날짜 가져오기
   const getTodayDate = () => {
     const today = new Date();
@@ -16,15 +16,15 @@ const Schedule = ({ schedules, setSchedules }) => {
     const now = new Date();
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
-    return `${hours}:${minutes}`;
+    return `${hours}:${minutes}:00`;
   };
 
-  // schedules와 setSchedules는 이제 props로 받음
-
+  const [schedules, setSchedules] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [showAddForm, setShowAddForm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [useLocalStorage, setUseLocalStorage] = useState(false); // API 실패시 localStorage 사용
   const [newSchedule, setNewSchedule] = useState({
-    employee_id: '',
     title: '',
     location: '',
     contact_person: '',
@@ -40,6 +40,68 @@ const Schedule = ({ schedules, setSchedules }) => {
   useEffect(() => {
     setNewSchedule(prev => ({ ...prev, schedule_date: selectedDate }));
   }, [selectedDate]);
+
+  // 컴포넌트 마운트 시 일정 가져오기
+  useEffect(() => {
+    fetchSchedules();
+  }, []);
+
+  // localStorage에서 일정 가져오기
+  const getSchedulesFromLocalStorage = () => {
+    const userId = currentUser?.employee_id || currentUser?.email || 'guest';
+    const storageKey = `schedules_${userId}`;
+    const saved = localStorage.getItem(storageKey);
+    return saved ? JSON.parse(saved) : [];
+  };
+
+  // localStorage에 일정 저장
+  const saveSchedulesToLocalStorage = (schedulesToSave) => {
+    const userId = currentUser?.employee_id || currentUser?.email || 'guest';
+    const storageKey = `schedules_${userId}`;
+    localStorage.setItem(storageKey, JSON.stringify(schedulesToSave));
+  };
+
+  // 일정 가져오기
+  const fetchSchedules = async () => {
+    setLoading(true);
+    const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
+    
+    console.log('📅 일정 API 호출 시작');
+    console.log('토큰:', token ? '있음' : '없음');
+    
+    try {
+      const response = await fetch('http://localhost:8010/schedules/my', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('응답 상태:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📅 받은 일정 데이터:', data);
+        console.log('일정 개수:', data.length);
+        setSchedules(data);
+        setUseLocalStorage(false);
+      } else {
+        console.warn('Schedule API not available:', response.status);
+        setUseLocalStorage(true);
+        const localSchedules = getSchedulesFromLocalStorage();
+        setSchedules(localSchedules);
+      }
+    } catch (error) {
+      console.error('일정 가져오기 오류:', error);
+      console.warn('Using localStorage due to API error');
+      setUseLocalStorage(true);
+      const localSchedules = getSchedulesFromLocalStorage();
+      setSchedules(localSchedules);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredSchedules = schedules.filter(schedule => schedule.schedule_date === selectedDate);
 
@@ -63,9 +125,9 @@ const Schedule = ({ schedules, setSchedules }) => {
 
   const scheduleTypes = [
     { id: '방문', name: '방문', color: '#6f42c1' },
-    { id: '교육', name: '교육', color: '#28a745' },
-    { id: '계약', name: '계약', color: '#dc3545' },
     { id: '회의', name: '회의', color: '#ffc107' },
+    { id: '교육', name: '교육', color: '#28a745' },
+    { id: '기타', name: '기타', color: '#dc3545' },
   ];
 
   const statusColors = {
@@ -76,47 +138,168 @@ const Schedule = ({ schedules, setSchedules }) => {
   };
 
   // 새 일정 추가
-  const handleAddSchedule = () => {
+  const handleAddSchedule = async () => {
     if (!newSchedule.title || !newSchedule.location || !newSchedule.contact_person) {
       alert('제목, 거래처(위치), 담당자는 필수 입력 항목입니다.');
       return;
     }
 
-    // 현재 로그인한 사용자의 employee_id 설정 (실제로는 props나 context에서 가져와야 함)
-    const schedule = {
-      ...newSchedule,
-      id: Date.now(),
-      employee_id: 'EMP001', // TODO: 실제 로그인한 사용자 ID로 변경 필요
-    };
+    if (useLocalStorage) {
+      // localStorage 사용
+      const newScheduleWithId = {
+        ...newSchedule,
+        schedule_id: Date.now(),
+        employee_id: currentUser?.employee_id || 'guest',
+        created_at: new Date().toISOString()
+      };
+      const updatedSchedules = [...schedules, newScheduleWithId];
+      setSchedules(updatedSchedules);
+      saveSchedulesToLocalStorage(updatedSchedules);
+      setShowAddForm(false);
+      setNewSchedule({
+        title: '',
+        location: '',
+        contact_person: '',
+        schedule_date: selectedDate,
+        schedule_time: getCurrentTime(),
+        duration: '1시간',
+        schedule_type: '방문',
+        status: '예정',
+        memo: '',
+      });
+      alert('일정이 추가되었습니다. (로컬 저장)');
+      return;
+    }
 
-    setSchedules([...schedules, schedule]);
-    setShowAddForm(false);
-    setNewSchedule({
-      employee_id: '',
-      title: '',
-      location: '',
-      contact_person: '',
-      schedule_date: selectedDate,
-      schedule_time: getCurrentTime(),
-      duration: '1시간',
-      schedule_type: '방문',
-      status: '예정',
-      memo: '',
-    });
+    const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
+    
+    try {
+      const response = await fetch('http://localhost:8010/schedules', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newSchedule)
+      });
+
+      if (response.ok) {
+        const createdSchedule = await response.json();
+        setSchedules([...schedules, createdSchedule]);
+        setShowAddForm(false);
+        setNewSchedule({
+          title: '',
+          location: '',
+          contact_person: '',
+          schedule_date: selectedDate,
+          schedule_time: getCurrentTime(),
+          duration: '1시간',
+          schedule_type: '방문',
+          status: '예정',
+          memo: '',
+        });
+        alert('일정이 추가되었습니다.');
+      } else if (response.status === 404) {
+        // API가 없으면 localStorage로 전환
+        setUseLocalStorage(true);
+        handleAddSchedule(); // localStorage로 다시 시도
+      } else {
+        const error = await response.json();
+        alert(`일정 추가 실패: ${error.detail || '오류가 발생했습니다.'}`);
+      }
+    } catch (error) {
+      console.error('일정 추가 오류:', error);
+      setUseLocalStorage(true);
+      handleAddSchedule(); // localStorage로 다시 시도
+    }
   };
 
   // 일정 삭제
-  const handleDeleteSchedule = (id) => {
-    if (window.confirm('이 일정을 삭제하시겠습니까?')) {
-      setSchedules(schedules.filter(schedule => schedule.id !== id));
+  const handleDeleteSchedule = async (scheduleId) => {
+    if (!window.confirm('이 일정을 삭제하시겠습니까?')) {
+      return;
+    }
+
+    if (useLocalStorage) {
+      // localStorage 사용
+      const updatedSchedules = schedules.filter(schedule => schedule.schedule_id !== scheduleId);
+      setSchedules(updatedSchedules);
+      saveSchedulesToLocalStorage(updatedSchedules);
+      alert('일정이 삭제되었습니다. (로컬)');
+      return;
+    }
+
+    const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
+    
+    try {
+      const response = await fetch(`http://localhost:8010/schedules/${scheduleId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        setSchedules(schedules.filter(schedule => schedule.schedule_id !== scheduleId));
+        alert('일정이 삭제되었습니다.');
+      } else if (response.status === 404) {
+        // API가 없으면 localStorage로 전환
+        setUseLocalStorage(true);
+        handleDeleteSchedule(scheduleId); // localStorage로 다시 시도
+      } else {
+        const error = await response.json();
+        alert(`일정 삭제 실패: ${error.detail || '오류가 발생했습니다.'}`);
+      }
+    } catch (error) {
+      console.error('일정 삭제 오류:', error);
+      setUseLocalStorage(true);
+      handleDeleteSchedule(scheduleId); // localStorage로 다시 시도
     }
   };
 
   // 일정 상태 변경
-  const handleStatusChange = (id, newStatus) => {
-    setSchedules(schedules.map(schedule => 
-      schedule.id === id ? { ...schedule, status: newStatus } : schedule
-    ));
+  const handleStatusChange = async (scheduleId, newStatus) => {
+    if (useLocalStorage) {
+      // localStorage 사용
+      const updatedSchedules = schedules.map(schedule => 
+        schedule.schedule_id === scheduleId ? { ...schedule, status: newStatus } : schedule
+      );
+      setSchedules(updatedSchedules);
+      saveSchedulesToLocalStorage(updatedSchedules);
+      return;
+    }
+
+    const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
+    
+    try {
+      const response = await fetch(`http://localhost:8010/schedules/${scheduleId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      if (response.ok) {
+        const updatedSchedule = await response.json();
+        setSchedules(schedules.map(schedule => 
+          schedule.schedule_id === scheduleId ? updatedSchedule : schedule
+        ));
+      } else if (response.status === 404) {
+        // API가 없으면 localStorage로 전환
+        setUseLocalStorage(true);
+        handleStatusChange(scheduleId, newStatus); // localStorage로 다시 시도
+      } else {
+        const error = await response.json();
+        alert(`상태 변경 실패: ${error.detail || '오류가 발생했습니다.'}`);
+      }
+    } catch (error) {
+      console.error('상태 변경 오류:', error);
+      setUseLocalStorage(true);
+      handleStatusChange(scheduleId, newStatus); // localStorage로 다시 시도
+    }
   };
 
   return (
@@ -130,6 +313,11 @@ const Schedule = ({ schedules, setSchedules }) => {
             day: 'numeric', 
             weekday: 'long' 
           })}
+          {useLocalStorage && (
+            <span style={{ marginLeft: '10px', color: '#ff9800', fontSize: '0.9rem' }}>
+              (로컬 저장 모드)
+            </span>
+          )}
         </div>
       </div>
 
@@ -237,8 +425,8 @@ const Schedule = ({ schedules, setSchedules }) => {
                   <label>시간</label>
                   <input
                     type="time"
-                    value={newSchedule.schedule_time}
-                    onChange={(e) => setNewSchedule({...newSchedule, schedule_time: e.target.value})}
+                    value={newSchedule.schedule_time.substring(0, 5)}
+                    onChange={(e) => setNewSchedule({...newSchedule, schedule_time: e.target.value + ':00'})}
                   />
                 </div>
 
@@ -323,7 +511,11 @@ const Schedule = ({ schedules, setSchedules }) => {
             {filteredSchedules.length > 0 && ` (${filteredSchedules.length}개)`}
           </h3>
           
-          {filteredSchedules.length === 0 ? (
+          {loading ? (
+            <div className="loading-container">
+              <p>일정을 불러오는 중입니다...</p>
+            </div>
+          ) : filteredSchedules.length === 0 ? (
             <div className="no-schedule">
               <p>선택한 날짜에 일정이 없습니다.</p>
               <button 
@@ -338,9 +530,9 @@ const Schedule = ({ schedules, setSchedules }) => {
               {filteredSchedules
                 .sort((a, b) => a.schedule_time.localeCompare(b.schedule_time))
                 .map(schedule => (
-                <div key={schedule.id} className="schedule-item">
+                <div key={schedule.schedule_id} className="schedule-item">
                   <div className="schedule-time">
-                    <div className="time">{schedule.schedule_time}</div>
+                    <div className="time">{schedule.schedule_time ? schedule.schedule_time.substring(0, 5) : ''}</div>
                     <div className="duration">{schedule.duration}</div>
                   </div>
                   
@@ -380,7 +572,7 @@ const Schedule = ({ schedules, setSchedules }) => {
                     <select 
                       className="status-select"
                       value={schedule.status}
-                      onChange={(e) => handleStatusChange(schedule.id, e.target.value)}
+                      onChange={(e) => handleStatusChange(schedule.schedule_id, e.target.value)}
                       style={{ 
                         backgroundColor: statusColors[schedule.status] + '20', 
                         color: statusColors[schedule.status],
@@ -395,7 +587,7 @@ const Schedule = ({ schedules, setSchedules }) => {
                     <div className="schedule-actions">
                       <button 
                         className="action-btn delete"
-                        onClick={() => handleDeleteSchedule(schedule.id)}
+                        onClick={() => handleDeleteSchedule(schedule.schedule_id)}
                       >
                         삭제
                       </button>

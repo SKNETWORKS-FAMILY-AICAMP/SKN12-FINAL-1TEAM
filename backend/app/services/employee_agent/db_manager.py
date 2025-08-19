@@ -73,22 +73,63 @@ class EmployeeDBManager:
         employees = self.get_all_employees()
         return [emp["name"] for emp in employees]
     
-    def get_employee_performance(self, employee_name: str, start_period: str, end_period: str) -> Dict[str, Any]:
-        """직원의 실적 데이터를 조회합니다."""
+    def find_employees_by_name(self, employee_name: str) -> List[Dict[str, Any]]:
+        """이름으로 직원들을 조회합니다. (중복 이름 처리)"""
         with self.get_connection() as db:
             try:
-                # 직원 ID 조회
-                emp_query = text("""
-                    SELECT employee_info_id 
-                    FROM employee_info 
-                    WHERE name = :name
+                query = text("""
+                    SELECT 
+                        ei.employee_info_id,
+                        ei.name,
+                        ei.employee_number,
+                        ei.position,
+                        b.branch_name as department,
+                        COUNT(sr.record_id) as sale_count
+                    FROM employee_info ei
+                    LEFT JOIN branches b ON ei.branch_id = b.branch_id
+                    LEFT JOIN sales_records sr ON sr.employee_id = ei.employee_info_id
+                    WHERE ei.name = :name
+                    GROUP BY ei.employee_info_id, ei.name, ei.employee_number, ei.position, b.branch_name
+                    ORDER BY sale_count DESC
                 """)
-                emp_result = db.execute(emp_query, {"name": employee_name}).fetchone()
                 
-                if not emp_result:
-                    return None
+                result = db.execute(query, {"name": employee_name})
+                employees = []
+                for row in result:
+                    employees.append({
+                        "employee_info_id": row.employee_info_id,
+                        "name": row.name,
+                        "employee_number": row.employee_number,
+                        "position": row.position,
+                        "department": row.department,
+                        "has_sales_data": row.sale_count > 0
+                    })
+                return employees
                 
-                employee_id = emp_result.employee_info_id
+            except Exception as e:
+                logger.error(f"직원 조회 오류: {e}")
+                return []
+    
+    def get_employee_performance(self, employee_name: str = None, start_period: str = None, end_period: str = None, employee_info_id: int = None) -> Dict[str, Any]:
+        """직원의 실적 데이터를 조회합니다. employee_info_id가 있으면 우선 사용"""
+        with self.get_connection() as db:
+            try:
+                # employee_info_id가 제공되면 직접 사용
+                if employee_info_id:
+                    employee_id = employee_info_id
+                else:
+                    # 기존 방식: 이름으로 조회
+                    emp_query = text("""
+                        SELECT employee_info_id 
+                        FROM employee_info 
+                        WHERE name = :name
+                    """)
+                    emp_result = db.execute(emp_query, {"name": employee_name}).fetchone()
+                    
+                    if not emp_result:
+                        return None
+                    
+                    employee_id = emp_result.employee_info_id
                 
                 # 기간 변환
                 from calendar import monthrange
@@ -199,22 +240,26 @@ class EmployeeDBManager:
                 logger.error(f"실적 데이터 조회 오류: {e}")
                 return None
     
-    def get_employee_targets(self, employee_name: str, start_period: str, end_period: str) -> Dict[str, Any]:
-        """직원의 목표 데이터를 조회합니다."""
+    def get_employee_targets(self, employee_name: str = None, start_period: str = None, end_period: str = None, employee_info_id: int = None) -> Dict[str, Any]:
+        """직원의 목표 데이터를 조회합니다. employee_info_id가 있으면 우선 사용"""
         with self.get_connection() as db:
             try:
-                # 직원 ID 조회
-                emp_query = text("""
-                    SELECT employee_info_id 
-                    FROM employee_info 
-                    WHERE name = :name
-                """)
-                emp_result = db.execute(emp_query, {"name": employee_name}).fetchone()
-                
-                if not emp_result:
-                    return None
-                
-                employee_id = emp_result.employee_info_id
+                # employee_info_id가 제공되면 직접 사용
+                if employee_info_id:
+                    employee_id = employee_info_id
+                else:
+                    # 기존 방식: 이름으로 조회
+                    emp_query = text("""
+                        SELECT employee_info_id 
+                        FROM employee_info 
+                        WHERE name = :name
+                    """)
+                    emp_result = db.execute(emp_query, {"name": employee_name}).fetchone()
+                    
+                    if not emp_result:
+                        return None
+                    
+                    employee_id = emp_result.employee_info_id
                 
                 # 기간 변환
                 start_date = f"{start_period[:4]}-{start_period[4:6]}-01"
@@ -306,9 +351,14 @@ class EmployeeDBManager:
                 logger.error(f"목표 데이터 조회 오류: {e}")
                 return None
     
-    def get_performance_summary(self, employee_name: str, start_period: str, end_period: str) -> Dict[str, Any]:
+    def get_performance_summary(self, employee_name: str, start_period: str, end_period: str, employee_info_id: int = None) -> Dict[str, Any]:
         """직원의 실적 요약 데이터를 반환합니다."""
-        performance_data = self.get_employee_performance(employee_name, start_period, end_period)
+        performance_data = self.get_employee_performance(
+            employee_name=employee_name, 
+            start_period=start_period, 
+            end_period=end_period,
+            employee_info_id=employee_info_id
+        )
         
         if not performance_data:
             return {
@@ -325,9 +375,14 @@ class EmployeeDBManager:
             "client_breakdown": performance_data.get("client_breakdown", [])
         }
     
-    def get_target_vs_performance(self, employee_name: str, start_period: str, end_period: str) -> Dict[str, Any]:
+    def get_target_vs_performance(self, employee_name: str, start_period: str, end_period: str, employee_info_id: int = None) -> Dict[str, Any]:
         """목표 대비 실적 데이터를 반환합니다."""
-        target_data = self.get_employee_targets(employee_name, start_period, end_period)
+        target_data = self.get_employee_targets(
+            employee_name=employee_name, 
+            start_period=start_period, 
+            end_period=end_period,
+            employee_info_id=employee_info_id
+        )
         
         if not target_data:
             return {
@@ -371,9 +426,14 @@ class EmployeeDBManager:
             "monthly_targets": target_data.get("monthly_targets", [])
         }
     
-    def analyze_performance_trend(self, employee_name: str, start_period: str, end_period: str) -> Dict[str, Any]:
+    def analyze_performance_trend(self, employee_name: str, start_period: str, end_period: str, employee_info_id: int = None) -> Dict[str, Any]:
         """실적 추세를 분석합니다."""
-        performance_data = self.get_employee_performance(employee_name, start_period, end_period)
+        performance_data = self.get_employee_performance(
+            employee_name=employee_name, 
+            start_period=start_period, 
+            end_period=end_period,
+            employee_info_id=employee_info_id
+        )
         
         if not performance_data or not performance_data.get("monthly_breakdown"):
             return {

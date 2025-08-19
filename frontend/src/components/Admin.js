@@ -44,8 +44,15 @@ const Admin = ({ currentUser }) => {
       const documents = await getDocuments();
       
       // documents가 배열인지 확인
-      if (!Array.isArray(documents)) {
-        console.warn('문서 목록이 비어있거나 형식이 올바르지 않습니다');
+      if (!documents || !Array.isArray(documents)) {
+        console.warn('문서 목록이 비어있거나 형식이 올바르지 않습니다:', documents);
+        setUploadedFiles([]);
+        return;
+      }
+      
+      // 빈 배열인 경우
+      if (documents.length === 0) {
+        console.log('문서가 없습니다');
         setUploadedFiles([]);
         return;
       }
@@ -61,6 +68,7 @@ const Admin = ({ currentUser }) => {
       setUploadedFiles(formattedDocs);
     } catch (error) {
       console.error('문서 목록 조회 실패:', error);
+      console.error('에러 상세:', error.message);
       setUploadedFiles([]); // 오류 시 빈 배열 설정
     }
   };

@@ -144,11 +144,11 @@ const ClientAnalysis = () => {
     <div className="client-page">
       {/* Left Sidebar */}
       <div className="client-sidebar">
-        <h2>고객 분석</h2>
+        <h2>거래처 분석</h2>
         
         <button className="new-analysis-btn" onClick={handleNewAnalysis}>
           <span className="plus-icon">+</span>
-          새로운 고객 분석
+          새로운 거래처 분석
         </button>
 
         <div className="existing-analyses">
@@ -228,7 +228,7 @@ const ClientAnalysis = () => {
 
       {/* Right Panel - AI Assistant */}
       <div className="client-ai-panel">
-        <h2>고객 분석 요청</h2>
+        <h2>거래처 분석 요청</h2>
         
         <div className="chat-container">
           {chatHistory.map((message) => (
@@ -255,9 +255,8 @@ const ClientAnalysis = () => {
             <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
               <p>거래처 분석을 시작하세요.</p>
               <p style={{ fontSize: '0.9em', marginTop: '10px' }}>
-                예시:<br/>
+                예시:
                 "서울대병원 2024년 분석해줘"<br/>
-                "ABC회사 등급 평가해줘"
               </p>
             </div>
           )}
