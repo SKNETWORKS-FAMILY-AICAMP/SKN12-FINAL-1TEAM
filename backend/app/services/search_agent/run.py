@@ -8,37 +8,48 @@ from .search_agent import create_search_agent
 
 def ensure_formatted_response(response: str, query: str) -> str:
     """
-    응답이 정해진 형식을 따르는지 확인하고 필요시 보정
+    응답이 자연스러운지 확인하고 메타데이터 제거
     
     Args:
         response: 원본 응답
         query: 사용자 쿼리
         
     Returns:
-        형식화된 응답
+        자연스러운 응답
     """
-    # 필수 섹션들이 있는지 확인
-    required_sections = ["## 📌", "## 🔍", "## 📊", "## 💡"]
+    import re
+    import logging
     
-    # 모든 섹션이 있으면 그대로 반환
-    if all(section in response for section in required_sections):
-        return response
+    logger = logging.getLogger(__name__)
     
-    # 형식이 없으면 기본 템플릿으로 래핑
-    formatted = f"""## 📌 요약
-{query}에 대한 검색 결과입니다.
-
-## 🔍 주요 정보
-{response}
-
-## 📊 상세 내용
-위 내용이 검색된 전체 정보입니다.
-
-## 💡 추가 정보
-- 검색 완료
-- 데이터 출처: 통합 검색 시스템"""
+    # 제거해야 할 메타데이터 패턴들
+    metadata_patterns = [
+        r"유사도 점수:?\s*[\d\.]+",
+        r"검색된?\s*결과:?\s*\d+건",
+        r"데이터 출처:.*",
+        r"## [📌🔍📊💡].*",  # 이모지가 포함된 제목들
+        r"검색 완료",
+        r"통합 검색 시스템",
+        r"\[.*Agent.*\]",  # 에이전트 관련 태그
+        r"위 내용이 검색된 전체 정보입니다"
+    ]
     
-    return formatted
+    # 원본 응답을 로그에 기록 (개발자용)
+    logger.info(f"Original response format: {response[:200]}...")
+    
+    # 메타데이터 제거
+    cleaned_response = response
+    for pattern in metadata_patterns:
+        cleaned_response = re.sub(pattern, "", cleaned_response, flags=re.IGNORECASE)
+    
+    # 연속된 줄바꿈 정리
+    cleaned_response = re.sub(r'\n{3,}', '\n\n', cleaned_response.strip())
+    
+    # 응답이 너무 짧거나 비어있으면 기본 메시지
+    if not cleaned_response or len(cleaned_response) < 10:
+        cleaned_response = f"{query}에 대한 정보를 찾을 수 없습니다. 다른 검색어로 시도해 주세요."
+    
+    return cleaned_response
 
 async def run(query: str, session_id: str, api_token: Optional[str] = None) -> Dict[str, Any]:
     """
