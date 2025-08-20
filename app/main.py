@@ -131,7 +131,7 @@ app.include_router(data_upload_router, prefix="/data", tags=["Data Upload"])
 app.include_router(news_router, prefix="/news", tags=["News"])
 app.include_router(schedule_router, prefix="/schedules", tags=["Schedules"])
 app.include_router(branch_router, prefix="/branches", tags=["Branches"])
-app.include_router(search_router, prefix="/search", tags=["Search"])
+app.include_router(search_router, prefix="/general-search", tags=["Search"])
 
 @app.get("/")
 def root():
