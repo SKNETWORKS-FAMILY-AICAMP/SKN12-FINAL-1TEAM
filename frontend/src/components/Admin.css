@@ -17,7 +17,7 @@
   border-radius: 12px;
   width: 90%;
   max-width: 700px;
-  max-height: 80vh;
+  max-height: 90vh;
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 }
@@ -27,8 +27,9 @@
   justify-content: space-between;
   align-items: center;
   padding: 20px 30px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: white;
+  color: #333;
+  border-bottom: 1px solid #e9ecef;
 }
 
 .admin-modal-header h2 {
@@ -39,7 +40,7 @@
 .admin-modal-close {
   background: none;
   border: none;
-  color: white;
+  color: #333;
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
@@ -53,12 +54,12 @@
 }
 
 .admin-modal-close:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(108, 92, 231, 0.1);
 }
 
 .admin-modal-body {
   padding: 30px;
-  max-height: calc(80vh - 140px);
+  max-height: calc(90vh - 180px);
   overflow-y: auto;
 }
 
@@ -98,6 +99,8 @@
   justify-content: flex-end;
   gap: 10px;
   border-top: 1px solid #e9ecef;
+  flex-wrap: wrap;
+  min-height: 80px;
 }
 
 .btn-close {

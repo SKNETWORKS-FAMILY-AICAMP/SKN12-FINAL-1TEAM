@@ -56,8 +56,9 @@ const EmployeePerformance = ({ currentUser }) => {
     if (isAdmin) {
       fetchEmployeeList();
     } else if (currentUser) {
-      setSelectedEmployee(currentUser.name || currentUser.username || currentUser.email);
-      console.log('Set selected employee to:', currentUser.name || currentUser.username || currentUser.email);
+      // 일반 사용자는 selectedEmployee를 설정하지 않음 (백엔드에서 자동으로 처리)
+      setSelectedEmployee('');
+      console.log('General user - not setting selected employee');
     }
     
     // 대시보드 통계 가져오기
@@ -238,9 +239,19 @@ const EmployeePerformance = ({ currentUser }) => {
       console.log('Is Admin:', isAdmin);
       console.log('Original Query:', analysisQuery);
       
+      // 관리자가 직원을 선택한 경우, 쿼리에 직원 이름이 없으면 추가
+      let processedQuery = analysisQuery;
+      if (isAdmin && selectedEmployee) {
+        // 쿼리에 선택한 직원 이름이 없으면 추가
+        if (!analysisQuery.includes(selectedEmployee)) {
+          processedQuery = `${selectedEmployee} 직원의 ${analysisQuery}`;
+          console.log('Added employee name to query:', processedQuery);
+        }
+      }
+      
       // 관리자인 경우에만 직원명 전달, 일반 사용자는 백엔드에서 자동 처리
       let requestData = {
-        query: analysisQuery
+        query: processedQuery
       };
       
       // 관리자가 특정 직원을 선택한 경우에만 employee_name 추가
