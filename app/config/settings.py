@@ -79,15 +79,15 @@ class MinIOSettings(BaseSettings):
         env_prefix = "MINIO_"
 
 
-# class AWSS3Settings(BaseSettings):
-#     """AWS S3 관련 설정"""
-#     access_key_id: str
-#     secret_access_key: SecretStr
-#     region: str = "ap-northeast-2"
-#     bucket_name: str
+class AWSS3Settings(BaseSettings):
+    """AWS S3 관련 설정"""
+    access_key_id: str
+    secret_access_key: SecretStr
+    region: str = "ap-northeast-2"
+    bucket_name: str
 
-#     class Config:
-#         env_prefix = "AWS_S3_"
+    class Config:
+        env_prefix = "AWS_S3_"
 
 
 class OpenSearchSettings(BaseSettings):
@@ -141,9 +141,28 @@ class Settings:
         print(f"[DEBUG] Settings loading .env file path: {DOTENV_PATH}")
         # 각 설정 객체 초기화
         self.database = DatabaseSettings()
-        self.pgadmin = PgAdminSettings()
-        self.minio = MinIOSettings()
-        # self.aws_s3 = AWSS3Settings()  # AWS S3 설정 주석 처리
+        
+        # PgAdmin은 개발 환경에서만 필요 (프로덕션에서는 옵셔널)
+        try:
+            self.pgadmin = PgAdminSettings()
+        except Exception as e:
+            print(f"[WARNING] PgAdmin settings not configured (OK for production): {e}")
+            self.pgadmin = None
+            
+        # MinIO는 개발 환경에서만 필요 (프로덕션에서는 AWS S3 사용)
+        # try:
+        #     self.minio = MinIOSettings()
+        # except Exception as e:
+        #     print(f"[WARNING] MinIO settings not configured (OK for production): {e}")
+        #     self.minio = None
+        self.minio = None  # MinIO 비활성화
+            
+        # AWS S3는 프로덕션 환경에서 필요
+        try:
+            self.aws_s3 = AWSS3Settings()
+        except Exception as e:
+            print(f"[WARNING] AWS S3 settings not configured (OK for local development): {e}")
+            self.aws_s3 = None
         self.opensearch = OpenSearchSettings()
         self.jwt = JWTSettings()
         self.app = AppSettings()
@@ -152,12 +171,22 @@ class Settings:
     def validate_all(self):
         """모든 설정의 유효성을 검증합니다."""
         try:
-            # 각 설정 객체가 유효한지 확인
+            # 필수 설정 검증
             self.database.database_url
-            self.minio.access_key
-            self.minio.secret_key
             self.opensearch.connection_url
             self.jwt.secret_key.get_secret_value()
+            
+            # AWS S3 설정 확인 (MinIO는 비활성화)
+            # if self.minio:
+            #     self.minio.access_key
+            #     self.minio.secret_key
+            # elif self.aws_s3:
+            if self.aws_s3:
+                self.aws_s3.access_key_id
+                self.aws_s3.secret_access_key.get_secret_value()
+            else:
+                print("[WARNING] AWS S3 is not configured")
+            
             return True
         except Exception as e:
             raise ValueError(f"설정 검증 실패: {e}")
@@ -168,6 +197,8 @@ class Settings:
 
     def get_minio_config(self) -> dict:
         """MinIO 설정 반환"""
+        if not self.minio:
+            return None
         return {
             "endpoint_url": self.minio.endpoint,
             "aws_access_key_id": self.minio.access_key,
@@ -176,14 +207,16 @@ class Settings:
             "bucket_name": self.minio.bucket_name
         }
 
-    # def get_aws_s3_config(self) -> dict:
-    #     """AWS S3 설정 반환"""
-    #     return {
-    #         "aws_access_key_id": self.aws_s3.access_key_id,
-    #         "aws_secret_access_key": self.aws_s3.secret_access_key.get_secret_value(),
-    #         "region_name": self.aws_s3.region,
-    #         "bucket_name": self.aws_s3.bucket_name
-    #     }
+    def get_aws_s3_config(self) -> dict:
+        """AWS S3 설정 반환"""
+        if not self.aws_s3:
+            return None
+        return {
+            "aws_access_key_id": self.aws_s3.access_key_id,
+            "aws_secret_access_key": self.aws_s3.secret_access_key.get_secret_value(),
+            "region_name": self.aws_s3.region,
+            "bucket_name": self.aws_s3.bucket_name
+        }
 
     def get_opensearch_config(self) -> dict:
         """OpenSearch 설정 반환"""

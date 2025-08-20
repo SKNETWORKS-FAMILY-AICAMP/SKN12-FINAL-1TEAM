@@ -84,19 +84,26 @@ done\n\
 exec uvicorn app.main:app \\\n\
     --host 0.0.0.0 \\\n\
     --port 8000 \\\n\
-    --workers 2 \\\n\
-    --loop uvloop \\\n\
+    --workers 1 \\\n\
     --access-log \\\n\
     --log-level info' > /app/start-production.sh && \
     chmod +x /app/start-production.sh && \
     chown appuser:appuser /app/start-production.sh
+
+# 캐시 디렉토리 생성 및 권한 설정 (모델 다운로드용)
+RUN mkdir -p /app/.cache/huggingface /app/.cache/sentence-transformers && \
+    chown -R appuser:appuser /app/.cache && \
+    chmod -R 755 /app/.cache
 
 # 환경변수 설정
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     TZ=Asia/Seoul \
-    APP_ENV=production
+    APP_ENV=production \
+    HF_HOME=/app/.cache/huggingface \
+    TRANSFORMERS_CACHE=/app/.cache/huggingface/transformers \
+    SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence-transformers
 
 # 헬스체크 설정 (Fargate용)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

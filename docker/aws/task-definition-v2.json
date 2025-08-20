@@ -4,12 +4,12 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "1024",
   "memory": "2048",
-  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskRole",
+  "executionRoleArn": "arn:aws:iam::634531197710:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::634531197710:role/ecsTaskRole",
   "containerDefinitions": [
     {
       "name": "database-fastapi-app",
-      "image": "YOUR_ACCOUNT_ID.dkr.ecr.ap-northeast-2.amazonaws.com/database-fastapi-app:v2",
+      "image": "634531197710.dkr.ecr.ap-northeast-2.amazonaws.com/database-fastapi-app:v4",
       "portMappings": [
         {
           "containerPort": 8000,
@@ -38,59 +38,59 @@
       "secrets": [
         {
           "name": "POSTGRES_HOST",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/postgres/host"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/postgres/host"
         },
         {
           "name": "POSTGRES_PORT",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/postgres/port"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/postgres/port"
         },
         {
           "name": "POSTGRES_USER",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/postgres/user"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/postgres/user"
         },
         {
           "name": "POSTGRES_PASSWORD",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/postgres/password"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/postgres/password"
         },
         {
           "name": "POSTGRES_DB",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/postgres/db"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/postgres/db"
         },
         {
           "name": "OPENSEARCH_HOST",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/opensearch/external-host"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/opensearch/external-host"
         },
         {
           "name": "OPENSEARCH_PORT",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/opensearch/external-port"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/opensearch/external-port"
         },
         {
           "name": "OPENSEARCH_USER",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/opensearch/user"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/opensearch/user"
         },
         {
           "name": "OPENSEARCH_INITIAL_ADMIN_PASSWORD",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/opensearch/password"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/opensearch/password"
         },
         {
           "name": "AWS_S3_ACCESS_KEY_ID",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/s3/access-key"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/s3/access-key"
         },
         {
           "name": "AWS_S3_SECRET_ACCESS_KEY",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/s3/secret-key"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/s3/secret-key"
         },
         {
           "name": "AWS_S3_BUCKET_NAME",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/s3/bucket-name"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/s3/bucket-name"
         },
         {
           "name": "JWT_SECRET_KEY",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/jwt/secret-key"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/jwt/secret-key"
         },
         {
           "name": "OPENAI_API_KEY",
-          "valueFrom": "arn:aws:ssm:ap-northeast-2:YOUR_ACCOUNT_ID:parameter/database-api/openai/api-key"
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:634531197710:parameter/database-api/openai/api-key"
         }
       ],
       "logConfiguration": {
