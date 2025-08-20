@@ -9,13 +9,11 @@ const Main = ({ currentUser }) => {
 
   // 오늘 날짜 가져오기
   const getTodayDate = () => {
-    // 임시로 2025-08-16 날짜 사용
-    return '2025-08-16';
-    // const today = new Date();
-    // const year = today.getFullYear();
-    // const month = String(today.getMonth() + 1).padStart(2, '0');
-    // const day = String(today.getDate()).padStart(2, '0');
-    // return `${year}-${month}-${day}`;
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   // 오늘 일정 상태
@@ -132,20 +130,21 @@ const Main = ({ currentUser }) => {
   const fetchAllNews = async () => {
     setNewsLoading(true);
     const token = localStorage.getItem('access_token') || localStorage.getItem('narutalk_token');
+    const todayDate = getTodayDate();
     
-    console.log('📰 뉴스 API 호출 시작');
+    console.log('📰 오늘 날짜의 뉴스 API 호출 시작:', todayDate);
     
     try {
-      // 검색 API를 사용하여 날짜 제한 없이 뉴스 가져오기
+      // 오늘 날짜의 뉴스만 가져오기
       const [pharmaResponse, generalResponse] = await Promise.all([
-        fetch(`http://localhost:8010/news/search?news_type=pharmaceutical&limit=10`, {
+        fetch(`http://localhost:8010/news/search?news_type=pharmaceutical&date=${todayDate}&limit=10`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         }),
-        fetch(`http://localhost:8010/news/search?news_type=general&limit=10`, {
+        fetch(`http://localhost:8010/news/search?news_type=general&date=${todayDate}&limit=10`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -159,8 +158,17 @@ const Main = ({ currentUser }) => {
         const pharmaData = await pharmaResponse.json();
         console.log('💊 제약 뉴스:', pharmaData.length, '개');
         
+        // 오늘 날짜와 일치하는 뉴스만 필터링
+        const todayNews = pharmaData.filter(news => {
+          if (!news.published_date) return false;
+          const newsDate = new Date(news.published_date).toISOString().split('T')[0];
+          return newsDate === todayDate;
+        });
+        
+        console.log(`💊 오늘 날짜(${todayDate}) 제약 뉴스:`, todayNews.length, '개');
+        
         // 랜덤하게 2개 선택
-        const shuffledPharma = [...pharmaData].sort(() => Math.random() - 0.5);
+        const shuffledPharma = [...todayNews].sort(() => Math.random() - 0.5);
         const formattedPharmaNews = shuffledPharma.slice(0, 2).map(news => ({
           id: news.news_id,
           title: news.title,
@@ -180,9 +188,18 @@ const Main = ({ currentUser }) => {
         const generalData = await generalResponse.json();
         console.log('📰 일반 뉴스:', generalData.length, '개');
         
+        // 오늘 날짜와 일치하는 뉴스만 필터링
+        const todayNews = generalData.filter(news => {
+          if (!news.published_date) return false;
+          const newsDate = new Date(news.published_date).toISOString().split('T')[0];
+          return newsDate === todayDate;
+        });
+        
+        console.log(`📰 오늘 날짜(${todayDate}) 일반 뉴스:`, todayNews.length, '개');
+        
         // 랜덤하게 1개 선택
-        const randomIndex = Math.floor(Math.random() * generalData.length);
-        const selectedNews = generalData[randomIndex] || generalData[0];
+        const randomIndex = Math.floor(Math.random() * todayNews.length);
+        const selectedNews = todayNews[randomIndex] || todayNews[0];
         
         const formattedGeneralNews = selectedNews ? [{
           id: selectedNews.news_id,

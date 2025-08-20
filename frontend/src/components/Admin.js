@@ -607,7 +607,7 @@ const Admin = ({ currentUser }) => {
       {/* 직원 상세 정보 모달 */}
       {showEmployeeModal && selectedEmployee && (
         <div className="admin-modal-overlay" onClick={closeEmployeeModal}>
-          <div className="admin-modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="admin-modal-content" onClic아k={(e) => e.stopPropagation()}>
             <div className="admin-modal-header">
               <h2>직원 상세 정보</h2>
               <button className="admin-modal-close" onClick={closeEmployeeModal}>✕</button>
