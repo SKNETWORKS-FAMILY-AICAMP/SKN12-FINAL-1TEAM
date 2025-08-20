@@ -6,6 +6,40 @@ import json
 from typing import Dict, Any, Optional
 from .search_agent import create_search_agent
 
+def ensure_formatted_response(response: str, query: str) -> str:
+    """
+    응답이 정해진 형식을 따르는지 확인하고 필요시 보정
+    
+    Args:
+        response: 원본 응답
+        query: 사용자 쿼리
+        
+    Returns:
+        형식화된 응답
+    """
+    # 필수 섹션들이 있는지 확인
+    required_sections = ["## 📌", "## 🔍", "## 📊", "## 💡"]
+    
+    # 모든 섹션이 있으면 그대로 반환
+    if all(section in response for section in required_sections):
+        return response
+    
+    # 형식이 없으면 기본 템플릿으로 래핑
+    formatted = f"""## 📌 요약
+{query}에 대한 검색 결과입니다.
+
+## 🔍 주요 정보
+{response}
+
+## 📊 상세 내용
+위 내용이 검색된 전체 정보입니다.
+
+## 💡 추가 정보
+- 검색 완료
+- 데이터 출처: 통합 검색 시스템"""
+    
+    return formatted
+
 async def run(query: str, session_id: str, api_token: Optional[str] = None) -> Dict[str, Any]:
     """
     검색 에이전트 실행 - 완전한 LLM 기반 툴 선택 및 자연어 응답 생성
@@ -54,6 +88,9 @@ async def run(query: str, session_id: str, api_token: Optional[str] = None) -> D
                 response = str(last_message) if last_message else "응답을 생성할 수 없습니다."
         else:
             response = "응답을 생성할 수 없습니다."
+        
+        # 응답 형식 검증 및 보정
+        response = ensure_formatted_response(response, query)
         
         search_type = "LLM 기반 자동 선택 (자연어 응답)"
         
@@ -130,6 +167,9 @@ def run_sync(query: str, session_id: str, api_token: Optional[str] = None) -> Di
                 response = str(last_message) if last_message else "응답을 생성할 수 없습니다."
         else:
             response = "응답을 생성할 수 없습니다."
+        
+        # 응답 형식 검증 및 보정
+        response = ensure_formatted_response(response, query)
         
         search_type = "LLM 기반 자동 선택 (자연어 응답)"
         

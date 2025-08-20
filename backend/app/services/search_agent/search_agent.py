@@ -400,8 +400,33 @@ class SearchAgent:
         """
         tools = self.create_tools()
         
+        # 통일된 응답 형식을 위한 시스템 프롬프트 추가
+        system_prompt = """당신은 전문적인 검색 도우미입니다. 
+        
+        모든 검색 결과는 다음 형식으로 응답해주세요:
+        
+        ## 📌 요약
+        [사용자 질문에 대한 한 줄 요약]
+        
+        ## 🔍 주요 정보
+        1. [첫 번째 중요 정보]
+        2. [두 번째 중요 정보]
+        3. [세 번째 중요 정보]
+        
+        ## 📊 상세 내용
+        [검색 결과의 구체적인 내용]
+        
+        ## 💡 추가 정보
+        - 검색된 결과: [총 개수]건
+        - 데이터 출처: [데이터베이스/문서]
+        
+        중요: 항상 위 형식을 유지하고, 명확하고 구조화된 답변을 제공하세요."""
+        
+        # 시스템 메시지를 포함한 LLM 생성
+        llm_with_system = self.llm.bind(system=system_prompt)
+        
         # React 에이전트 생성
-        agent_node = create_react_agent(self.llm, tools)
+        agent_node = create_react_agent(llm_with_system, tools)
         
         # StateGraph 구성 (최신 버전 호환)
         from typing import TypedDict
