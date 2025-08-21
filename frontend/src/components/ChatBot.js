@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import './ChatBot.css';
 
 const ChatBot = () => {
@@ -1072,9 +1073,27 @@ const ChatBot = () => {
                       )}
                     </div>
                   ) : (
-                    message.content.split('\n').map((line, i) => (
-                      <div key={i}>{line}</div>
-                    ))
+                    <ReactMarkdown
+                      children={message.content}
+                      components={{
+                        h1: ({children}) => <h1 style={{fontSize: '1.5rem', fontWeight: 'bold', marginTop: '1rem', marginBottom: '0.5rem'}}>{children}</h1>,
+                        h2: ({children}) => <h2 style={{fontSize: '1.3rem', fontWeight: 'bold', marginTop: '1rem', marginBottom: '0.5rem'}}>{children}</h2>,
+                        h3: ({children}) => <h3 style={{fontSize: '1.1rem', fontWeight: 'bold', marginTop: '0.8rem', marginBottom: '0.4rem'}}>{children}</h3>,
+                        p: ({children}) => <p style={{marginBottom: '0.5rem', lineHeight: '1.6'}}>{children}</p>,
+                        ul: ({children}) => <ul style={{marginLeft: '1.5rem', marginBottom: '0.5rem'}}>{children}</ul>,
+                        ol: ({children}) => <ol style={{marginLeft: '1.5rem', marginBottom: '0.5rem'}}>{children}</ol>,
+                        li: ({children}) => <li style={{marginBottom: '0.25rem'}}>{children}</li>,
+                        strong: ({children}) => <strong style={{fontWeight: 'bold'}}>{children}</strong>,
+                        em: ({children}) => <em style={{fontStyle: 'italic'}}>{children}</em>,
+                        blockquote: ({children}) => <blockquote style={{borderLeft: '3px solid #ddd', paddingLeft: '1rem', marginLeft: '0', color: '#666'}}>{children}</blockquote>,
+                        code: ({inline, children}) => inline ? 
+                          <code style={{backgroundColor: '#f4f4f4', padding: '2px 4px', borderRadius: '3px', fontSize: '0.9em'}}>{children}</code> :
+                          <pre style={{backgroundColor: '#f4f4f4', padding: '0.5rem', borderRadius: '5px', overflowX: 'auto'}}><code>{children}</code></pre>,
+                        table: ({children}) => <table style={{borderCollapse: 'collapse', width: '100%', marginBottom: '0.5rem'}}>{children}</table>,
+                        th: ({children}) => <th style={{border: '1px solid #ddd', padding: '8px', backgroundColor: '#f4f4f4', fontWeight: 'bold'}}>{children}</th>,
+                        td: ({children}) => <td style={{border: '1px solid #ddd', padding: '8px'}}>{children}</td>
+                      }}
+                    />
                   )}
                 </div>
               </div>
