@@ -10,12 +10,14 @@
 7. [환경 설정](#환경-설정)
 8. [빠른 시작](#빠른-시작)
 
+> 전체 시스템 개요는 [`../PROJECT_ARCHITECTURE.md`](../PROJECT_ARCHITECTURE.md), 엔드포인트 원본 목록은 [`app/README.md`](app/README.md)를 참고하세요 — 아래 표는 요약이며 최신 확인은 코드 또는 `app/README.md` 기준입니다.
+
 ## 시스템 개요
 
 제약회사 영업 지원을 위한 **AI 기반 멀티 에이전트 시스템**입니다.
 
 ### 주요 특징
-- **멀티 에이전트 아키텍처**: 4개의 전문화된 AI 에이전트가 협업
+- **멀티 에이전트 아키텍처**: 5개의 전문화된 AI 에이전트가 협업 (router/employee/client/docs/search)
 - **마이크로서비스 구조**: FastAPI 기반 RESTful API
 - **AI 모델**: OpenAI GPT-4 시리즈 (GPT-4o, GPT-4o-mini)
 - **실시간 처리**: 비동기 처리로 빠른 응답 속도
@@ -171,11 +173,20 @@ LLM 보고서 생성 → 결과 반환
 POST /api/v1/chat
   - 사용자 메시지 라우팅
   
-POST /api/v1/chat/resume/{session_id}  
+POST /api/v1/resume/{session_id}
   - 세션 재개
   
-GET /api/v1/chat/session/{session_id}
+GET /api/v1/status/{session_id}
   - 세션 상태 조회
+
+GET /api/v1/agents
+  - 사용 가능한 에이전트 목록
+
+GET /api/v1/chat/history/{session_id}
+  - 세션 대화 기록 조회
+
+GET /api/v1/chat/sessions/user/{employee_id}
+  - 사용자별 세션 목록 조회
 ```
 
 ### Docs Agent API
@@ -186,20 +197,42 @@ POST /api/v1/docs/chat
 POST /api/v1/docs/resume/{session_id}
   - 문서 작성 재개
   
-GET /api/v1/docs/session/{session_id}
+GET /api/v1/docs/status/{session_id}
   - 세션 상태 조회
+
+GET /api/v1/docs/templates
+  - 지원 문서 템플릿 목록
+
+POST /api/v1/docs/create-document
+  - 문서 생성
 ```
 
 ### Employee Agent API
 ```http
 POST /api/employee/analyze
   - 직원 실적 분석 (JWT 인증 필요)
+
+GET /api/employee/list
+  - 직원 목록 조회
   
-GET /api/employee/performance
+POST /api/employee/performance
   - 실적 데이터 조회
   
-GET /api/employee/targets
-  - 목표 데이터 조회
+POST /api/employee/target
+  - 목표 달성률 조회
+
+GET /api/employee/dashboard-stats
+  - 대시보드 통계 조회
+```
+
+### Client Agent API
+`client_agent_api.py` 자체가 `APIRouter(prefix="/client")`를 가지고 있어, `agent_server.py`의 `/api/v1` 프리픽스와 합쳐져 최종 경로는 `/api/v1/client/*`입니다.
+```http
+POST /api/v1/client/analyze
+  - 거래처 분석
+
+GET /api/v1/client/health
+  - Client Agent 헬스 체크
 ```
 
 ### 공통 엔드포인트
@@ -243,20 +276,9 @@ CREATE TABLE schedules (
 );
 ```
 
-### SQLite (채팅 기록)
+### 채팅 기록 저장
 
-#### chat_history 테이블
-```sql
-CREATE TABLE chat_history (
-    id INTEGER PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    message_id TEXT UNIQUE NOT NULL,
-    timestamp TEXT NOT NULL,
-    role TEXT CHECK(role IN ('user', 'assistant')),
-    message_text TEXT NOT NULL,
-    metadata TEXT
-);
-```
+채팅 대화 저장은 `services/common/conversation_storage.py`가 담당합니다. HTTP로 Database API 서버(`/api/chat-history/save-message`, `/api/chat-history/get-history`, 기본 8010)에 저장/조회를 위임하며, `router_api.py`가 이 모듈을 사용합니다.
 
 ## 기술 스택
 

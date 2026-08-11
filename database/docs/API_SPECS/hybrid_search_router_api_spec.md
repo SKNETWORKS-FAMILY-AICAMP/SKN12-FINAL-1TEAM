@@ -72,7 +72,7 @@ curl -X GET "http://localhost:8010/search/hybrid?query=매출%20현황&limit=20"
 
 ---
 
-### 3. 하이브리드 검색 통계
+### 2. 하이브리드 검색 통계
 **GET** `/search/hybrid/stats`
 
 #### 헤더

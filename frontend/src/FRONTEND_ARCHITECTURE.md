@@ -184,7 +184,7 @@ app.use((req, res, next) => {
 ### markdownParser.js
 - Markdown 텍스트를 HTML로 변환
 - 헤더, 리스트, 코드 블록, 인라인 코드 등 지원
-- ChatBot 컴포넌트에서 AI 응답 렌더링에 사용
+- **ClientAnalysis 컴포넌트**에서 사용 (ChatBot이 아님 — 아래 참고)
 
 ## 🔄 API 통신 흐름
 
@@ -243,7 +243,7 @@ docker-compose up frontend
 ### 주요 기능
 - 세션 ID 기반 대화 관리
 - 채팅 히스토리 로컬 스토리지 저장
-- Markdown 응답 렌더링
+- Markdown 응답 렌더링 — `react-markdown` 라이브러리 사용(`import ReactMarkdown from 'react-markdown'`). 이전에는 자체 `utils/markdownParser.js`를 사용했으나 리팩토링되었음
 - 에이전트별 색상 구분
 - 대화형 문서 생성 (Docs Agent)
 
@@ -267,6 +267,9 @@ docker-compose up frontend
 - Search 컴포넌트에 내부/외부 문서 자동 분류 로직 포함
 
 ---
+최종 업데이트: 2026-08-11
+- ChatBot 마크다운 렌더링 서술을 `markdownParser.js` → `react-markdown`으로 정정 (실제 코드와 대조 후 수정)
+
 최종 업데이트: 2025-01-18
 - 컴포넌트 구조 및 서비스 레이어 상세 문서화
 - ChatBot 에이전트 시스템 설명 추가

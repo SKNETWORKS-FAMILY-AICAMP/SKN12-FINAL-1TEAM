@@ -7,6 +7,8 @@
 - **핵심 기술**: Multi-Agent LLM 시스템 (GPT-4 기반)
 - **아키텍처**: 3-Tier 마이크로서비스 아키텍처
 
+> 백엔드 세부 구현은 [`backend/BACKEND_ARCHITECTURE.md`](backend/BACKEND_ARCHITECTURE.md), 엔드포인트 최신 목록은 [`backend/app/README.md`](backend/app/README.md)를 참고하세요.
+
 ---
 
 ## 🏛️ 시스템 아키텍처
@@ -47,7 +49,7 @@
 
 ## 🤖 Multi-Agent 시스템
 
-### 4개의 전문 AI 에이전트
+### 5개의 전문 AI 에이전트
 
 #### 1. **Router Agent** (오케스트레이터)
 - **위치**: `backend/app/services/router_agent/`
@@ -83,6 +85,11 @@
   - 거래처 등급 평가 (A-D)
   - 매출 트렌드 분석
   - 성장 잠재력 평가
+
+#### 5. **Search Agent** (정보 검색)
+- **위치**: `backend/app/services/search_agent/`
+- **역할**: 사내 문서/규정/제품 정보 검색 (LangGraph React Agent 기반)
+- **특징**: 독자적인 API 라우터 파일이 없고, `router_agent`가 내부적으로 `search_agent.run.run()`을 호출하는 방식으로만 실행됨 (`GET /api/v1/*`로 직접 노출되는 엔드포인트 없음)
 
 ---
 
@@ -230,6 +237,8 @@ final_result = aggregate_results(task_results)
    
 3. 토큰 저장
    → localStorage('narutalk_token')
+   → 실제 프론트엔드 코드(Admin.js, ChatBot.js 등)는 리팩토링 과정에서 남은 'access_token' 키도
+     fallback으로 함께 조회합니다 (localStorage.getItem('access_token') || localStorage.getItem('narutalk_token'))
    
 4. API 요청 시
    → Authorization: Bearer ${token}
@@ -279,32 +288,46 @@ CREATE TABLE chat_sessions (
 );
 ```
 
+채팅 대화 저장은 `services/common/conversation_storage.py`가 Database API 서버(PostgreSQL, 8010)에 HTTP로 위임하는 방식으로 처리됩니다.
+
 ---
 
 ## 🚀 Docker 컨테이너 구성
 
+실제로는 compose 파일이 2개로 분리되어 있고, external network(`docker_app-network`)로 연결됩니다.
+
+### 루트 `docker-compose.yml` (backend, frontend)
 ```yaml
 services:
-  # 프론트엔드
-  frontend:
-    ports: "3000:3000"
-    volumes: ./frontend/src:/app/src  # 핫 리로드
-    
-  # 에이전트 서버
   backend:
     ports: "8000:8000"
+    volumes: ./backend/app:/app/app
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - DATABASE_API_URL=http://fastapi-app:8000
-      
-  # 데이터베이스 API
-  fastapi-app:
-    ports: "8010:8000"
-    depends_on:
-      - postgres
-      - opensearch-node1
-      - minio
+      - DATABASE_API_URL=http://host.docker.internal:8010  # 주의: config.py가 이 env var를 읽지 않아 실제로는 무시됨
+    networks: [narutalk-network, docker_app-network]
+
+  frontend:
+    ports: "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    networks: [narutalk-network, docker_app-network]
+
+networks:
+  narutalk-network:
+    driver: bridge
+  docker_app-network:
+    external: true  # database/docker/docker-compose.yml에서 생성
 ```
+
+### `database/docker/docker-compose.yml` (DB 인프라)
+postgres, opensearch(3-node 클러스터), minio, fastapi-app 외에도 문서에 없던 관리 UI 서비스들이 포함됩니다:
+- `pgadmin` (포트 5050)
+- `opensearch-dashboards` (포트 5601)
+- MinIO 콘솔 (포트 9001)
+
+`fastapi-app`은 이 레포에 소스가 없는 prebuilt 이미지(`ansirh/database-fastapi-app`)로 실행됩니다.
 
 ---
 
@@ -378,9 +401,16 @@ cd frontend && npm start
 | 엔드포인트 | 메소드 | 설명 |
 |-----------|--------|------|
 | `/api/v1/chat` | POST | Multi-Agent 처리 |
+| `/api/v1/resume/{session_id}` | POST | 세션 재개 |
+| `/api/v1/status/{session_id}` | GET | 세션 상태 조회 |
+| `/api/v1/agents` | GET | 사용 가능한 에이전트 목록 |
+| `/api/v1/chat/history/{session_id}` | GET | 세션 대화 기록 조회 |
+| `/api/v1/chat/sessions/user/{employee_id}` | GET | 사용자별 세션 목록 조회 |
 | `/api/v1/docs/chat` | POST | 문서 생성 |
+| `/api/v1/client/analyze` | POST | 거래처 분석 (client_agent_api.py 자체가 `/client` 서브프리픽스를 가짐) |
 | `/api/employee/analyze` | POST | 직원 분석 |
 | `/health` | GET | 헬스 체크 |
+| `/api-routes` | GET | 등록된 API 목록 조회 |
 
 ### Database API (8010)
 | 엔드포인트 | 메소드 | 설명 |

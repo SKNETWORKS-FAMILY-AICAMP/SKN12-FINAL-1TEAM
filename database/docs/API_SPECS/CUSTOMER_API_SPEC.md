@@ -13,7 +13,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 
 ## Base URL
 ```
-https://your-domain.com/api
+http://localhost:8010
 ```
 
 ---
@@ -37,7 +37,7 @@ GET /customer/{customer_id}/performance
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/customer/1/performance?start_month=202401&end_month=202412" \
+curl -X GET "http://localhost:8010/customer/1/performance?start_month=202401&end_month=202412" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -161,7 +161,7 @@ GET /customers/performance
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/customers/performance?customer_ids=1,2,3&start_month=202401&end_month=202412" \
+curl -X GET "http://localhost:8010/customers/performance?customer_ids=1,2,3&start_month=202401&end_month=202412" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -266,7 +266,7 @@ GET /customer/{customer_id}/performance/comparison
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/customer/1/performance/comparison?period1_start=202301&period1_end=202306&period2_start=202401&period2_end=202406" \
+curl -X GET "http://localhost:8010/customer/1/performance/comparison?period1_start=202301&period1_end=202306&period2_start=202401&period2_end=202406" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -374,7 +374,7 @@ GET /customers
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/customers?skip=0&limit=50" \
+curl -X GET "http://localhost:8010/customers?skip=0&limit=50" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -439,7 +439,7 @@ GET /customer/search
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/customer/search?name=서울" \
+curl -X GET "http://localhost:8010/customer/search?name=서울" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -500,7 +500,7 @@ GET /customer/{customer_id}
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/customer/1" \
+curl -X GET "http://localhost:8010/customer/1" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -549,7 +549,7 @@ curl -X GET "https://your-domain.com/api/customer/1" \
 import requests
 
 # 기본 설정
-BASE_URL = "https://your-domain.com/api"
+BASE_URL = "http://localhost:8010"
 headers = {"Authorization": "Bearer YOUR_JWT_TOKEN"}
 
 # 1. 거래처 목록 조회
@@ -637,7 +637,7 @@ if response.status_code == 200:
 ```javascript
 const axios = require('axios');
 
-const BASE_URL = 'https://your-domain.com/api';
+const BASE_URL = 'http://localhost:8010';
 const headers = { 
     'Authorization': 'Bearer YOUR_JWT_TOKEN' 
 };

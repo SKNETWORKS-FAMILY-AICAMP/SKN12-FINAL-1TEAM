@@ -130,7 +130,7 @@ Final_Git/
 ├── database/                   # 데이터베이스 설정
 │   ├── docker/                # Docker 구성
 │   ├── docs/                  # API 문서
-│   └── util_scripts/          # 유틸리티 스크립트
+│   └── util_sctips/           # 유틸리티 스크립트
 └── docker-compose.yml         # Docker Compose 설정
 ```
 ---
@@ -156,9 +156,9 @@ Final_Git/
 ---
 ### API 구조
 - **Agent Server (8000)**: 에이전트 API 제공
-  - `/api/router/chat`: 메인 챗봇 엔드포인트
-  - `/api/docs/*`: 문서 생성 API
-  - `/api/client/*`: 거래처 분석 API
+  - `/api/v1/chat`: 메인 챗봇 엔드포인트
+  - `/api/v1/docs/*`: 문서 생성 API
+  - `/api/v1/client/*`: 거래처 분석 API
   - `/api/employee/*`: 직원 관리 API
 ---
 - **Database API (8010)**: 데이터베이스 및 인프라 API
@@ -175,6 +175,9 @@ Final_Git/
 
 ### 환경 변수 설정
 `.env` 파일 생성:
+
+> 더 상세한 환경변수 설명은 [`database/docs/환경변수_README.md`](database/docs/환경변수_README.md) 참고 (예시값은 서로 다를 수 있으니, `database/docker/docker-compose.yml`이 참조하는 실제 값은 팀 컨벤션에 맞게 설정)
+
 ```bash
 # OpenAI
 OPENAI_API_KEY=your_api_key

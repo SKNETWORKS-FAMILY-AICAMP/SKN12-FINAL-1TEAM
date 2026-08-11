@@ -13,7 +13,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 
 ## Base URL
 ```
-https://your-domain.com/api
+http://localhost:8010
 ```
 
 ---
@@ -37,7 +37,7 @@ GET /branches/
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/branches/?skip=0&limit=10&status=active" \
+curl -X GET "http://localhost:8010/branches/?skip=0&limit=10&status=active" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -97,7 +97,7 @@ GET /branches/search
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/branches/search?name=서울" \
+curl -X GET "http://localhost:8010/branches/search?name=서울" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -158,7 +158,7 @@ GET /branches/by-headquarters
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/branches/by-headquarters?headquarters=수도권본부&status=active" \
+curl -X GET "http://localhost:8010/branches/by-headquarters?headquarters=수도권본부&status=active" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -213,7 +213,7 @@ GET /branches/by-department
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/branches/by-department?department=영업1부&headquarters=수도권본부" \
+curl -X GET "http://localhost:8010/branches/by-department?department=영업1부&headquarters=수도권본부" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -260,7 +260,7 @@ GET /branches/statistics
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/branches/statistics" \
+curl -X GET "http://localhost:8010/branches/statistics" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -309,7 +309,7 @@ GET /branches/{branch_id}
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/branches/1" \
+curl -X GET "http://localhost:8010/branches/1" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 

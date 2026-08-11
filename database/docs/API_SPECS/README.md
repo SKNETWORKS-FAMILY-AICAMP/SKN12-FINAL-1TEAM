@@ -78,21 +78,21 @@
 ---
 
 ### 6. [Chat History Router API](./chat_history_router_api_spec.md)
-**채팅 시스템**
+**채팅 시스템** (Base URL: `/api/chat-history`)
 - 채팅 세션 관리
 - 대화 기록 저장 및 조회
 - 세션 보관 및 복원
 
 **주요 엔드포인트:**
-- `POST /chat/messages` - 메시지 저장
-- `GET /chat/messages/{session_id}` - 대화 기록 조회
-- `GET /chat/sessions/{session_id}` - 세션 정보 조회
-- `GET /chat/sessions/user/{employee_id}` - 사용자 세션 목록
-- `PUT /chat/sessions/{session_id}/title` - 세션 제목 업데이트
-- `POST /chat/sessions/{session_id}/archive` - 세션 보관
-- `POST /chat/sessions/{session_id}/restore` - 세션 복원
-- `DELETE /chat/sessions/{session_id}` - 세션 삭제
-- `GET /chat/health` - 시스템 상태 확인
+- `POST /api/chat-history/save-message` - 메시지 저장
+- `POST /api/chat-history/get-history` - 대화 기록 조회
+- `POST /api/chat-history/get-session-info` - 세션 정보 조회
+- `GET /api/chat-history/sessions/{employee_id}` - 사용자 세션 목록
+- `PUT /api/chat-history/session/{session_id}/title` - 세션 제목 업데이트
+- `POST /api/chat-history/session/{session_id}/archive` - 세션 보관
+- `POST /api/chat-history/session/{session_id}/restore` - 세션 복원
+- `DELETE /api/chat-history/session/{session_id}` - 세션 삭제
+- `GET /api/chat-history/health` - 시스템 상태 확인
 
 ---
 
@@ -176,22 +176,6 @@ curl -X POST "http://localhost:8010/search/hybrid" \
 
 ---
 
-## 📊 API 사용 통계
-
-### 인기 API 엔드포인트
-1. **로그인**: `/user/login`
-2. **문서 업로드**: `/documents/upload`
-3. **질문-답변**: `/qa/question`
-4. **하이브리드 검색**: `/search/hybrid`
-5. **채팅 메시지**: `/chat/messages`
-
-### 성능 지표
-- **평균 응답 시간**: 0.15초
-- **동시 사용자**: 최대 100명
-- **데이터 처리량**: 1000건/분
-
----
-
 ## 🔧 개발 환경 설정
 
 ### 필수 환경 변수
@@ -258,7 +242,6 @@ docker exec -it fastapi-app alembic upgrade head
 
 - **버전**: 1.0.0
 - **최종 업데이트**: 2024년 1월
-- **문서 상태**: 최신
 
 ---
 

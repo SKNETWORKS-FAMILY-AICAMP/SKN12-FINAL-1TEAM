@@ -48,7 +48,7 @@ import jwt
 
 security = HTTPBearer()
 # 데이터베이스 서버와 동일한 JWT_SECRET_KEY 사용
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "n!CnQ1>(DOcrbITm4]2bUxt[yTF+9,Gu^5s8Duo&27ZK8yCah5Qc-vNd=#.?w(*Ks")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
 JWT_ALGORITHM = "HS256"
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):

@@ -22,9 +22,8 @@
 Database API의 URL을 반환합니다.
 
 **우선순위:**
-1. `DATABASE_API_URL` 환경변수 (명시적 설정)
-2. Docker 환경 자동 감지 → `http://fastapi-app:8000`
-3. 로컬 개발 환경 기본값 → `http://localhost:8010`
+1. Docker 환경 자동 감지 (`/.dockerenv` 존재 여부) → `http://fastapi-app:8000`
+2. 로컬 개발 환경 기본값 → `http://localhost:8010`
 
 ##### 2. `get_jwt_secret_key() -> str`
 JWT 토큰 서명에 사용되는 시크릿 키를 반환합니다.
@@ -106,19 +105,20 @@ class SearchAgent:
 필요시 환경변수로 설정을 덮어쓸 수 있습니다:
 
 ```bash
-export DATABASE_API_URL=http://custom-url:9000
 export JWT_SECRET_KEY=my-secure-key
 export OPENAI_API_KEY=sk-...
+export ENVIRONMENT=production
 ```
 
 ## 📝 설정 가능한 환경변수
 
 | 환경변수 | 설명 | 기본값 | 필수 |
 |---------|------|--------|------|
-| `DATABASE_API_URL` | Database API 서버 URL | 환경별 자동 설정 | ❌ |
 | `JWT_SECRET_KEY` | JWT 토큰 서명 키 | `"your-secret-key-here"` | ⚠️ |
 | `OPENAI_API_KEY` | OpenAI API 키 | 없음 | ✅ |
 | `ENVIRONMENT` | 실행 환경 | `"development"` | ❌ |
+
+`DATABASE_API_URL`은 `get_database_api_url()`이 Docker/로컬 환경을 자동 감지해 결정하며, 환경 코드 수정 없이 값만 바꾸려면 `config.py`를 직접 수정하면 됩니다.
 
 ## 🔍 Docker 환경 감지 로직
 

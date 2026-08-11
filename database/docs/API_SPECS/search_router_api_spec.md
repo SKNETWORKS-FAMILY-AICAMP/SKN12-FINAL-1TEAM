@@ -251,25 +251,25 @@ Text2SQL과 OpenSearch를 동시에 검색하여 통합 결과를 반환합니�
 
 #### Text2SQL 검색
 ```bash
-curl -X GET "http://localhost:8000/search/text2sql?query=홍길동%20매출&limit=10" \
+curl -X GET "http://localhost:8010/search/text2sql?query=홍길동%20매출&limit=10" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### OpenSearch 검색
 ```bash
-curl -X GET "http://localhost:8000/search/opensearch?query=거래처%20규정&limit=5" \
+curl -X GET "http://localhost:8010/search/opensearch?query=거래처%20규정&limit=5" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### 통합 검색
 ```bash
-curl -X GET "http://localhost:8000/search/all?query=2024년%20실적" \
+curl -X GET "http://localhost:8010/search/all?query=2024년%20실적" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### 시스템 상태 확인
 ```bash
-curl -X GET "http://localhost:8000/search/stats" \
+curl -X GET "http://localhost:8010/search/stats" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -279,7 +279,7 @@ curl -X GET "http://localhost:8000/search/stats" \
 import requests
 
 # 설정
-base_url = "http://localhost:8000"
+base_url = "http://localhost:8010"
 token = "YOUR_ACCESS_TOKEN"
 headers = {"Authorization": f"Bearer {token}"}
 

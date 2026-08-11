@@ -338,7 +338,7 @@ curl -X GET "http://localhost:8010/documents/" \
 
 ---
 
-### 4. 특정 문서 조회
+### 5. 특정 문서 조회
 **GET** `/documents/{doc_id}`
 
 #### 헤더
@@ -367,7 +367,7 @@ curl -X GET "http://localhost:8010/documents/1" \
 
 ---
 
-### 5. 문서 다운로드 링크 생성
+### 6. 문서 다운로드 링크 생성
 **GET** `/documents/{doc_id}/download`
 
 #### 헤더

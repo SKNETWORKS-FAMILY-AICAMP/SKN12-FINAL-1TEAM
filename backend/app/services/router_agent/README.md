@@ -107,14 +107,16 @@ pip install langchain langchain-openai langgraph fastapi uvicorn
 ### 3. 서버 실행
 ```bash
 cd backend
-uvicorn app.main:app --reload --port 8000
+uvicorn app.agent_server:app --reload --port 8000
 ```
 
 ## API 엔드포인트
 
+> 아래 경로는 `agent_server.py`가 `app.include_router(router_api, prefix="/api/v1")`로 마운트하므로 모두 `/api/v1` 프리픽스가 붙습니다.
+
 ### 1. 채팅 요청
 ```http
-POST /v1/chat
+POST /api/v1/chat
 Content-Type: application/json
 
 {
@@ -125,7 +127,7 @@ Content-Type: application/json
 
 ### 2. 세션 재개
 ```http
-POST /v1/resume/{session_id}
+POST /api/v1/resume/{session_id}
 Content-Type: application/json
 
 {
@@ -136,17 +138,17 @@ Content-Type: application/json
 
 ### 3. 세션 상태 조회
 ```http
-GET /v1/status/{session_id}
+GET /api/v1/status/{session_id}
 ```
 
 ### 4. 헬스 체크
 ```http
-GET /v1/health
+GET /api/v1/health
 ```
 
 ### 5. 에이전트 목록
 ```http
-GET /v1/agents
+GET /api/v1/agents
 ```
 
 ## 사용 예시
@@ -154,12 +156,12 @@ GET /v1/agents
 ### 기본 사용
 ```python
 # 직원 실적 조회
-response = requests.post("http://localhost:8000/v1/chat", json={
+response = requests.post("http://localhost:8000/api/v1/chat", json={
     "message": "최수아 이번달 실적 보여줘"
 })
 
 # 문서 생성
-response = requests.post("http://localhost:8000/v1/chat", json={
+response = requests.post("http://localhost:8000/api/v1/chat", json={
     "message": "영업방문 보고서 작성해줘"
 })
 ```
@@ -167,13 +169,13 @@ response = requests.post("http://localhost:8000/v1/chat", json={
 ### 세션 관리
 ```python
 # 첫 번째 요청
-response1 = requests.post("http://localhost:8000/v1/chat", json={
+response1 = requests.post("http://localhost:8000/api/v1/chat", json={
     "message": "미라클신경과 분석해줘"
 })
 session_id = response1.json()["session_id"]
 
 # 추가 요청 (같은 세션)
-response2 = requests.post("http://localhost:8000/v1/chat", json={
+response2 = requests.post("http://localhost:8000/api/v1/chat", json={
     "message": "작년 대비 성장률은?",
     "session_id": session_id
 })
@@ -182,10 +184,10 @@ response2 = requests.post("http://localhost:8000/v1/chat", json={
 ### 도움말 처리
 ```python
 # 매칭되지 않는 쿼리
-response = requests.post("http://localhost:8000/v1/chat", json={
+response = requests.post("http://localhost:8000/api/v1/chat", json={
     "message": "오늘 날씨 어때?"
 })
-# 응답: 4개 에이전트의 설명과 사용 예시 제공
+# 응답: 4개 에이전트(employee/client/search/docs)의 설명과 사용 예시 제공
 ```
 
 ## 개발자 가이드

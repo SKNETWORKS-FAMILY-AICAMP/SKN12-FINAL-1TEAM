@@ -13,7 +13,7 @@ Authorization: Bearer YOUR_JWT_TOKEN
 
 ## Base URL
 ```
-https://your-domain.com/api/employee
+http://localhost:8010/employee
 ```
 
 ---
@@ -36,7 +36,7 @@ GET /employees
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/employee/employees?is_active=true" \
+curl -X GET "http://localhost:8010/employee/employees?is_active=true" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -85,7 +85,7 @@ GET /performance/{employee_id}
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/employee/performance/1?start_period=202312&end_period=202403" \
+curl -X GET "http://localhost:8010/employee/performance/1?start_period=202312&end_period=202403" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -147,7 +147,7 @@ GET /performance/{employee_id}/summary
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/employee/performance/1/summary?start_period=202312&end_period=202403" \
+curl -X GET "http://localhost:8010/employee/performance/1/summary?start_period=202312&end_period=202403" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -189,7 +189,7 @@ GET /performance/{employee_id}/products
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/employee/performance/1/products?start_period=202312&end_period=202403&limit=5" \
+curl -X GET "http://localhost:8010/employee/performance/1/products?start_period=202312&end_period=202403&limit=5" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -244,7 +244,7 @@ GET /performance/{employee_id}/customers
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/employee/performance/1/customers?start_period=202312&end_period=202403&limit=5" \
+curl -X GET "http://localhost:8010/employee/performance/1/customers?start_period=202312&end_period=202403&limit=5" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -285,7 +285,7 @@ GET /departments
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/employee/departments" \
+curl -X GET "http://localhost:8010/employee/departments" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -324,7 +324,7 @@ GET /agent/performance-data
 
 ### Request Example
 ```bash
-curl -X GET "https://your-domain.com/api/employee/agent/performance-data?employee_name=조시현&start_period=202312&end_period=202403" \
+curl -X GET "http://localhost:8010/employee/agent/performance-data?employee_name=조시현&start_period=202312&end_period=202403" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
